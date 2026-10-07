@@ -1,0 +1,25 @@
+# The "How to add a scene" example of docs/GAME_FLOW.md (ROADMAP 9.2a): needs a build with -DMS_EXAMPLE_SCENE=ON (and MS_AUTOPLAY),
+# so it is not in the regression / play sets.  py tools/flow_example.py builds build-example/ and runs it.
+# Map -> space (the status sheet) -> its done button -> the example scene (HighWood.piv from disk) -> fire -> the map again.
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map: space opens the status sheet; its done button (right pillar) closes it ---
+frame 1630 key SPACE tap
+frame 1930 shot example-status
+frame 1940 poke cursorx 236
+frame 1940 poke cursory 150
+frame 1965 joy1 fire pulse 8
+# --- the example scene: the picture from disk, wait for fire ---
+wait file HighWood.piv max 900
+frame 200 shot example-picture
+frame 230 joy1 fire pulse 8
+# --- back on the map ---
+frame 630 shot example-map
+frame 700 quit

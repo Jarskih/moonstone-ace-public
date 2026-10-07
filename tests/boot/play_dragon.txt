@@ -1,0 +1,64 @@
+# The dragon: it flies on the map from day 2 on (spawned when the map starts). The day counter is poked to 2, the black knights are
+# parked (frog 100), the turn is ended (E) so the next map start spawns the dragon (`wait var dragon 1`), then `poke dragon_hit 1`
+# puts it on the knight and makes it the target: the next map frame starts the dragon fight (LAB_0DC8 + LAB_0083, bats and all).
+# LOSS path: the knight stands and walks left (no attack), the dragon breathes fire; `wait var lives 4` = the life is lost, then the
+# Next Day screen and the map. play_dragon_win.mk is the win path. Stats stay small (docs/AUTOPLAY.md). The fight is random: loose tolerances.
+# shotcmp-tol play-dragon-map 3
+# shotcmp-tol play-dragon-flying 15
+# shotcmp-tol play-dragon-arena 15
+# shotcmp-tol play-dragon-status 3
+# shotcmp-tol play-dragon-after-status 3
+# shotcmp-tol play-dragon-attack 100
+# shotcmp-tol play-dragon-close 100
+# shotcmp-tol play-dragon-lost 100
+# shotcmp-tol play-dragon-map-after 5
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke who 1
+frame 1631 poke frog 100
+frame 1633 poke who 2
+frame 1636 poke frog 100
+frame 1640 poke who 3
+frame 1645 poke frog 100
+frame 1651 poke who 0
+frame 1658 poke strength 9
+frame 1666 poke constitution 30
+frame 1675 poke endurance 9
+frame 1685 poke hpmax 310
+frame 1696 poke hp 310
+frame 1708 poke day 2
+frame 1738 shot play-dragon-map
+# the status screen and back restarts the map loop, which spawns the dragon (day >= 2)
+frame 1748 key SPACE tap
+frame 2048 shot play-dragon-status
+frame 2058 poke cursorx 236
+frame 2058 poke cursory 150
+frame 2083 joy1 fire pulse 8
+frame 2383 shot play-dragon-after-status
+wait var dragon 1 max 1500
+frame 200 shot play-dragon-flying
+frame 210 poke dump 1
+frame 220 poke dragon_hit 1
+frame 520 shot play-dragon-attack
+frame 1020 shot play-dragon-arena
+# the dragon is on top of the knight; the knight walks left, the dragon attacks (fire breath)
+frame 1030 joy1 left
+frame 1380 joy1 none
+frame 1400 shot play-dragon-close
+frame 1410 poke fightdump 1
+wait var lives 4 max 9000
+frame 0 joy1 none
+frame 150 shot play-dragon-lost
+frame 160 poke dump 1
+frame 170 joy1 fire pulse 8
+frame 570 shot play-dragon-map-after
+frame 580 poke dump 1
+frame 680 quit

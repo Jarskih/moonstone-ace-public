@@ -1,0 +1,6 @@
+# ROADMAP 9.4c: a good mods/rules.ini is applied (the logged values change); the game boots to the menu as usual.
+# Run with: py tools/modsboot.py good
+wait log done_applied_1_skipped_0 max 3000
+wait input 10 max 3000
+frame 60 log mods_good_reached_menu
+frame 120 quit

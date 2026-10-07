@@ -1,0 +1,162 @@
+# Schema of PROGDIR:mods/items.ini (ROADMAP 9.5d, docs/ARCHITECTURE.md 3.2).  Input of tools/gen_moddata.py.
+#
+# Table sections (one row per `[kind name]` header).  Each section names its own struct and GameData array, because a file
+# can hold several tables:
+#   struct / target / layout   the row struct, its array member in GameData, the struct's members in declaration order
+#   names:                     the built-in rows, in order (the rest of the array up to `max` is the pool for new rows)
+#   rows / max:                built-in row count (= len(names)) and the array size
+#   keys: ... default:         a mapping row name -> value (one entry per built-in row), or one value for every row
+# Defaults here are the numbers the game source already holds (`const:`), no data of the original disks.
+file: items.ini
+title: Weapons, armour and stat items
+sections:
+  weapon:
+    doc: >-
+      The weapons a knight can wield (Knight sword code). The built-in rows are the four swords; a new row needs its own `code`.
+      Rules look a weapon up by its code, so a row changes behaviour for everything that wields it.
+    struct: WeaponDef
+    target: aWeapons
+    layout: [uwCode, uwPrice, ubDamageBonus, ubRank, ubKind]
+    names: [long, broad, claymore, sharpness]
+    rows: 4
+    max: 8
+    keys:
+      code:
+        member: uwCode
+        type: int
+        size: 2
+        min: 1
+        max: 255
+        default: {long: 22, broad: 23, claymore: 24, sharpness: 25}
+        source: "const: SwordItem in include/game/constants.hpp"
+        doc: The item code stored in the knight's sword field that selects this weapon. Must be unique among the weapons.
+      price:
+        member: uwPrice
+        type: int
+        size: 2
+        min: 0
+        max: 32767
+        default: {long: 0, broad: 10, claymore: 25, sharpness: 0}
+        source: "const: the smith's costs in src/game/scene_town.cpp"
+        doc: Smith price in gold; 0 means the smith does not sell it.
+      damage:
+        member: ubDamageBonus
+        type: int
+        size: 1
+        min: 0
+        max: 255
+        default: {long: 0, broad: 2, claymore: 3, sharpness: 5}
+        source: "const: contactDamage in src/game/creatures.cpp"
+        doc: Damage added to every hit of a knight wielding the weapon.
+      rank:
+        member: ubRank
+        type: int
+        size: 1
+        min: 0
+        max: 255
+        default: {long: 0, broad: 1, claymore: 2, sharpness: 3}
+        source: "const: the order of SwordItem"
+        doc: Order of strength. The smith only offers a weapon ranked above the one the knight already has.
+      kind:
+        member: ubKind
+        type: enum
+        size: 1
+        values: {melee: 0}
+        default: melee
+        source: "const: every sword is a melee weapon (new kinds, bows, come with ROADMAP 8.8 / 8.9)"
+        doc: How the weapon attacks. Only melee exists today.
+  armour:
+    doc: >-
+      The armours a knight can wear (Knight armour code). The built-in rows are the four armours; a new row needs its own `code`.
+    struct: ArmourDef
+    target: aArmours
+    layout: [uwCode, uwPrice, ubHpBonus, ubEnduranceBonus, ubRank]
+    names: [padded, mail, plate, battle]
+    rows: 4
+    max: 8
+    keys:
+      code:
+        member: uwCode
+        type: int
+        size: 2
+        min: 1
+        max: 255
+        default: {padded: 27, mail: 28, plate: 29, battle: 30}
+        source: "const: ArmourItem in include/game/constants.hpp"
+        doc: The item code stored in the knight's armour field that selects this armour. Must be unique among the armours.
+      price:
+        member: uwPrice
+        type: int
+        size: 2
+        min: 0
+        max: 32767
+        default: {padded: 0, mail: 30, plate: 50, battle: 75}
+        source: "const: the smith's costs in src/game/scene_town.cpp"
+        doc: Smith price in gold; 0 means the smith does not sell it.
+      hp:
+        member: ubHpBonus
+        type: int
+        size: 1
+        min: 0
+        max: 255
+        default: {padded: 0, mail: 10, plate: 20, battle: 30}
+        source: "const: knightRecalcHp in src/game/rules/stats.cpp"
+        doc: Maximum hit points added while the knight wears it.
+      endurance:
+        member: ubEnduranceBonus
+        type: int
+        size: 1
+        min: 0
+        max: 255
+        default: {padded: 0, mail: 2, plate: 0, battle: 2}
+        source: "const: knightRecalcEndurance in src/game/rules/stats.cpp"
+        doc: Derived endurance added while the knight wears it (a turn lasts longer with more).
+      rank:
+        member: ubRank
+        type: int
+        size: 1
+        min: 0
+        max: 255
+        default: {padded: 0, mail: 1, plate: 2, battle: 3}
+        source: "const: the order of ArmourItem"
+        doc: Order of strength. The smith only offers an armour ranked above the one the knight already wears.
+  item:
+    doc: >-
+      Inventory items that change a knight's stats. `slot` is the inventory byte (even offset 0..22) that holds the item's
+      count. A row with neither a hit point bonus nor a forced weapon does nothing.
+    struct: ItemDef
+    target: aItems
+    layout: [uwForcesWeapon, ubSlot, ubHpBonus]
+    names: [protection_ring, sharp_sword]
+    rows: 2
+    max: 8
+    keys:
+      slot:
+        member: ubSlot
+        type: int
+        size: 1
+        min: 0
+        max: 22
+        default: {protection_ring: 6, sharp_sword: 4}
+        source: "const: ItemSlot in include/game/api/ids.hpp"
+        doc: Inventory byte offset of the item's count (even).
+      hp:
+        member: ubHpBonus
+        type: int
+        size: 1
+        min: 0
+        max: 255
+        default: {protection_ring: 20, sharp_sword: 0}
+        source: "const: knightRecalcHp in src/game/rules/stats.cpp"
+        doc: Maximum hit points added per item held.
+      forces_weapon:
+        member: uwForcesWeapon
+        type: int
+        size: 2
+        min: 0
+        max: 255
+        default: {protection_ring: 0, sharp_sword: 25}
+        source: "const: knightRecalcHp in src/game/rules/stats.cpp"
+        doc: >-
+          Weapon code the knight is forced to wield while holding at least one of the item (0 = none). A knight who holds
+          the sharp sword always wields the sword of sharpness.

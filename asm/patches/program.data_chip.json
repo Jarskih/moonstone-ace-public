@@ -1,0 +1,14 @@
+{
+ "binary": "program",
+ "_doc": "ROADMAP 7.1n4: program's CHIP data hunks as C++ objects. S_27 (BSS, 45,744 bytes) is the cel read buffer / scratch block; S_30 (DATA) is the display cell block: shown/draw screen cells (patched by program.display.json screen-a/b to rt_screen_b / rt_screen_work), the default palette, the null sprite, the ORIGINAL copper-list template (LAB_0570/0571, read only by the dead body of the display init since ACE owns the display: kept byte-identical), the hex digit string and the keyboard table. Chip placement: tools/gen_data.py puts the objects in .chipdata.MEMF_CHIP / .chipbss.MEMF_CHIP (elf2hunk -> MEMF_CHIP hunks; tests/test_gen_data.py parses the exe). The twins are in mog.data_chip.json.",
+ "patches": [],
+ "extern_data": [
+  {"section": 27, "object": "g_prgScratch", "type": "PrgScratch",
+   "names": {"SECSTRT_27": "scratchHead", "LAB_052A": "celReadBuf"}},
+  {"section": 30, "object": "g_prgScreen", "type": "PrgScreen",
+   "widths": {"LAB_056E": 2},
+   "names": {"SECSTRT_30": "shownScreen", "LAB_056C": "drawScreen", "LAB_056D": "displayFlag",
+             "LAB_056E": "defaultPalette", "LAB_056F": "nullSprite", "LAB_0570": "templatePtr",
+             "LAB_0571": "copperTemplate", "LAB_0572": "hexDigits", "LAB_0573": "keyTable"}}
+ ]
+}

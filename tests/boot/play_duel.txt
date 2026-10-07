@@ -1,0 +1,39 @@
+# A duel with a black knight (an AI knight): the knight is put on top of knight 1 (the proximity scan then offers the duel), the
+# fight is played by the autopilot, `wait var scene 1` waits for the meeting screen (both knights, the loot exchange).
+# The fight is random: loose tolerances.
+# shotcmp-tol play-duel-arena 15
+# shotcmp-tol play-duel-fight 100
+# shotcmp-tol play-duel-meet 3
+# shotcmp-tol play-duel-meet2 3
+# shotcmp-tol play-duel-prepare 3
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke warp_knight 1
+frame 1631 poke strength 9
+frame 1633 poke constitution 30
+frame 1636 poke endurance 9
+frame 1640 poke hpmax 310
+frame 1645 poke hp 310
+frame 1675 shot play-duel-map-at-knight
+frame 1685 joy1 fire pulse 8
+frame 2185 shot play-duel-prepare
+frame 2585 shot play-duel-arena
+frame 2595 mash joy1 10
+frame 3095 shot play-duel-fight
+wait var scene 1 max 25000
+frame 0 mash joy1 off
+frame 1 joy1 none
+frame 151 shot play-duel-meet
+frame 161 poke cursorx 155
+frame 161 poke cursory 110
+frame 186 joy1 fire pulse 8
+frame 486 shot play-duel-meet2
+frame 586 quit

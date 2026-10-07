@@ -1,0 +1,13 @@
+{
+ "binary": "program",
+ "_doc": "ROADMAP 7.1n5: program's last DATA/BSS hunks as C++ objects (tools/gen_data.py). S_5/S_6/S_7 are the overlay loader's cells (config words, state, one 512-byte sector buffer; the loader code is dead since 4.7, the cells are still named by dead asm and by the image table), S_14 the trackdisk state (twin of mog S_19, owned in mog.data_state.json; its pointer cell points at the owned scratch block g_prgScratch), S_19 a 2752-byte BSS work area used by the display/palette asm, S_28 the 1024-byte bold-font buffer (typed as 128 8-row glyphs in tools/data_types.yaml). Their twins in mog: S_6 (own object: S_5 holds non-zero constants), S_7 and S_8 (zero: SHARED with S_6/S_7 here), S_24 (BSS, shared with S_19), S_33 (font, own object) -- see mog.data_rest.json.",
+ "patches": [],
+ "extern_data": [
+  {"section": 5,  "object": "g_prgLdrCfg",    "type": "PrgLdrCfg"},
+  {"section": 6,  "object": "g_prgLdrState",  "type": "PrgLdrState"},
+  {"section": 7,  "object": "g_prgLdrSector", "type": "PrgLdrSector"},
+  {"section": 14, "object": "g_prgTrackdisk", "twin_of": "mog:19"},
+  {"section": 19, "object": "g_prgWork",      "type": "PrgWork"},
+  {"section": 28, "object": "g_prgFont",      "type": "PrgFont"}
+ ]
+}

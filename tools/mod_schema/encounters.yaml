@@ -1,0 +1,31 @@
+# Schema of PROGDIR:mods/encounters.ini (ROADMAP 9.5c).  Format: see shops.yaml and rules.yaml.
+file: encounters.ini
+title: Encounter rules
+struct: EncountersDef
+target: encounters
+layout: [ubDragonDay, ubAiEngageOdds]
+sections:
+  encounters:
+    doc: When the dragon comes and how readily the computer knights fight.
+    singleton: true
+    keys:
+      dragon_day:
+        member: ubDragonDay
+        type: int
+        size: 1
+        min: 0
+        max: 99
+        default: 2
+        source: "const: src/game/overworld.cpp dragonShouldSpawn (CMPI.W #2, before ROADMAP 9.5c)"
+        doc: The dragon starts to fly over the map on this day of the game (0 or 1 mean from the start).
+      ai_engage_odds:
+        member: ubAiEngageOdds
+        type: int
+        size: 1
+        min: 0
+        max: 127
+        default: 25
+        source: "const: src/game/overworld.cpp aiPickOpponent (CMP.W #$19, before ROADMAP 9.5c)"
+        doc: >-
+          A computer knight that could fight another knight draws a number 0..127 and picks the fight when the draw is at most
+          this (0 = almost never, 127 = always).

@@ -1,0 +1,92 @@
+# Schema of PROGDIR:mods/rules.ini (ROADMAP 9.4b, docs/ARCHITECTURE.md 3.2).  Input of tools/gen_moddata.py.
+#
+# file:      the data file name
+# struct:    C++ row struct (include/game/api/data.hpp), target: its member in GameData
+# layout:    the struct's members in declaration order (the generator checks them with static_asserts)
+# sections:  [kind] of the file; singleton sections edit one struct, here all three edit RulesDef
+#   keys:    key -> member, type (int|bool|enum|string|list), size (bytes; string: buffer), min/max (int, list element),
+#            values (enum: name -> number), default, source (where the default comes from: `const:` = an immediate already in
+#            git source, `decision:` = an owner decision in ROADMAP, `asm:`/`init:` = the original), doc, aliases
+file: rules.ini
+title: Rule switches
+struct: RulesDef
+target: rules
+layout: [uwGoldCap, ubDaggerCap, ubWaveScaling, ubCoopAliveBonus, ubCoopTotalFactor, ubCoopWritebackDivisor, ubCoopEnabled]
+sections:
+  waves:
+    doc: Monster waves of the lair fights.
+    singleton: true
+    keys:
+      scaling:
+        member: ubWaveScaling
+        type: enum
+        size: 1
+        values: {original: 0, none: 1, limited: 2}
+        default: original
+        source: "const: the original rule (replaces the MS_MOD_NO_SCALING build option, ROADMAP 9.1)"
+        doc: >-
+          How many monsters a lair fight has. `original`: the count grows with the knight's strength, maximum HP and attack
+          damage, and so does the number of monsters alive at once. `limited`: only the total count grows (also written back to the lair), not the number alive at once. `none`: nothing grows.
+  coop:
+    doc: Two knights playing together (co-op, ROADMAP M8). No effect in classic single knight play.
+    singleton: true
+    keys:
+      enabled:
+        member: ubCoopEnabled
+        type: bool
+        size: 1
+        default: false
+        source: "decision: ROADMAP 8.1 (no co-op mode exists yet; the switch keeps the co-op rules off)"
+        doc: >-
+          Apply the co-op wave rules below to the fights. Off in classic single knight play; the co-op mode (ROADMAP M8) sets it.
+      alive_bonus:
+        member: ubCoopAliveBonus
+        type: int
+        size: 1
+        min: 0
+        max: 4
+        default: 1
+        source: "decision: ROADMAP 8.1 (owner 2026-10-07)"
+        doc: Extra monsters alive at the same time in a fight with two knights.
+      total_factor:
+        member: ubCoopTotalFactor
+        type: int
+        size: 1
+        min: 1
+        max: 4
+        default: 2
+        source: "decision: ROADMAP 8.1 (owner 2026-10-07)"
+        doc: Multiplier of the fight's total monster count (including the lair's count) with two knights.
+      writeback_divisor:
+        member: ubCoopWritebackDivisor
+        type: int
+        size: 1
+        min: 1
+        max: 4
+        default: 2
+        source: "decision: ROADMAP 8.1 (owner 2026-10-07)"
+        doc: >-
+          The monsters left after a co-op fight are divided by this (rounded up) before they are written back to the lair, so the
+          lair population stays consistent with `total_factor`.
+  limits:
+    doc: Limits of a knight's purse and quiver.
+    singleton: true
+    keys:
+      gold_cap:
+        member: uwGoldCap
+        type: int
+        size: 2
+        min: 1
+        max: 32767
+        default: 150
+        source: "const: src/game/scene_town.cpp (CMPI.W #$96,74(A2), the knight's gold word; compared signed)"
+        doc: A knight's gold is cut to this value.
+      dagger_cap:
+        member: ubDaggerCap
+        type: int
+        size: 1
+        min: 0
+        max: 99
+        default: 10
+        source: "const: src/game/scene_town.cpp (CMPI.B #$0a,76(A0), the dagger count)"
+        doc: Daggers a knight can carry; the smith sells no more once the knight has this many.

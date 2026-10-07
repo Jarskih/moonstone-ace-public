@@ -1,0 +1,109 @@
+# Town A (node 4, id $19): Merchant (the smith), Tavern (dice), Healer, High Temple, Space = temple, Exit.
+# Cursor screens: the cursor moves 2 px per frame while a direction is held, a click needs fire held ~8 frames, and the exit of a
+# shop screen is the right pillar (cursor 308,140). Positions are lowres pixels (the window shows them doubled). Town A's cursor
+# starts at 290,100 every time the town menu is drawn.
+# shotcmp-tol play-townA-dice-bet 5
+# shotcmp-tol play-townA-dice-roll 5
+# shotcmp-tol play-townA-dice-result 5
+# shotcmp-tol play-townA-market 3
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke gold 200
+frame 1640 poke warp_node 4
+frame 1710 joy1 fire pulse 8
+wait input 10 gap 6 max 3000
+frame 60 shot play-townA-menu
+
+# Merchant (button 1): up 32 frames, click: the smith. Buy the broad sword (10 gp) and chainmail (30 gp), leave by the pillar.
+frame 70 joy1 up
+frame 102 joy1 none
+frame 132 shot play-townA-hover
+frame 142 joy1 fire pulse 8
+frame 392 shot play-townA-smith
+frame 402 poke cursorx 250
+frame 402 poke cursory 111
+frame 427 joy1 fire pulse 8
+frame 547 shot play-townA-smith-sword
+frame 557 poke cursorx 205
+frame 557 poke cursory 150
+frame 582 joy1 fire pulse 8
+frame 702 shot play-townA-smith-mail
+frame 712 poke cursorx 308
+frame 712 poke cursory 140
+frame 737 joy1 fire pulse 8
+frame 987 shot play-townA-menu2
+
+# Tavern (button 2): 12 frames up, click: dice. Bet 1 gold, continue after the result, leave by Exit.
+frame 997 joy1 up
+frame 1010 joy1 none
+frame 1040 joy1 fire pulse 8
+frame 1290 shot play-townA-dice
+frame 1300 poke cursorx 292
+frame 1300 poke cursory 56
+frame 1325 joy1 fire pulse 8
+frame 1575 shot play-townA-dice-bet
+frame 1775 shot play-townA-dice-roll
+frame 1975 shot play-townA-dice-result
+frame 1985 joy1 fire pulse 8
+frame 2185 shot play-townA-dice-bets
+frame 2195 poke cursorx 287
+frame 2195 poke cursory 189
+frame 2220 joy1 fire pulse 8
+frame 2470 shot play-townA-menu3
+
+# Healer (button 3): 5 frames down, click: the donation screen. Raise the donation 3 times, Ok, Exit.
+frame 2480 joy1 down
+frame 2485 joy1 none
+frame 2515 joy1 fire pulse 8
+frame 2765 shot play-townA-healer
+frame 2775 poke cursorx 168
+frame 2775 poke cursory 174
+frame 2800 joy1 fire pulse 8
+frame 2830 poke cursorx 168
+frame 2830 poke cursory 174
+frame 2855 joy1 fire pulse 8
+frame 2885 poke cursorx 168
+frame 2885 poke cursory 174
+frame 2910 joy1 fire pulse 8
+frame 2940 shot play-townA-healer-donation
+frame 2950 poke cursorx 140
+frame 2950 poke cursory 189
+frame 2975 joy1 fire pulse 8
+frame 3075 shot play-townA-healer-ok
+frame 3085 poke cursorx 190
+frame 3085 poke cursory 189
+frame 3110 joy1 fire pulse 8
+frame 3360 shot play-townA-menu4
+
+# High Temple (button 4, the market in town A): 26 frames down, click; leave by the pillar
+frame 3370 joy1 down
+frame 3396 joy1 none
+frame 3426 joy1 fire pulse 8
+frame 3726 shot play-townA-market
+frame 3736 poke cursorx 308
+frame 3736 poke cursory 140
+frame 3761 joy1 fire pulse 8
+frame 4011 shot play-townA-menu5
+
+# Space: the temple screen (status / stat purchase), leave by the pillar
+frame 4021 key SPACE tap
+frame 4371 shot play-townA-temple
+frame 4381 poke cursorx 236
+frame 4381 poke cursory 150
+frame 4406 joy1 fire pulse 8
+frame 4656 shot play-townA-menu6
+
+# Exit (button 5): 43 frames down, click: back on the map
+frame 4666 joy1 down
+frame 4709 joy1 none
+frame 4739 joy1 fire pulse 8
+frame 5139 shot play-townA-map
+frame 5239 quit

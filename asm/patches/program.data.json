@@ -1,0 +1,18 @@
+{
+ "binary": "program",
+ "_doc": "ROADMAP 7.1n1: hunks whose cells C++ owns ('extern_data', docs/PATCHES.md). tools/gen_data.py generates the typed objects into build/gen (never committed), tools/resource.py leaves them out of asm/program.s and XREFs their labels.",
+ "patches": [],
+ "extern_data": [
+  {"section": 2,  "object": "g_prgStrings", "type": "PrgStrings"},
+  {"section": 3,  "object": "g_prgGlobals", "type": "PrgGlobals"},
+  {"section": 9,  "object": "g_prgLoadBuf", "type": "PrgLoadBuf"},
+  {"section": 11, "object": "g_prgJobs",    "type": "PrgJobs"},
+  {"section": 16, "object": "g_ioFlags",    "type": "IoFlags"},
+  {"section": 17, "object": "g_ioKeys",     "type": "IoKeys"},
+  {"section": 22, "object": "g_ldConst",    "type": "LdConst"},
+  {"section": 24, "object": "g_blitState",  "type": "BlitState"},
+  {"section": 26, "object": "g_blitTab",    "type": "BlitTab"},
+  {"section": 32, "object": "g_palConst",   "type": "PalConst"},
+  {"section": 33, "object": "g_palState",   "type": "PalState"}
+ ]
+}

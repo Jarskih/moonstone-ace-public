@@ -1,0 +1,43 @@
+# Two players: Players = 2 (the menu's first item, right), Select Knight twice (knight 1 and knight 3, their names), the map; the
+# first knight walks (port 1) and ends its turn (E), then the second human's turn: both sticks push right, the dump says which one
+# moved the knight (the second knight reads port 0).
+# shotcmp-tol play-2p-menu 0.5
+# shotcmp-tol play-2p-map 1.0
+# shotcmp-tol play-2p-turn2 1.0
+# shotcmp-tol play-2p-walk2 1.0
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 60 shot play-2p-menu
+frame 160 joy1 right pulse
+frame 200 shot play-2p-players
+frame 210 joy1 down pulse
+frame 240 joy1 down pulse
+frame 270 joy1 down pulse
+frame 310 shot play-2p-select
+frame 320 joy1 fire pulse
+frame 770 shot play-2p-knight1
+frame 780 joy1 fire pulse
+frame 1070 shot play-2p-name1
+frame 1080 joy1 fire pulse
+frame 1470 shot play-2p-knight2
+frame 1480 joy1 right pulse
+frame 1520 shot play-2p-knight2-cursor
+frame 1530 joy1 fire pulse
+frame 1870 shot play-2p-name2
+frame 1880 joy1 fire pulse
+frame 2480 shot play-2p-map
+frame 2490 poke dump 1
+frame 2520 joy1 right
+frame 2560 joy1 none
+frame 2590 key E tap
+wait var turn 1 max 3000
+frame 100 shot play-2p-turn2
+frame 110 poke who 1
+frame 121 poke dump 1
+frame 151 joy0 right
+frame 191 joy1 right
+frame 231 joy0 none
+frame 232 joy1 none
+frame 272 shot play-2p-walk2
+frame 282 poke dump 1
+frame 382 quit

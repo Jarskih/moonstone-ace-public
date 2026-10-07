@@ -1,0 +1,30 @@
+# Math the wizard (node 8, id $1E): three text pages (each needs fire), the status screen, back on the map.
+# The gift is random (gold / a stat / an item / the frog curse): the cave and vanish pages vary, hence the loose tolerances.
+# shotcmp-tol play-wiz-cave 10
+# shotcmp-tol play-wiz-vanish 10
+# shotcmp-tol play-wiz-status 5
+# shotcmp-tol play-wiz-tower 3
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke warp_node 8
+frame 1710 joy1 fire pulse 8
+frame 2210 shot play-wiz-tower
+frame 2220 joy1 fire pulse 8
+frame 2520 shot play-wiz-cave
+frame 2530 joy1 fire pulse 8
+frame 2830 shot play-wiz-vanish
+frame 2840 joy1 fire pulse 8
+frame 3140 shot play-wiz-status
+frame 3150 poke cursorx 236
+frame 3150 poke cursory 150
+frame 3175 joy1 fire pulse 8
+frame 3575 shot play-wiz-map
+frame 3675 quit

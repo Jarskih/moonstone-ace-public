@@ -1,0 +1,208 @@
+# Schema of PROGDIR:mods/creatures.ini (ROADMAP 9.5e1, docs/ARCHITECTURE.md 3.2).  Format: see rules.yaml.
+# The numbers of the creatures (hit points, reach, the scripts and tables they use) are the original game's and are not in this
+# tree (the game code holds them as the built-in records `like` names), so every key defaults to -1 / `original` = "keep the
+# built-in value"; a mod writes only what it changes.  The names of the scripts and tables are the original's labels, the bytes
+# stay in the game's data.
+file: creatures.ini
+title: Creatures (monsters) of the arena fights
+enums:
+  script:
+    doc: >-
+      The standing scripts of the original creatures (the idle role of a creature; `alt` takes one too).
+    specials: {original: 0}
+    names:
+      balok_alt: mogBalokAltScript
+      balok_idle: mogBalokIdleScript
+      be_alt: mogBeAltScript
+      be_idle: mogBeIdleScript
+      demon_alt: mogDemonAltScript
+      demon_idle: mogDemonIdleScript
+      dragon_idle: mogDragonIdleScript
+      mudmen_idle: mogMudmenIdleScript
+      ratmen_idle: mogRatmenIdleScript
+      trogg_axe_b_idle: mogTroggAxeBIdleScript
+      trogg_axe_idle: mogTroggAxeIdleScript
+      trogg_spear_idle: mogTroggSpearIdleScript
+      troll_idle: mogTrollIdleScript
+  hurt_table:
+    doc: >-
+      The hurt-script tables of the original creatures (which script plays when it is hit by an action).
+    specials: {original: 0}
+    names:
+      be_hurt: mogBeHurtScripts
+      dragon_hurt: mogDragonHurtScripts
+      mudmen_hurt: mogMudmenHurtScripts
+      ratmen_hurt: mogRatmenHurtScripts
+      trogg_axe_b_hurt: mogTroggAxeBHurtScripts
+      trogg_axe_hurt: mogTroggAxeHurtScripts
+      trogg_spear_hurt: mogTroggSpearHurtScripts
+      troll_hurt: mogTrollHurtScripts
+  walk_table:
+    doc: >-
+      The walk-script tables of the original creatures.
+    specials: {original: 0}
+    names:
+      be_walk: mogBeWalkScripts
+      dragon_walk: mogDragonWalkScripts
+      mudmen_walk: mogMudmenWalkScripts
+      ratmen_walk: mogRatmenWalkScripts
+      trogg_axe_b_walk: mogTroggAxeBWalkScripts
+      trogg_axe_walk: mogTroggAxeWalkScripts
+      trogg_spear_walk: mogTroggSpearWalkScripts
+      troll_walk: mogTrollWalkScripts
+  action_table:
+    doc: >-
+      The action-script tables of the original creatures.
+    specials: {original: 0}
+    names:
+      trogg_axe_action: mogTroggAxeActionScripts
+      trogg_axe_b_action: mogTroggAxeBActionScripts
+  damage_table:
+    doc: >-
+      The damage tables of the original creatures (the damage a creature deals per action).
+    specials: {original: 0}
+    names:
+      balok_damage: mogBalokDamageTable
+      dragon_damage: mogDragonDamageTable
+      mudmen_damage: mogMudmenDamageTable
+      ratmen_damage: mogRatmenDamageTable
+      trogg_axe_b_damage: mogTroggAxeBDamageTable
+      trogg_axe_damage: mogTroggAxeDamageTable
+      troll_damage: mogTrollDamageTable
+sections:
+  creature:
+    doc: >-
+      The monsters of the arena fights.  The built-in rows are the original creatures; a new row (`base = <row>` first) is a
+      variation.  A row starts from the built-in record named by `like` (its own by default) and then applies the keys you
+      set, so a new creature needs only what differs.  Tables and scripts are shared by name: a creature that uses another's
+      walk table walks like it; new scripts and tables come with the script editor (ROADMAP 8.8).  A creature appears in a
+      lair through an arena row (arenas.ini, `creature`).
+    struct: CreatureDef
+    target: aCreatures
+    layout: [ubLike, ubAi, swHp, swHpMax, swReach, swTooClose, swDepth, uwIdle, uwAlt, uwHurtTable, uwWalkTable, uwActionTable, uwDamageTable, ubDamageCount, aDamage]
+    names: [be, mudmen, trogg_axe, trogg_axe_b, trogg_spear, ratmen, balok, troll, demon, dragon]
+    max: 16
+    keys:
+      like:
+        member: ubLike
+        type: enum
+        size: 1
+        values: {be: 0, mudmen: 1, trogg_axe: 2, trogg_axe_b: 3, trogg_spear: 4, ratmen: 5, balok: 6, troll: 7, demon: 8, dragon: 9}
+        default: {be: be, mudmen: mudmen, trogg_axe: trogg_axe, trogg_axe_b: trogg_axe_b, trogg_spear: trogg_spear, ratmen: ratmen, balok: balok, troll: troll, demon: demon, dragon: dragon}
+        source: "const: the row's own name"
+        doc: The built-in record this creature starts from (its tables, scripts and numbers); the keys below change it.
+      ai:
+        member: ubAi
+        type: enum
+        size: 1
+        values: {original: 255, flyer: 0, snatcher: 4, demon: 8, dragon: 20, brawler: 24, brawler_b: 28, spearman: 32, caster: 36, drake: 48, stalker: 64}
+        default: original
+        source: "decision: original = the original's own (ROADMAP 9.5e1); the names are tools/monsterkit/ai_catalog.json"
+        doc: The behaviour (AI) the creature fights with; the engine's fighter types by name.  `original` keeps the built-in one.
+      hp:
+        member: swHp
+        type: int
+        size: 2
+        min: -1
+        max: 999
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e1)"
+        doc: Hit points at the start of the fight (-1 = the original).  Also the maximum unless `hp_max` is set.
+      hp_max:
+        member: swHpMax
+        type: int
+        size: 2
+        min: -1
+        max: 999
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e1)"
+        doc: Maximum hit points (-1 = the same as `hp` when that is set, else the original).
+      reach:
+        member: swReach
+        type: int
+        size: 2
+        min: -1
+        max: 999
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e1)"
+        doc: How close it comes before it attacks (-1 = the original).
+      too_close:
+        member: swTooClose
+        type: int
+        size: 2
+        min: -1
+        max: 999
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e1)"
+        doc: The distance it backs off from (-1 = the original).
+      depth:
+        member: swDepth
+        type: int
+        size: 2
+        min: -1
+        max: 999
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e1)"
+        doc: How far apart in depth it can still hit (-1 = the original).
+      idle:
+        member: uwIdle
+        type: enum
+        size: 2
+        values: script
+        default: original
+        source: "decision: original = the original's own (ROADMAP 9.5e1)"
+        doc: The script it stands with (`original` keeps the built-in one).
+      alt:
+        member: uwAlt
+        type: enum
+        size: 2
+        values: script
+        default: original
+        source: "decision: original = the original's own (ROADMAP 9.5e1)"
+        doc: The second standing script (`original` = the built-in one, or the idle script when `idle` is set).
+      hurt_table:
+        member: uwHurtTable
+        type: enum
+        size: 2
+        values: hurt_table
+        default: original
+        source: "decision: original = the original's own (ROADMAP 9.5e1)"
+        doc: The table of scripts played when it is hit.
+      walk_table:
+        member: uwWalkTable
+        type: enum
+        size: 2
+        values: walk_table
+        default: original
+        source: "decision: original = the original's own (ROADMAP 9.5e1)"
+        doc: The table of walk scripts.
+      action_table:
+        member: uwActionTable
+        type: enum
+        size: 2
+        values: action_table
+        default: original
+        source: "decision: original = the original's own (ROADMAP 9.5e1)"
+        doc: The table of action scripts.
+      damage_table:
+        member: uwDamageTable
+        type: enum
+        size: 2
+        values: damage_table
+        default: original
+        source: "decision: original = the original's own (ROADMAP 9.5e1)"
+        doc: The table of the damage it deals; `damage` writes into it.
+      damage:
+        member: aDamage
+        type: list
+        size: 2
+        min: -1
+        max: 999
+        count_min: 0
+        count_max: 9
+        count_member: ubDamageCount
+        default: []
+        source: "decision: an empty list = the original table"
+        doc: >-
+          The damage per action slot 0..8 written into the creature's damage table when the game starts (-1 leaves a slot as it
+          is).  The table is the one named by `damage_table`, or the built-in one; creatures that share a table share the change.

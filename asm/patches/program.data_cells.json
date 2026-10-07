@@ -1,0 +1,12 @@
+{
+ "binary": "program",
+ "_doc": "ROADMAP 7.1r: data cells that lie inside program's CODE hunks and that C++ reads or writes. See mog.data_cells.json. link_names: the animation scripts' callback addresses (opcode $B4 selector 0) are C++ routines now (src/rt/engine_scenes.cpp); the one-RTS defaults of the audio-interrupt callback cells are rtNoop.",
+ "patches": [],
+ "extern_cells": [
+  {"label": "LAB_0002"}, {"label": "LAB_0003"}, {"label": "LAB_0005"}, {"label": "LAB_003E"}, {"label": "LAB_0045"}, {"label": "LAB_0060"},
+  {"label": "LAB_0261"}, {"label": "LAB_026D"}, {"label": "LAB_0382"}, {"label": "LAB_0434", "size": 2}, {"label": "LAB_05B0"},
+  {"label": "LAB_05B8"}, {"label": "LAB_05BC"}, {"label": "LAB_05BD"}
+ ],
+ "link_names": {"LAB_0360": "rtNoop", "LAB_04F5": "rtNoop", "LAB_0032": "rtScnRampSetup", "LAB_003F": "rtScnFlash",
+                "LAB_0040": "rtScnFlashSeries", "LAB_05AE": "rtScnPageFlag", "LAB_05AF": "rtScnPageCount"}
+}

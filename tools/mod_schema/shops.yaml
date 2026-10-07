@@ -1,0 +1,180 @@
+# Schema of PROGDIR:mods/shops.ini (ROADMAP 9.5b, docs/ARCHITECTURE.md 3.2).  Input of tools/gen_moddata.py; the header comment of
+# rules.yaml explains the keys.  Table sections (rows) use these extra keys:
+#
+# struct / target / layout   own to the section: the row struct, the GameData member (an array for a table) and the struct's
+#                            members in declaration order
+# rows                       the built-in row names, in the order of the array (a mod addresses a row by name)
+# max                        the pool size of the table (rows + new rows); equal to the number of rows = a fixed table
+# count_target               GameData member (uint8_t) that receives the number of rows in use after a load
+# default                    one value for every row, or a mapping row name -> value
+#
+# The default values here are the ones the C++ had before ROADMAP 9.5b (src/game/scene_town.cpp, src/rt/combat_ui.cpp,
+# src/game/scene_menu.cpp, src/rt/arena.cpp); tests/test_shops_data.py proves them equal to the original listing.
+file: shops.ini
+title: Shops, prices and odds
+sections:
+  market:
+    doc: The market (the merchant of the big town).  A sale pays the price shifted right by `sell_shift` bits (1 = half).
+    singleton: true
+    struct: MarketDef
+    target: market
+    layout: [auwPrice, ubSellShift, ubStockRolls, ubStockExtra]
+    keys:
+      prices:
+        member: auwPrice
+        type: list
+        size: 2
+        min: 1
+        max: 32767
+        count_min: 12
+        count_max: 12
+        default: [20, 32, 52, 40, 52, 36, 52, 52, 40, 24, 12, 20]
+        source: "const: src/rt/combat_ui.cpp (the price list written by LAB_0588, before ROADMAP 9.5b)"
+        doc: >-
+          Price of the item of each inventory slot, in the order of the slots (slot offset 0, 2, 4 ... 22: the potion first,
+          the moonstones last).  The merchant sells at this price and buys back at the price shifted by `sell_shift`.
+      sell_shift:
+        member: ubSellShift
+        type: int
+        size: 1
+        min: 0
+        max: 3
+        default: 1
+        source: "const: src/game/scene_town.cpp marketSell (LSR.W #1, before ROADMAP 9.5b)"
+        doc: A sale pays the price shifted right by this many bits (0 = full price, 1 = half, 2 = a quarter, 3 = an eighth).
+      stock_rolls:
+        member: ubStockRolls
+        type: int
+        size: 1
+        min: 0
+        max: 12
+        default: 6
+        source: "const: src/rt/arena.cpp resetGame (before ROADMAP 9.5b)"
+        doc: Random items the merchant is stocked with at the start of a new game.
+      stock_extra:
+        member: ubStockExtra
+        type: int
+        size: 1
+        min: 0
+        max: 20
+        default: 2
+        source: "const: src/rt/arena.cpp resetGame (before ROADMAP 9.5b)"
+        doc: Extra items of the merchant's inventory slot 8 on top of the random ones.
+  dice_row:
+    doc: >-
+      The winning throws of the dice house.  The three dice are sorted before they are compared, so `dice` lists them from the
+      lowest to the highest; the first row that matches pays `bet * multiplier`.  Dice show 0..5 (one to six pips).
+    struct: DiceRowDef
+    target: aDice
+    layout: [aDice, ubMultiplier]
+    names: [d001, d002, d004, d003, d005, d222, d444, d333, d555, d111, d000]
+    max: 16
+    keys:
+      dice:
+        member: aDice
+        type: list
+        size: 1
+        min: 0
+        max: 5
+        count_min: 3
+        count_max: 3
+        default:
+          d001: [0, 0, 1]
+          d002: [0, 0, 2]
+          d004: [0, 0, 4]
+          d003: [0, 0, 3]
+          d005: [0, 0, 5]
+          d222: [2, 2, 2]
+          d444: [4, 4, 4]
+          d333: [3, 3, 3]
+          d555: [5, 5, 5]
+          d111: [1, 1, 1]
+          d000: [0, 0, 0]
+        source: "const: src/game/scene_town.cpp kDiceRows (before ROADMAP 9.5b)"
+        doc: The three dice of the winning throw, sorted from the lowest to the highest.
+      multiplier:
+        member: ubMultiplier
+        type: int
+        size: 1
+        min: 1
+        max: 255
+        default: {d001: 4, d002: 5, d004: 6, d003: 8, d005: 10, d222: 12, d444: 14, d333: 16, d555: 18, d111: 20, d000: 30}
+        source: "const: src/game/scene_town.cpp kDiceRows (before ROADMAP 9.5b)"
+        doc: The winnings are the bet times this.
+  temple:
+    doc: The temple and the castles.
+    singleton: true
+    struct: TempleDef
+    target: temple
+    layout: [auwStatCost, ubCastleLifeCap]
+    keys:
+      stat_cost:
+        member: auwStatCost
+        type: list
+        size: 2
+        min: 1
+        max: 99
+        count_min: 4
+        count_max: 4
+        default: [3, 2, 1, 1]
+        source: "const: src/game/scene_menu.cpp kDamageDiv (before ROADMAP 9.5b)"
+        doc: Progress points a stat point costs at the temple (and in the knights' stat purchases), for 1, 2, 3 and 4 human players.
+      castle_life_cap:
+        member: ubCastleLifeCap
+        type: int
+        size: 1
+        min: 1
+        max: 6
+        default: 3
+        source: "const: src/game/scene_town.cpp castleBlessing (before ROADMAP 9.5b)"
+        doc: A castle gives a life to a knight with fewer lives than this.
+  healer:
+    doc: The healer takes a donation and spends it in steps.
+    singleton: true
+    struct: HealerDef
+    target: healer
+    layout: [uwHealPrice, uwLifePrice, ubLifeCap]
+    keys:
+      heal_price:
+        member: uwHealPrice
+        type: int
+        size: 2
+        min: 1
+        max: 999
+        default: 10
+        source: "const: src/game/scene_town.cpp healerApply (before ROADMAP 9.5b)"
+        doc: The smallest donation the healer takes, and the price of restoring a knight's hit points (and lifting a curse).
+      life_price:
+        member: uwLifePrice
+        type: int
+        size: 2
+        min: 1
+        max: 999
+        default: 15
+        source: "const: src/game/scene_town.cpp healerApply (before ROADMAP 9.5b)"
+        doc: The price of one life.
+      life_cap:
+        member: ubLifeCap
+        type: int
+        size: 1
+        min: 1
+        max: 6
+        default: 5
+        source: "const: src/game/scene_town.cpp healerApply (before ROADMAP 9.5b)"
+        doc: The healer sells no life to a knight who has this many.
+  smith:
+    doc: The armourer's other goods.  The most daggers a knight can carry is `dagger_cap` of rules.ini.
+    singleton: true
+    struct: SmithDef
+    target: smith
+    layout: [uwDaggerPrice]
+    keys:
+      dagger_price:
+        member: uwDaggerPrice
+        type: int
+        size: 2
+        min: 1
+        max: 32767
+        default: 2
+        source: "const: src/game/scene_town.cpp shopBuyDagger (before ROADMAP 9.5b)"
+        doc: Gold one dagger costs.

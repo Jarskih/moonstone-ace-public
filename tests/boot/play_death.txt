@@ -1,0 +1,46 @@
+# Defeat and game over: the knight has one life left and stands idle in a lair fight (the ratmen kill it): the "you lost" status
+# screen (scene 9) with the life gone, then the map; the black knights are parked (frog days) so the turn comes back to the dead
+# knight at once: no human knight alive = game over (farewell text, fire, back to the title menu).
+# shotcmp-tol play-death-arena 15
+# shotcmp-tol play-death-fight 15
+# shotcmp-tol play-death-lost 3
+# shotcmp-tol play-death-map 3
+# shotcmp-tol play-death-gameover1 3
+# shotcmp-tol play-death-gameover2 3
+# shotcmp-tol play-death-gameover3 3
+# shotcmp-tol play-death-title 3
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke lives 1
+frame 1631 poke who 1
+frame 1633 poke frog 100
+frame 1636 poke who 2
+frame 1640 poke frog 100
+frame 1645 poke who 3
+frame 1651 poke frog 100
+frame 1658 poke who 0
+frame 1666 poke warp_lair 0
+frame 1696 joy1 fire pulse 8
+frame 2496 shot play-death-arena
+frame 2896 shot play-death-fight
+wait var scene 9 max 20000
+frame 200 shot play-death-lost
+frame 210 poke cursorx 236
+frame 210 poke cursory 150
+frame 235 joy1 fire pulse 8
+frame 535 shot play-death-map
+frame 835 shot play-death-gameover1
+frame 1135 shot play-death-gameover2
+frame 1145 joy1 fire pulse 8
+frame 1445 shot play-death-gameover3
+frame 1455 joy1 fire pulse 8
+frame 2055 shot play-death-title
+frame 2155 quit

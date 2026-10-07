@@ -1,0 +1,35 @@
+# ROADMAP 9.7: boot proof of mods_examples/tough_dragon (py tools/modsboot.py tough_dragon): the dragon fight set-up logs `dragon fight hp ..`.
+# Same flight set-up as perf_dragon.txt (ROADMAP 8.4a): the dragon fight. The dragon (knight record 4) spawns on the map when the map scene is entered on day 2 or later
+# and flies at the knight it picked (random among the knights with lives): the other three are taken out of the draw first (lives 0),
+# `poke day 2` sets the day, the status screen (Space, then its exit pillar) re-enters the map and spawns the dragon. The knight waits at
+# home until the dragon touches it (the map loop then starts the fight, `wait file Dragon1.cel`); the autopilot plays, hp kept up.
+# The dragon's job has type $28, so perf's "fighters" column counts the knight only: read the dragon rows as knight + dragon + its parts.
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+frame 1630 poke strength 9
+frame 1633 poke constitution 30
+frame 1636 poke endurance 9
+frame 1640 poke hpmax 310
+frame 1645 poke hp 310
+frame 1650 poke who 1
+frame 1651 poke lives 0
+frame 1652 poke who 2
+frame 1653 poke lives 0
+frame 1654 poke who 3
+frame 1655 poke lives 0
+frame 1656 poke who 0
+frame 1700 poke day 2
+frame 1710 key SPACE tap
+frame 2010 poke cursorx 236
+frame 2010 poke cursory 150
+frame 2035 joy1 fire pulse 8
+wait file Dragon1.cel max 30000
+wait log dragon_fight_hp max 3000
+frame 60 log mods_dragon_fight
+frame 120 quit

@@ -1,0 +1,44 @@
+# .gitignore of the public repository (written by tools/export_public.py from tools/public.gitignore; ROADMAP 10.4).
+# Nothing original is ever tracked: disks, extracted data, the IRA listing and what is derived from it stay local.
+
+# builds, logs, screenshots, emulator state
+build*/
+*.log
+*.uss
+*.profraw
+shots/
+
+# local editor / Python state
+.vs/
+.vscode/
+__pycache__/
+
+# a developer's own mod experiments (the shipped defaults are generated into build*/ ; docs/MODDING.md)
+/mods/
+
+# the original game: disk images and extracted files (build/disks, build/adf are inside build/ already)
+*.adf
+*.adz
+*.dms
+/disks/
+
+# developer-only material (tools/dev_setup.py fills it from the private archive; never published)
+/private/
+# ... and what dev_setup.py materialises from private/ into the tree so the reference tools find it at the old places
+/reference/
+/src/lifted/
+/asm/*.s
+/asm/*.hw.txt
+/asm/patches/*.json
+!/asm/patches/*.data.json
+!/asm/patches/*.data_*.json
+/tests/test_lift.py
+/tests/test_diffharness.py
+/tests/diff/*/*.json
+
+# local links to the third-party toolchain (tools/dev_setup.py); ace/ is a git submodule, not ignored
+/tools/toolchain/
+/tools/AmigaCMakeCrossToolchains/
+/tools/bartman_gcc_support/
+/moonstone-ace.zip
+/wt/

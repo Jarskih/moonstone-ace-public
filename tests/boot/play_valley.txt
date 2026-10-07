@@ -1,0 +1,43 @@
+# The Valley of the Gods (node 6, id $1C). First without the four keys: the text only. Then with all keys and a strong knight:
+# the guardian fight (the autopilot `mash` plays it), the victory (the keys are taken: `wait var keys 0`), the win text.
+# The fight itself is random (the guardian's moves), so its shots have loose tolerances.
+# shotcmp-tol play-valley-fight1 15
+# shotcmp-tol play-valley-fight2 25
+# shotcmp-tol play-valley-won 100
+# shotcmp-tol play-valley-won2 100
+# shotcmp-tol play-valley-gods 100
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke warp_node 6
+frame 1710 joy1 fire pulse 8
+frame 1960 shot play-valley-nokeys
+frame 1970 joy1 fire pulse 8
+frame 2270 shot play-valley-nokeys-map
+
+# all four keys, a strong knight, enter again (the turn is still the knight's)
+frame 2280 poke keys 15
+frame 2291 poke strength 9
+frame 2303 poke constitution 30
+frame 2316 poke endurance 9
+frame 2330 poke hpmax 310
+frame 2345 poke hp 310
+frame 2375 joy1 fire pulse 8
+frame 3075 shot play-valley-fight1
+frame 3085 mash joy1 10
+frame 3585 shot play-valley-fight2
+wait var keys 0 max 20000
+frame 0 mash joy1 off
+frame 1 joy1 none
+frame 201 shot play-valley-won
+frame 211 joy1 fire pulse 8
+frame 511 shot play-valley-won2
+frame 911 shot play-valley-gods
+frame 1011 quit

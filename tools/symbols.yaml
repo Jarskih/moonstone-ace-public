@@ -1,0 +1,1302 @@
+# tools/symbols.yaml -- HUMAN-owned names for the routine table (ROADMAP 0.6).
+# Generated facts (bounds, callers, registers, ...) live in build/inventory/routines.json,
+# written by tools/routines.py, which validates this file and merges it in.
+# binary -> label -> {name (snake_case), note, status (asm|lifted|idiomatic, default asm), source}.
+# A name needs a `source` naming the evidence; leave a label unnamed rather than guess.
+# Source paths are relative to D:\Amiga (DT = DOC_TECHNIQUE.md, DMI = DOC_MOTEUR_IMAGEXCEL.md,
+# DMC = DOC_MODE_COMBAT.md, OF = ORIGINAL_FOUNDATION.md); the number is the line in that file.
+
+program:
+  LAB_0190:
+    name: rnc_unpack
+    note: "RNC ProPack type 1 decompressor (music.cmp, vmusic.cmp)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:36,965"
+  LAB_049C:
+    name: lzss_decode
+    note: "LZSS decoder (2 KB window, len 2..34) for .cel/.PIV/.f"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:37,966"
+  LAB_0448:
+    name: bitplane_rle_decode
+    note: "2-bit-opcode bitplane RLE for .stile backgrounds"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:38,967"
+  LAB_0434:
+    name: packbits_decode
+    note: "PackBits (IFF ILBM variant, unused by observed game files)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:39,980"
+  LAB_0496:
+    name: cel_load
+    note: "CEL/OB loader: reads the file, LZSS-decodes the body"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:414"
+  LAB_038F:
+    name: file_cache_init
+    note: "file cache reset, called from the S_0 startup"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:317"
+  LAB_0390:
+    name: file_open
+    note: "open the file named in A0, handle returned in D0"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:318"
+  LAB_03A1:
+    name: file_release
+    note: "free/close the file"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:319"
+  LAB_03B2:
+    name: file_read
+    note: "read D0 bytes from the file in A0 into a buffer"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:320"
+  LAB_0174:
+    name: asset_file_load
+    note: "load a named file into a memory area (opens and reads via the cache)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:283-291"
+  LAB_054F:
+    name: wait_ticks
+    note: "waits D0 raster lines/ticks: loops D0 times calling LAB_0552 (polls VHPOSR); DOC_TECHNIQUE describes a LAB_0364 countdown, but the listing differs"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:263"
+  LAB_005B:
+    name: music_stop
+    note: "stop music, clear AUD0..3 volumes"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:546"
+  LAB_005C:
+    name: music_vbl_hook
+    note: "VBL music hook: tempo countdown, calls the channel step"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:543"
+  LAB_0065:
+    name: music_step_channels
+    note: "per-channel effects step of the player"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:544"
+  LAB_006D:
+    name: music_fetch_note
+    note: "fetch a new note every LAB_0096 VBLs"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:545"
+  LAB_0061:
+    name: music_reset
+    note: "reset audio engine, compute sample pointers, load tempo"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:542"
+  LAB_0326:
+    name: int1_handler
+    note: "INT1 TBE/serial/softint acknowledge"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:630"
+  LAB_032A:
+    name: int2_keyboard_handler
+    note: "INT2 CIA-A keyboard scancode decode into the key-state table"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:631,637"
+  LAB_0331:
+    name: int3_vbl_handler
+    note: "INT3 copper/VBL/blit: frame tick, runs the VBL hook list; swaps stack on first VBL"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:632,253"
+  LAB_0337:
+    name: int4_audio_handler
+    note: "INT4 audio (not documented in detail)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:633"
+  LAB_033C:
+    name: int5_dsksync_handler
+    note: "INT5 DSKSYNC acknowledge"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:634"
+  LAB_033F:
+    name: int6_ciab_handler
+    note: "INT6 CIA-B timers"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:635"
+  LAB_02EE:
+    name: disk_init_calibrate
+    note: "init the drive, calibrate step (find track 0); probable entry point"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:613-615"
+  LAB_02FC:
+    name: mfm_decode
+    note: "MFM decode of a track buffer"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:603"
+  LAB_02FF:
+    name: disk_wait_ready
+    note: "wait for /DSKRDY (CIAA PA5)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:618"
+  LAB_0309:
+    name: drive_step_in
+    note: "step the head one track in"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:620"
+  LAB_030C:
+    name: drive_step_out
+    note: "step the head one track out"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:620"
+  LAB_0315:
+    name: drive_motor_off
+    note: "motor off / deselect"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:622"
+  LAB_0316:
+    name: drive_motor_on
+    note: "motor on"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:621"
+  LAB_0007:
+    name: scene_loop_forever
+    note: "scene loop: timestamp, spawn queued, tick, wait; returns when LAB_0120 becomes non-zero"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1057-1072"
+  LAB_000B:
+    name: scene_loop_n_frames
+    note: "as scene_loop_forever but exits after a fixed frame count (cutscenes)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1074-1076"
+  LAB_0038:
+    name: overworld_frame_loop
+    note: "40-frame overworld tick: timestamp, spawn, update, flip, blit, wait"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1078-1091,1211"
+  LAB_000F:
+    name: scene_background_switch
+    note: "switches the backdrop on LAB_011E scene type"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1096-1108"
+  LAB_0242:
+    name: sprite_blit
+    note: "blits the sprite list compiled by LAB_01EC via LAB_04E1"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1094"
+  LAB_01EC:
+    name: entities_tick
+    note: "ticks the active entities (scripts + blit list)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1062"
+  LAB_01E8:
+    name: entities_spawn_queued
+    note: "spawns new entities from the queue"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1063"
+  LAB_01E4:
+    name: entity_pool_clear
+    note: "clears the 40x42-byte entity pool"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1342"
+  LAB_01F1:
+    name: script_interpreter
+    note: "entity animation script interpreter"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1114;moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:120"
+  LAB_0262:
+    name: double_buffer_flip
+    note: "flip the double buffer"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1087"
+  LAB_0017:
+    name: frame_timestamp_save
+    note: "save the frame timestamp at loop start"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1061"
+  LAB_0018:
+    name: frame_wait
+    note: "wait(LAB_00D0 minus frames elapsed)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1068"
+  LAB_0015:
+    name: spawn_player1_entities
+    note: "spawns the player-1 map entities"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1367-1377"
+  LAB_0016:
+    name: spawn_player2_entities
+    note: "spawns the player-2 map entities"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1367"
+  LAB_01D5:
+    name: actor_create
+    note: "create a new actor (find free slot)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:230"
+  LAB_01D7:
+    name: actor_replace_anim
+    note: "replace the animation of an existing actor"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:231"
+  LAB_01DE:
+    name: actor_find_by_id
+    note: "find an actor by id"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:233"
+  LAB_0185:
+    name: intro_run
+    note: "intro / cinematic loader; loads the intro assets"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:149;moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:62"
+  LAB_0037:
+    name: scene_overworld
+    note: "interactive overworld map scene (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1210,1339"
+  LAB_001A:
+    name: combat_init_p1
+    note: "combat init, player 1 (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1212,1401"
+  LAB_001B:
+    name: combat_init_p2
+    note: "combat init, player 2, 5 bitplanes (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1213,1409"
+  LAB_001C:
+    name: combat_2p
+    note: "two-player combat main loop (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1214,1414"
+  LAB_002C:
+    name: shop_p1
+    note: "shop scene, player 1 (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1215"
+  LAB_002D:
+    name: tavern_p2
+    note: "tavern/event scene, player 2 (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1216"
+  LAB_002E:
+    name: shop_p2
+    note: "shop scene, player 2 (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1217"
+  LAB_002F:
+    name: event_encounter
+    note: "event scene: two animations plus timer (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1218"
+  LAB_0036:
+    name: ai_turn_encounter
+    note: "AI turn scene on the overworld (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1219"
+  LAB_0039:
+    name: shop_both
+    note: "double shop for both players (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1220"
+  LAB_003B:
+    name: game_over
+    note: "game-over screen: palette, credits, back to menu (inferred name in DOC)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1221"
+  LAB_04A7:
+    name: viewport_set_clip
+    note: "set clip rectangle: D0=left byte, D1=top"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:380"
+  LAB_04B4:
+    name: draw_cel
+    note: "main cel draw entry: D0=frame D1=x D2=y A0=cel"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:383,1023"
+  LAB_04B0:
+    name: bitreverse_table_build
+    note: "builds the 256-entry bit-reverse table at LAB_04B3"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:390"
+  LAB_04CC:
+    name: blit_copy_a_to_d
+    note: "blitter kernel: straight A to D copy (BLTCON0=$09F0)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:392,399"
+  LAB_04D7:
+    name: blitter_wait
+    note: "blitter wait (BTST #6,DMACONR)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:394,1026"
+  LAB_04E1:
+    name: copy_rect
+    note: "copy_rect(A0=src,A1=dst,D0=w,D1=h)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1024"
+  LAB_058B:
+    name: palette_fade_interpolate
+    note: "interpolates R/G/B of each fade slot independently"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:503"
+  LAB_0258:
+    name: palette_blackout
+    note: "black-out palette"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1107"
+  LAB_0215:
+    name: script_op_set_direction
+    note: "op $80: toggles the direction flag (bit 1 of entity+22)"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:166"
+  LAB_021A:
+    name: script_op_set_speed
+    note: "op $88: SET_SPEED animation speed"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:168"
+  LAB_021F:
+    name: script_op_set_loop_count
+    note: "op $94: SET_LOOP_COUNT"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:170"
+  LAB_0222:
+    name: script_op_move_delta
+    note: "op $A0: MOVE_DELTA base_x/base_y/vel_y"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:173"
+  LAB_022F:
+    name: script_op_call
+    note: "op $B4: CALL an external routine"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:178"
+  LAB_0236:
+    name: script_op_set_asset_table
+    note: "op $C8: SET_ASSET_TABLE"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:182"
+  LAB_0237:
+    name: script_op_jump_if_zero
+    note: "op $D0: jump if variable is zero"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:184"
+  LAB_023B:
+    name: script_op_jump_if_nonzero
+    note: "op $D4: jump if variable is non-zero"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:185"
+  SECSTRT_31:
+    status: lifted
+  SECSTRT_10:
+    status: lifted
+  LAB_05CD:
+    status: lifted
+  LAB_05CC:
+    status: lifted
+  LAB_05C8:
+    status: lifted
+  LAB_05AE:
+    status: lifted
+  LAB_057A:
+    status: lifted
+  LAB_0576:
+    status: lifted
+  LAB_0566:
+    status: lifted
+  LAB_055E:
+    status: lifted
+  LAB_053E:
+    status: lifted
+  LAB_04F5:
+    status: lifted
+  LAB_04E4:
+    status: lifted
+  LAB_04E3:
+    status: lifted
+  LAB_04CF:
+    status: lifted
+  LAB_04A6:
+    status: lifted
+  LAB_0360:
+    status: lifted
+  LAB_035E:
+    status: lifted
+  LAB_0359:
+    status: lifted
+  LAB_02D7:
+    status: lifted
+  LAB_02D5:
+    status: lifted
+  LAB_02D4:
+    status: lifted
+  LAB_02D3:
+    status: lifted
+  LAB_025D:
+    status: lifted
+  LAB_025B:
+    status: lifted
+  LAB_025A:
+    status: lifted
+  LAB_024F:
+    status: lifted
+  LAB_0241:
+    status: lifted
+  LAB_023F:
+    status: lifted
+  LAB_0235:
+    status: lifted
+  LAB_0234:
+    status: lifted
+  LAB_0233:
+    status: lifted
+  LAB_0232:
+    status: lifted
+  LAB_022D:
+    status: lifted
+  LAB_022C:
+    status: lifted
+  LAB_0221:
+    status: lifted
+  LAB_0220:
+    status: lifted
+  LAB_021E:
+    status: lifted
+  LAB_0218:
+    status: lifted
+  LAB_020E:
+    status: lifted
+  LAB_01B9:
+    status: lifted
+  LAB_01B7:
+    status: lifted
+  LAB_01A1:
+    status: lifted
+  LAB_0196:
+    status: lifted
+  LAB_0077:
+    status: lifted
+  LAB_0014:
+    status: lifted
+  SECSTRT_25:
+    status: lifted
+  SECSTRT_23:
+    status: lifted
+  LAB_0567:
+    status: lifted
+  LAB_046F:
+    status: lifted
+  LAB_02DB:
+    status: lifted
+  LAB_02A0:
+    status: lifted
+  LAB_0297:
+    status: lifted
+  LAB_022E:
+    status: lifted
+  LAB_01A3:
+    status: lifted
+  LAB_0044:
+    status: lifted
+nb:
+  LAB_000F:
+    name: rte_stub
+    note: "RTE stub copied into the unused interrupt slots on system takeover"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:738"
+  LAB_0034:
+    name: int1_handler
+    note: "INT1 TBE/DSKBLK/SOFTINT: acknowledge, clears LAB_006E"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:748"
+  LAB_0038:
+    name: int2_handler
+    note: "INT2 CIA-A: reads ICR, keyboard to LAB_004D, arms CIA-B timer"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:749"
+  LAB_003C:
+    name: int3_vbl_handler
+    note: "INT3 VBL: first-VBL stack swap, clears LAB_0071, mouse poll, frame callbacks"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:750"
+  LAB_0042:
+    name: int4_audio_handler
+    note: "INT4 audio: dispatch through vtable LAB_0078..007B"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:751"
+  LAB_0047:
+    name: int5_handler
+    note: "INT5 DSKSYNC/RBF acknowledge, clears LAB_0070"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:752"
+  LAB_004A:
+    name: int6_handler
+    note: "INT6 CIA-B: reads ICR, clears LAB_006F"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:753"
+  LAB_004D:
+    name: keyboard_decode
+    note: "keyboard driver: key code to index, updates the key-state table"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:758-766"
+  LAB_0069:
+    name: keyboard_state_clear
+    note: "clears the 128-byte key-state table LAB_0077"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:769"
+  LAB_0058:
+    name: mouse_poll
+    note: "mouse driver called every VBL: deltas, clamp, left button"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:779-790"
+  LAB_00D2:
+    name: disk_read_track
+    note: "DMA read of a track (with LAB_00D5/00D8 entries)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:817-824"
+  LAB_00DA:
+    name: count_valid_sectors
+    note: "counts the 11 valid sectors found in the buffer"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:824"
+  LAB_00E0:
+    name: mfm_decode
+    note: "MFM decode: LAB_00E0(A0,A1,D0) decodes D0/2 words"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:826-834"
+  LAB_00E3:
+    name: disk_wait_ready
+    note: "waits for /DSKRDY (CIAA PRA bit 5)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:843"
+  LAB_00E7:
+    name: track_seek
+    note: "track seek (with LAB_00ED/00F0 step routines)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:836"
+  LAB_00ED:
+    name: drive_step_out
+    note: "one step out (CIAB PRB bit 1 strobe, bit 0 direction)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:840"
+  LAB_00F0:
+    name: drive_step_in
+    note: "one step in"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:841"
+  LAB_00F3:
+    name: cia_step_delay
+    note: "waits on CIA-A timer (about 3 ms between steps)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:842"
+  LAB_0087:
+    name: sector_read
+    note: "logical-sector read: face = sector/11, track, finds the sector in the DMA buffer"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:847-849"
+  LAB_00A2:
+    name: sector_write
+    note: "logical-sector write (counterpart of LAB_0087)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:847"
+  LAB_00AE:
+    name: disk_format
+    note: "formats a track: 12 sector entries with $4489 sync, blitter MFM encode"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:851-855"
+mog:
+  LAB_01C6:
+    name: knight_init_defaults
+    note: "identical default knight records (sword88=22, armour92=27), lines 4555-4574"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:11,241;moonshard/mechanics.c:4"
+  LAB_0013:
+    name: knight_recalc
+    note: "max HP from CON*10 + inventory[6]*20 + armour bonuses; downward clamp only"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:12,233;moonshard/mechanics.c:19"
+  LAB_0DBA:
+    name: scheduler_advance
+    note: "modulo-four turn advancement, frog/lives skips share the cursor"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:14;moonshard/mechanics.c:64"
+  LAB_0029:
+    name: knight_daily
+    note: "daily upkeep every wrap, lunar update every fourth wrap"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:15;moonshard/mechanics.c:30"
+  LAB_01AE:
+    name: scheduler_reset
+    note: "initial frame 45, sub/coarse counters zero"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:16"
+  LAB_0DCB:
+    name: dragon_can_activate
+    note: "coarse clock >= 2, rejects negative dragon lives"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:18,83"
+  LAB_00B0:
+    name: knight_village
+    note: "replenish one life below three"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:20"
+  LAB_005C:
+    name: progression_increment
+    note: "+1 progression before loot"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:82;moonshard/mechanics.c:163"
+  LAB_0086:
+    name: dragon_defeated
+    note: "sets dragon life byte ff and gives +2"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:83"
+  LAB_01B4:
+    name: encounter_seed_keys
+    note: "one rng&7 draw (retry >5) reused in four regions, masks 8/4/2/1"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:84;moonshard/mechanics.c:90"
+  LAB_01DD:
+    name: combat_decode_action
+    note: "original action byte offsets 0/4/../32, facing-aware masks"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:136;moonshard/mechanics.c:199"
+  LAB_021B:
+    name: knight_contact_damage
+    note: "contact damage: base + strength + sword, doubled by heavy/moon"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:137"
+  LAB_01E6:
+    name: combat_defense
+    note: "required-defence table match, facing rules"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:138;moonshard/mechanics.c:234"
+  LAB_0204:
+    name: combat_protection
+    note: "word damage shifted by inventory[8] count (low six bits of the shift)"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:139;moonshard/mechanics.c:248"
+  LAB_02CA:
+    name: dagger_release_consume
+    note: "consumes one dagger at explicit release; creates type34/action12"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:140,247;moonshard/mechanics.c:253"
+  LAB_032E:
+    name: script_interpret_step
+    note: "combat script interpreter, one call = one step (interpreter LAB_032E..LAB_034D)"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:291;moonshard/combat_script.h:10;moonshard/combat_executor.cpp:171"
+  LAB_0334:
+    name: script_op_draw
+    note: "DRAW placement (b0 bit7 clear): slot, frame, dy, flags, dx"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:301;moonshard/combat_script.h:170"
+  LAB_0358:
+    name: script_op_facing_set
+    note: "op 0x80: facing set, toggle when b1==0xFF"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:302;moonshard/combat_script.h:56"
+  LAB_035B:
+    name: script_op_call_jump
+    note: "op 0x84: b1==3 assigns PC, else stores return address"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:303;moonshard/combat_script.h:57"
+  LAB_035D:
+    name: script_op_loop_count
+    note: "op 0x88: loop count (0 = random 1..31)"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:304;moonshard/combat_script.h:59"
+  LAB_0361:
+    name: script_op_param_block
+    note: "op 0x8C: parameter block b1..b7, 0xFD return point"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:305;moonshard/combat_script.h:61"
+  LAB_0362:
+    name: script_op_step_repeat
+    note: "op 0x94: step repeat count, 0xFE step point"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:306;moonshard/combat_script.h:62"
+  LAB_0363:
+    name: script_op_cond_call
+    note: "op 0x98: conditional call"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:307;moonshard/combat_script.h:63"
+  LAB_0367:
+    name: script_op_sound_request
+    note: "op 0xA4: sound request via LAB_0AA2"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:310;moonshard/combat_script.h:71"
+  LAB_0368:
+    name: script_op_delta_move
+    note: "op 0xA0: facing-aware delta move"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:309;moonshard/combat_script.h:70"
+  LAB_0372:
+    name: script_op_store_spawn_ptr
+    note: "op 0xAC: stores the pointer operand at owner+20"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:312;moonshard/combat_script.h:74"
+  LAB_0374:
+    name: script_op_memory_poke
+    note: "op 0xA8: memory poke (mode b1, word offset b2-3, value b4-7)"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:311;moonshard/combat_script.h:72"
+  LAB_038B:
+    name: script_op_indirect_call
+    note: "op 0xB0: indirect call through a function pointer operand"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:313;moonshard/combat_script.h:77"
+  LAB_038C:
+    name: script_op_cond_jump_lookup
+    note: "op 0xC4: conditional jump on object lookup + facing match"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:318;moonshard/combat_script.h:84"
+  LAB_038E:
+    name: script_op_cond_jump_owner_le0
+    note: "op 0xB4: jump if owner field <= 0"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:314;moonshard/combat_script.h:79"
+  LAB_0390:
+    name: script_op_spawn
+    note: "op 0xB8: spawn a fighter with the operand as script PC"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:315;moonshard/combat_script.h:80"
+  LAB_0391:
+    name: script_op_clear_owner
+    note: "op 0xBC: clear owner long + script word"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:316;moonshard/combat_script.h:82"
+  LAB_0392:
+    name: script_op_select_asset_table
+    note: "op 0xC0: select asset table (index b1-1 into LAB_0647)"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:317;moonshard/combat_script.h:83"
+  LAB_0393:
+    name: script_op_jump_if_zero
+    note: "op 0xC8: jump if owner memory word is zero"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:319;moonshard/combat_script.h:85"
+  LAB_0397:
+    name: script_op_jump_if_nonzero
+    note: "op 0xCC: jump if owner memory word is non-zero"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:319;moonshard/combat_script.h:86"
+  LAB_039B:
+    name: script_op_clear_scratch
+    note: "op 0xD0: clear scratch record preserving 18(A5)/20(A5)"
+    status: lifted
+    source: "moonshard/ORIGINAL_FOUNDATION.md:320;moonshard/combat_script.h:87"
+  LAB_031D:
+    name: frame_snapshot
+    note: "snapshots the VBlank counter for the frame pacer"
+    status: lifted
+    source: "moonshard/combat_pacer.hpp:5"
+  LAB_031F:
+    name: frame_wait
+    note: "waits max(0, LAB_05BA - elapsed) VBlanks"
+    status: asm
+    source: "moonshard/combat_pacer.hpp:5-6"
+  LAB_03BE:
+    name: combat_pair_contact_check
+    note: "per fighter-pair caller of the contact test, depth gate at 8183-8190"
+    status: asm
+    source: "moonshard/planar_contact.h:10;moonshard/planar_contact.c:143"
+  LAB_03CA:
+    name: contact_interval_overlap
+    note: "coarse closed-interval overlap gate (D0-D3 bounds, D5 += 1 on overlap)"
+    status: lifted
+    source: "moonshard/planar_contact.c:3;moonshard/planar_contact.h:37"
+  LAB_03CE:
+    name: collide_hit_load
+    note: "collide.hit loader building the in-memory contact layout"
+    status: asm
+    source: "moonshard/planar_contact.h:14;moonshard/ORIGINAL_FOUNDATION.md:341"
+  LAB_03DB:
+    name: planar_contact_test
+    note: "per-pair planar contact test, lines 8354-8508"
+    status: asm
+    source: "moonshard/planar_contact.h:9"
+  LAB_0CBB:
+    name: ob_cel_load
+    note: ".ob/.cel loader (same format as program LAB_0496)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:419;moonshard/build-scratch/combatgen/combat_banks_gen.c:4421"
+  LAB_0CC2:
+    name: lzss_decode
+    note: "LZSS decoder, same algorithm as program LAB_049C"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:420;moonshard/build-scratch/combatgen/combat_banks_gen.h:4"
+  LAB_0BB5:
+    name: piv_load
+    note: "loads a .PIV picture file into a buffer"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:146"
+  LAB_0AA2:
+    name: sound_request
+    note: "sound request entry used by script op 0xA4"
+    status: asm
+    source: "moonshard/ORIGINAL_FOUNDATION.md:310"
+  LAB_0AA7:
+    name: soundtracker_start
+    note: "starts the combat SoundTracker module"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:155"
+  LAB_04CF:
+    name: combat_state_enter
+    note: "entry of the combat state machine: stores the state in LAB_068F, fade, init"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:60-73"
+  LAB_04D4:
+    name: combat_init_fighters
+    note: "combat set-up: pool clear, backgrounds, fighter pointers, tile table, then main loop"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:78-93"
+  LAB_04D0:
+    name: combat_main_loop
+    note: "main combat loop: collision/action, end evaluation, draw, frame timer"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:98-114"
+  LAB_044E:
+    name: combat_pool_clear
+    note: "clears the entity pool and the 24-byte LAB_0A58 scroll/tile structure"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:81"
+  LAB_04EA:
+    name: combat_background_prepare
+    note: "prepares the double-buffered background"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:83"
+  LAB_058A:
+    name: combat_fighter_pointers_init
+    note: "sets LAB_068B..068E to player/opponent data and stats"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:85-89"
+  LAB_03A7:
+    name: draw_buffer_clear
+    note: "clears the draw buffer LAB_064D (0x2cf bytes)"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:90"
+  LAB_052A:
+    name: combat_end_evaluate
+    note: "evaluates the end of combat"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:108"
+  LAB_0416:
+    name: sprites_display
+    note: "displays the sprites"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:112"
+  LAB_039E:
+    name: frame_timer_sync
+    note: "frame timer, VBL synchronisation"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:113"
+  LAB_03F0:
+    name: palette_fade_to_black
+    note: "palette fade to black"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:70,116"
+  LAB_0575:
+    name: joystick_read_enable
+    note: "enables joystick reading for the player"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:71"
+  LAB_057B:
+    name: joystick_read_disable
+    note: "disables joystick reading"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:117"
+  LAB_0588:
+    name: animation_tables_init
+    note: "initialises all animation tables"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:72"
+  LAB_012C:
+    name: combat_assets_load
+    note: "loads message.piv, ch.piv and bold.f, then starts the combat music"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:140-155"
+  LAB_01A3:
+    name: creature_init_dispatch
+    note: "initialises the creature through the LAB_08C8 handler table"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:40"
+  LAB_0167:
+    name: fighter_script_pointers_init
+    note: "fills the animation script pointers of the fighter structure"
+    status: lifted
+    source: "moonshard/moonstone-main/docs/DOC_MOTEUR_IMAGEXCEL.md:272-274"
+  LAB_006B:
+    name: map_scan_nodes
+    note: "per-frame scan of the static node table LAB_069F"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1283"
+  LAB_0067:
+    name: node_proximity_test
+    note: "tests the knight proximity to a map node"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1283"
+  LAB_0077:
+    name: map_scan_creatures
+    note: "scans the 24-entry creature table LAB_05C6 and buffers live creatures in range"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_TECHNIQUE.md:1284"
+  LAB_04D7:
+    name: combat_pvp_state
+    note: "state 1 (PvP knight vs knight) routine"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:54"
+  LAB_04D6:
+    name: combat_pve_state
+    note: "state 2 (PvE creature) routine"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:55"
+  LAB_058F:
+    name: combat_mystic_state
+    note: "state 3 (Mythral wizard) routine"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:56"
+  LAB_0522:
+    name: shop_state
+    note: "state 5 (town weapon/armour shop) routine"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:57"
+  LAB_0590:
+    name: gods_valley_state
+    note: "state 10 (Valley of the Gods boss) routine"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:58"
+  LAB_004F:
+    name: pvp_duel_entry
+    note: "overworld handler for a knight vs knight duel (types 0x01/0x21)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:25,29"
+  LAB_005B:
+    name: pve_creature_entry
+    note: "overworld handler for a creature fight (type 0x02)"
+    status: asm
+    source: "moonshard/moonstone-main/docs/DOC_MODE_COMBAT.md:26,34"
+  SECSTRT_37:
+    status: lifted
+  LAB_0FC0:
+    status: lifted
+  LAB_0FBE:
+    status: lifted
+  LAB_0F7F:
+    status: lifted
+  LAB_0F6F:
+    status: lifted
+  LAB_0F32:
+    status: lifted
+  LAB_0F2E:
+    status: lifted
+  LAB_0F24:
+    status: lifted
+  LAB_0F1F:
+    status: lifted
+  LAB_0F1E:
+    status: lifted
+  LAB_0EF6:
+    status: lifted
+  LAB_0EEC:
+    status: lifted
+  LAB_0EA3:
+    status: lifted
+  LAB_0EA2:
+    status: lifted
+  LAB_0EA1:
+    status: lifted
+  LAB_0E6A:
+    status: lifted
+  LAB_0E5A:
+    status: lifted
+  LAB_0E56:
+    status: lifted
+  LAB_0E55:
+    status: lifted
+  LAB_0E53:
+    status: lifted
+  LAB_0E51:
+    status: lifted
+  LAB_0E37:
+    status: lifted
+  LAB_0E35:
+    status: lifted
+  LAB_0E2B:
+    status: lifted
+  LAB_0E22:
+    status: lifted
+  LAB_0E1C:
+    status: lifted
+  LAB_0E0C:
+    status: lifted
+  LAB_0E07:
+    status: lifted
+  LAB_0E06:
+    status: lifted
+  LAB_0E05:
+    status: lifted
+  LAB_0E04:
+    status: lifted
+  LAB_0E02:
+    status: lifted
+  LAB_0DFF:
+    status: lifted
+  LAB_0DFC:
+    status: lifted
+  LAB_0DF8:
+    status: lifted
+  LAB_0DED:
+    status: lifted
+  LAB_0DEA:
+    status: lifted
+  LAB_0DDF:
+    status: lifted
+  LAB_0D8C:
+    status: lifted
+  LAB_0D8B:
+    status: lifted
+  LAB_0D83:
+    status: lifted
+  LAB_0D63:
+    status: lifted
+  LAB_0D1A:
+    status: lifted
+  LAB_0D09:
+    status: lifted
+  LAB_0D08:
+    status: lifted
+  LAB_0CF5:
+    status: lifted
+  LAB_0CCD:
+    status: lifted
+  LAB_0CCC:
+    status: lifted
+  LAB_0BB3:
+    status: lifted
+  LAB_0B84:
+    status: lifted
+  LAB_0B82:
+    status: lifted
+  LAB_0B7D:
+    status: lifted
+  LAB_0B1F:
+    status: lifted
+  LAB_0AF9:
+    status: lifted
+  LAB_0AF7:
+    status: lifted
+  LAB_0AF6:
+    status: lifted
+  LAB_0AF5:
+    status: lifted
+  LAB_0A6C:
+    status: lifted
+  LAB_0A6B:
+    status: lifted
+  LAB_0A6A:
+    status: lifted
+  LAB_0A66:
+    status: lifted
+  LAB_0528:
+    status: lifted
+  LAB_04E1:
+    status: lifted
+  LAB_04C5:
+    status: lifted
+  LAB_04BC:
+    status: lifted
+  LAB_04A3:
+    status: lifted
+  LAB_04A1:
+    status: lifted
+  LAB_0471:
+    status: lifted
+  LAB_0469:
+    status: lifted
+  LAB_0465:
+    status: lifted
+  LAB_044B:
+    status: lifted
+  LAB_0447:
+    status: lifted
+  LAB_043B:
+    status: lifted
+  LAB_0403:
+    status: lifted
+  LAB_03EE:
+    status: lifted
+  LAB_03D9:
+    status: lifted
+  LAB_03D8:
+    status: lifted
+  LAB_03C7:
+    status: lifted
+  LAB_03B8:
+    status: lifted
+  LAB_039C:
+    status: lifted
+  LAB_0386:
+    status: lifted
+  LAB_0382:
+    status: lifted
+  LAB_0380:
+    status: lifted
+  LAB_0366:
+    status: lifted
+  LAB_0351:
+    status: lifted
+  LAB_031B:
+    status: lifted
+  LAB_0319:
+    status: lifted
+  LAB_0315:
+    status: lifted
+  LAB_030D:
+    status: lifted
+  LAB_02F2:
+    status: lifted
+  LAB_02DB:
+    status: lifted
+  LAB_02CE:
+    status: lifted
+  LAB_02C8:
+    status: lifted
+  LAB_02C6:
+    status: lifted
+  LAB_02C4:
+    status: lifted
+  LAB_02C2:
+    status: lifted
+  LAB_02BF:
+    status: lifted
+  LAB_02BC:
+    status: lifted
+  LAB_02BB:
+    status: lifted
+  LAB_02BA:
+    status: lifted
+  LAB_0298:
+    status: lifted
+  LAB_0215:
+    status: lifted
+  LAB_0211:
+    status: lifted
+  LAB_0210:
+    status: lifted
+  LAB_020F:
+    status: lifted
+  LAB_01DB:
+    status: lifted
+  LAB_01D9:
+    status: lifted
+  LAB_01A7:
+    status: lifted
+  LAB_01A6:
+    status: lifted
+  LAB_01A5:
+    status: lifted
+  LAB_019F:
+    status: lifted
+  LAB_019D:
+    status: lifted
+  LAB_0195:
+    status: lifted
+  LAB_018F:
+    status: lifted
+  LAB_018B:
+    status: lifted
+  LAB_0176:
+    status: lifted
+  LAB_0171:
+    status: lifted
+  LAB_0170:
+    status: lifted
+  LAB_0169:
+    status: lifted
+  LAB_0166:
+    status: lifted
+  LAB_0161:
+    status: lifted
+  LAB_015F:
+    status: lifted
+  LAB_0155:
+    status: lifted
+  LAB_0107:
+    status: lifted
+  LAB_00F3:
+    status: lifted
+  LAB_00DD:
+    status: lifted
+  LAB_00D1:
+    status: lifted
+  LAB_0066:
+    status: lifted
+  LAB_005F:
+    status: lifted
+  LAB_0048:
+    status: lifted
+  LAB_0042:
+    status: lifted
+  LAB_003E:
+    status: lifted
+  LAB_0019:
+    status: lifted
+  LAB_000E:
+    status: lifted
+  LAB_000D:
+    status: lifted
+  LAB_000A:
+    status: lifted
+  LAB_0004:
+    status: lifted
+  SECSTRT_30:
+    status: lifted
+  SECSTRT_28:
+    status: lifted
+  LAB_0FC2:
+    status: lifted
+  LAB_0EDA:
+    status: lifted
+  LAB_0E85:
+    status: lifted
+  LAB_0E77:
+    status: lifted
+  LAB_0E76:
+    status: lifted
+  LAB_0E4E:
+    status: lifted
+  LAB_0E03:
+    status: lifted
+  LAB_0DFE:
+    status: lifted
+  LAB_0DD8:
+    status: lifted
+  LAB_0D8D:
+    status: lifted
+  LAB_0CD6:
+    status: lifted
+  LAB_0C94:
+    status: lifted
+  LAB_0AFD:
+    status: lifted
+  LAB_0527:
+    status: lifted
+  LAB_04C4:
+    status: lifted
+  LAB_04B7:
+    status: lifted
+  LAB_046C:
+    status: lifted
+  LAB_045E:
+    status: lifted
+  LAB_0442:
+    status: lifted
+  LAB_0409:
+    status: lifted
+  LAB_02FD:
+    status: lifted
+  LAB_02D2:
+    status: lifted
+  LAB_01FD:
+    status: lifted
+  LAB_01B7:
+    status: lifted
+  LAB_0156:
+    status: lifted
+  LAB_0152:
+    status: lifted
+  LAB_004B:
+    status: lifted
+  LAB_0030:
+    status: lifted

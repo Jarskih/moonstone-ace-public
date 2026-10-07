@@ -1,0 +1,45 @@
+# The ending: Stonehenge with all four moonstones (the one of the current phase is enough): "You have completed the quest", the
+# ceremony, the cinematic (the knight with the orb, the stone circle, the dancers, the vortex, the stars, the epilogue) and the
+# title menu again. Only the page after "You have completed the quest" waits for fire; the rest runs on the game's timers.
+# The animations run on the game's own timers: only the title and the first pages are compared tightly.
+# shotcmp-tol play-end-quest 1.0
+# shotcmp-tol play-end-ceremony 1.0
+# shotcmp-tol play-end-orb 15
+# shotcmp-tol play-end-circle 15
+# shotcmp-tol play-end-dancers 20
+# shotcmp-tol play-end-dancers2 20
+# shotcmp-tol play-end-statue 15
+# shotcmp-tol play-end-vortex 100
+# shotcmp-tol play-end-stars 50
+# shotcmp-tol play-end-hill 100
+# shotcmp-tol play-end-epilogue 100
+# shotcmp-tol play-end-fade 100
+# shotcmp-tol play-end-title 3
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke moonstones 15
+frame 1631 poke warp_node 7
+frame 1711 joy1 fire pulse 8
+frame 2211 shot play-end-quest
+frame 2221 joy1 fire pulse 8
+frame 2721 shot play-end-ceremony
+frame 3221 shot play-end-orb
+frame 3721 shot play-end-circle
+frame 4221 shot play-end-dancers
+frame 4721 shot play-end-dancers2
+frame 5221 shot play-end-statue
+frame 5721 shot play-end-vortex
+frame 6221 shot play-end-stars
+frame 6721 shot play-end-hill
+frame 7221 shot play-end-epilogue
+frame 7721 shot play-end-fade
+frame 8521 shot play-end-title
+frame 8621 quit

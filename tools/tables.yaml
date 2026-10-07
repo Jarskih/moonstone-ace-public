@@ -1,0 +1,248 @@
+# tools/tables.yaml -- curated list of asm DATA tables for tools/gen_tables.py (ROADMAP 5.2).
+# HUMAN-owned.  Each table: where it lives, the row layout and who reads it.
+#
+#   name       snake_case C++ name (unique)
+#   binary     mog | program (amiga_asm/<binary>.asm)
+#   label      asm label of the first byte
+#   struct     key into `structs:` (row layout), or
+#   element    scalar u8|i8|u16|i16|u32|i32 (flat array)
+#   count      number of rows/elements (validated against the asm bytes)
+#   row_bytes  bytes per row in the asm (validated against the struct, so the layout cannot drift)
+#   reader     routine that reads it, `ref:` the asm line of the evidence
+#   notes      free text, becomes the comment above the table
+#
+# Field types: u8 i8 u16 i16 u32 i32 (big endian in the asm), `u8[N]` `u16[N]` arrays,
+# `cstr[N]` (inline NUL-padded text, N bytes incl. NUL), and the two symbolic pointer kinds:
+#   cstr_ptr   DC.L LAB -> the NUL-terminated string at LAB, emitted as a string literal
+#   ref        DC.L LAB -> {table id, row index} of the curated table row LAB points at
+#              ({none,-1} for 0); every target must lie in a curated table on a row boundary.
+# No absolute address ever reaches the output; an unresolvable pointer is an error.
+#
+# Authority is the asm; moonshard/*.c are only cross-checks (noted where used).
+
+structs:
+  MapSite:                 # mog LAB_0069: per-frame scan, (id, x, y) then compared with the knight's position
+    fields: [[id, u16], [x, u16], [y, u16]]
+  CreatureTypeDef:
+    fields: [[type, u16], [defence, u16]]
+  Point16:
+    fields: [[x, u16], [y, u16]]
+  EncounterBand:
+    fields: [[limit, u16], [kind, u16]]
+  TradePriceRow:           # key = 4-byte pattern compared with LAB_0F5F; +4 is the gp multiplier
+    fields: [[key, 'u8[4]'], [gp_per_unit, u8], [flag, u8]]
+  TextItem:                # UI text list node: DC.L text, DC.W x, DC.W y, DC.W style, DC.L next
+    fields: [[text, cstr_ptr], [x, u16], [y, u16], [style, u16], [next, ref]]
+  KnightName:
+    fields: [[name, 'cstr[22]']]
+
+tables:
+  - name: map_sites
+    binary: mog
+    label: LAB_069F
+    struct: MapSite
+    count: 10
+    row_bytes: 6
+    reader: LAB_0069
+    ref: "mog.asm:1041"
+    notes: "nine static overworld sites (id $15-$1E, x, y) then an $FFFF terminator row; ids 15-18 are the four villages, 19 Highwood, 1A Waterdeep, 1B Stonehenge, 1C Valley of the Gods, 1E Math the Wizard (moonshard/map.c:123 agrees)."
+
+  - name: creature_type_def
+    binary: mog
+    label: LAB_07BD
+    struct: CreatureTypeDef
+    count: 24
+    row_bytes: 4
+    reader: LAB_01AE
+    ref: "mog.asm:4438 (loop LAB_01B6, MOVE.L (A1)+,4(A0))"
+    notes: "overworld creature node 0..23: record +4 type word, +6 defence word (moonshard/map.c:89)."
+
+  - name: creature_node_pos
+    binary: mog
+    label: LAB_07BE
+    struct: Point16
+    count: 24
+    row_bytes: 4
+    reader: LAB_01AE
+    ref: "mog.asm:4439 (record +10 x, +12 y)"
+    notes: "overworld creature node 0..23 position (unscaled map coordinates)."
+
+  - name: creature_node_aux
+    binary: mog
+    label: LAB_07BF
+    element: u16
+    count: 24
+    row_bytes: 2
+    reader: LAB_01AE
+    ref: "mog.asm:4440 (record +14)"
+    notes: "overworld creature node 0..23 word stored at record +14 (4, 12 or 8 by region; the last six are DS.L zeros)."
+
+  - name: creature_node_script
+    binary: mog
+    label: LAB_07C0
+    struct_inline: [[name, cstr_ptr]]
+    count: 24
+    row_bytes: 4
+    reader: LAB_01AE
+    ref: "mog.asm:4441 (record +16 pointer)"
+    notes: "overworld creature node 0..23 -> combat script file name (fol/wal/swl/gll groups of six); pointers resolved to the strings."
+
+  - name: combat_action_offset_right
+    binary: mog
+    label: LAB_07D9
+    element: u16
+    count: 11
+    row_bytes: 2
+    reader: LAB_01DC
+    ref: "mog.asm:4740 (index (record+62 & $FFEF)*2, facing right)"
+    notes: "direction mask 0..10 -> action script offset, facing right (moonshard/mechanics.c:201 agrees)."
+
+  - name: combat_action_offset_left
+    binary: mog
+    label: LAB_07DA
+    element: u16
+    count: 11
+    row_bytes: 2
+    reader: LAB_01DC
+    ref: "mog.asm:4744 (facing left, record +10 == 3)"
+    notes: "same index, facing left. Only the first 11 words are the table; the 12th word of the asm run belongs to the next object."
+
+  - name: encounter_bands
+    binary: mog
+    label: LAB_08C5
+    struct: EncounterBand
+    count: 4
+    row_bytes: 4
+    reader: LAB_01B7
+    ref: "mog.asm:4723 ff. (CMP.W (A0)+,D0 ; TST.W (A0)+)"
+    notes: "random 0..99 draw -> encounter kind: draw <= limit selects kind 1..4 ($32/$46/$5A/$64 = 50/70/90/100)."
+
+  - name: contact_mask_popcount
+    binary: mog
+    label: LAB_0A55
+    element: u16
+    count: 16
+    row_bytes: 2
+    reader: LAB_03DB
+    ref: "mog.asm:8484 (index byte*2)"
+    notes: "popcount of the 4-bit mask 0..15 (moonshard/planar_contact.c:18 agrees)."
+
+  - name: trade_price_rows
+    binary: mog
+    label: LAB_0F63
+    struct: TradePriceRow
+    count: 11
+    row_bytes: 6
+    reader: LAB_04B4
+    ref: "mog.asm:10296-10312,10320-10328 (CMP.L (A1),(A0) per row; match -> LAB_04B8: LAB_0F62 * 4(A1) added to 74(A0), text ' gp.')"
+    notes: "11 rows keyed by the 4-byte pattern at LAB_0F5F; gp_per_unit (+4) times the quantity LAB_0F62 is added to the knight's gold-like word (record +74). The last row has an all-zero key and 30 (0x1e). The asm loop runs 12 times (MOVEQ #11,D7 / DBF), so the 12th compare reads the two pad bytes after the table and the next object; the table itself is 11 rows."
+
+  - name: main_menu_item_y
+    binary: mog
+    label: LAB_06DD
+    element: u16
+    count: 4
+    row_bytes: 2
+    reader: LAB_00B4
+    ref: "mog.asm:1781 (word index LAB_06DC*2 -> LAB_05D9, passed as y)"
+    notes: "y of the four main-menu items; inferred from the call, matches the y values of the LAB_06AE item list."
+
+  - name: knight_names
+    binary: mog
+    label: LAB_06B5
+    struct: KnightName
+    count: 4
+    row_bytes: 22
+    reader: LAB_01BE
+    ref: "mog.asm:4509,4517 (record +108 name pointer; LAB_00E5 at 2049 picks the first two)"
+    notes: "default knight names, 21 characters (space padded) + NUL."
+
+  - name: menu_main
+    binary: mog
+    label: LAB_06AE
+    struct: TextItem
+    count: 6
+    row_bytes: 14
+    reader: LAB_00B4
+    ref: "mog.asm:1806"
+    notes: "main menu text list (Players, Gore, Practice, Select Knight, then the '1' and On/Off value texts); x,y,style then `next` link."
+
+  - name: menu_disk_prompt
+    binary: mog
+    label: SECSTRT_3
+    struct: TextItem
+    count: 7
+    row_bytes: 14
+    reader: LAB_010F
+    ref: "mog.asm:2331,2345 (LAB_0110 starts at row 1, LAB_06A1)"
+    notes: "'Please insert Disk A/B/C' / 'in Drive A/B' / 'Press fire when done' prompt lists; row 0 is the unlabeled first row of S_3."
+
+  - name: menu_scroll_protection
+    binary: mog
+    label: LAB_06C3
+    struct: TextItem
+    count: 5
+    row_bytes: 14
+    reader: LAB_0058
+    ref: "mog.asm:894"
+    notes: "scroll-of-protection message."
+
+  - name: menu_danu_offer
+    binary: mog
+    label: LAB_06CD
+    struct: TextItem
+    count: 4
+    row_bytes: 14
+    reader: ~
+    ref: "mog.asm:13128; last next -> menu_scroll_protection row 4"
+    notes: "Danu life-extension message."
+
+  - name: menu_quest_done
+    binary: mog
+    label: LAB_06D1
+    struct: TextItem
+    count: 2
+    row_bytes: 14
+    reader: ~
+    ref: "mog.asm:13148"
+    notes: "quest completed message."
+
+  - name: menu_guardian_proven
+    binary: mog
+    label: LAB_06E1
+    struct: TextItem
+    count: 5
+    row_bytes: 14
+    reader: ~
+    ref: "mog.asm:13195"
+    notes: "Guardian message (moonstone granted); LAB_06E5 is the 'Press fire' tail shared by other lists."
+
+  - name: menu_valley_keys
+    binary: mog
+    label: LAB_06E8
+    struct: TextItem
+    count: 3
+    row_bytes: 14
+    reader: ~
+    ref: "mog.asm:13228; last next -> menu_guardian_proven row 4"
+    notes: "The valley needs-all-four-keys message."
+
+  - name: keymap_mog
+    binary: mog
+    label: LAB_0B90
+    element: u8
+    count: 128
+    row_bytes: 1
+    reader: LAB_0B4E
+    ref: "mog.asm:20443 (keyboard IRQ, scancode -> index)"
+    notes: "keyboard scancode translation, 128 bytes (24 zero bytes then 104 data bytes); the overlay copy of program's LAB_036C (docs/IRQ.md)."
+
+  - name: keymap_program
+    binary: program
+    label: LAB_036C
+    element: u8
+    count: 128
+    row_bytes: 1
+    reader: LAB_032A
+    ref: "program.asm:6267"
+    notes: "same table in program; both are read by ms::keyDecode (src/engine/input.cpp, ROADMAP 7.1d), the INT2 handlers LAB_032A / LAB_0B4E being C++ now."

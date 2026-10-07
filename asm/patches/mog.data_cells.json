@@ -1,0 +1,17 @@
+{
+ "binary": "mog",
+ "_doc": "ROADMAP 7.1r: data cells that lie inside mog's CODE hunks and that C++ reads or writes (flag words, texts, small tables). tools/gen_data.py makes each one an own C++ object (g_cell_mog_<label>, initialised from the original binary, extent = up to the next label of the hunk) and aliases the original label to it; nothing is assembled any more, so the dead code around them is gone. Not part of the overlay-entry reset (they never were). link_names: a pointer cell in an owned hunk that held a code label the asm defined now holds the C++ routine that took its place. asm_labels: labels only the MS_SYNTH_ASM A/B hunk (asm/synth.s) defines: a pointer cell naming one is nullptr unless the generator runs with --asm-labels.",
+ "patches": [],
+ "extern_cells": [
+  {"label": "LAB_0122"}, {"label": "LAB_013B"}, {"label": "LAB_0186"}, {"label": "LAB_0193"}, {"label": "LAB_0194"},
+  {"label": "LAB_01A1"}, {"label": "LAB_01A2"}, {"label": "LAB_01AD"}, {"label": "LAB_0234"}, {"label": "LAB_02DA"},
+  {"label": "LAB_02EC"}, {"label": "LAB_0301"}, {"label": "LAB_0302"}, {"label": "LAB_0411"}, {"label": "LAB_0414"},
+  {"label": "LAB_0425"}, {"label": "LAB_0525"}, {"label": "LAB_0526"}, {"label": "LAB_053B"}, {"label": "LAB_053C"},
+  {"label": "LAB_056C"}, {"label": "LAB_056D"}, {"label": "LAB_056E"}, {"label": "LAB_056F"}, {"label": "LAB_0570"},
+  {"label": "LAB_0B35"}, {"label": "LAB_0BA6"}, {"label": "LAB_0C59", "size": 2}, {"label": "LAB_0DDA"}, {"label": "LAB_0DDC"},
+  {"label": "LAB_0DDE"}, {"label": "LAB_0E21"}, {"label": "LAB_0E8D"}, {"label": "LAB_0E8E"}, {"label": "LAB_0EB6"},
+  {"label": "LAB_0EC1"}, {"label": "LAB_0EEA"}, {"label": "LAB_0FC4"}
+ ],
+ "link_names": {"LAB_0B84": "rtNoop", "LAB_0D1A": "rtNoop"},
+ "asm_labels": ["LAB_0FCD", "LAB_0FCF", "LAB_0FD3"]
+}

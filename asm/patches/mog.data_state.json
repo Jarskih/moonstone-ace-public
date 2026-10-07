@@ -1,0 +1,42 @@
+{
+ "binary": "mog",
+ "_doc": "ROADMAP 7.1n3: mog S_1 (game state BSS, 8780 bytes) as ms::owned::GameState and the small mog DATA/BSS hunks S_2/10/11/13/14/17/19/41/42. 'typed' turns label runs into ONE zero-initialised member of a C type (names follow include/game/state_bind.hpp; the .set aliases keep every mog_LAB_xxxx name, so state_bind.hpp is unchanged); runs without a spec stay one member per label (LAB_xxxx). The CHIP hunks S_15/S_43 are 7.1n4, S_4 is 7.1n2 (mog.data_tables.json).",
+ "patches": [],
+ "extern_data": [
+  {"section": 1, "object": "g_mogState", "type": "GameState", "includes": ["game/state.hpp"],
+   "typed": [
+    {"label": "LAB_05B9", "name": "heapTable",      "ptr": "void", "count": 25},
+    {"label": "LAB_05C3", "name": "creatures",      "ptr": "ms::game::Knight"},
+    {"label": "LAB_05C5", "name": "humanPlayers",   "type": "ms::game::WordSlot"},
+    {"label": "LAB_05DB", "name": "humanPlayersSaved", "type": "u16"},
+    {"label": "LAB_05DC", "name": "defeatBits",     "type": "ms::game::ByteSlot"},
+    {"label": "LAB_05DF", "name": "locationMode",   "type": "ms::game::ByteSlot"},
+    {"label": "LAB_05E4", "name": "active",         "type": "ms::game::ActiveKnights"},
+    {"label": "LAB_05F2", "name": "firstFighter",   "ptr": "ms::game::Knight"},
+    {"label": "LAB_0613", "through": "LAB_0617", "name": "knights", "type": "ms::game::Knight", "count": 5},
+    {"label": "LAB_0618", "through": "LAB_0619", "name": "inventories", "type": "ms::game::Inventory", "count": 5},
+    {"label": "LAB_0633", "name": "curKnight",      "ptr": "ms::game::Knight"},
+    {"label": "LAB_0649", "name": "jobs",           "type": "ms::game::Job", "count": 10},
+    {"label": "LAB_0654", "name": "turnCursor",     "type": "u16"},
+    {"label": "LAB_0655", "name": "moveSpent",      "type": "u16"},
+    {"label": "LAB_0659", "name": "budgetQuarter",  "type": "u16"},
+    {"label": "LAB_065A", "name": "budgetThreeQuarters", "type": "u16"},
+    {"label": "LAB_0663", "name": "roundDone",      "type": "u16"},
+    {"label": "LAB_0665", "name": "turnBudget",     "type": "ms::game::WordSlot"},
+    {"label": "LAB_068B", "name": "uiKnight",       "ptr": "ms::game::Knight"},
+    {"label": "LAB_068C", "name": "uiInventory",    "ptr": "ms::game::Inventory"},
+    {"label": "LAB_068D", "name": "uiKnight2",      "ptr": "ms::game::Knight"},
+    {"label": "LAB_068E", "name": "uiInventory2",   "ptr": "ms::game::Inventory", "count": 2},
+    {"label": "LAB_068F", "name": "sceneId",        "type": "u32"}
+   ]},
+  {"section": 2,  "object": "g_mogS2Data",  "type": "MogS2Data"},
+  {"section": 10, "object": "g_mogS10Data", "type": "MogS10Data"},
+  {"section": 11, "object": "g_mogS11Bss",  "type": "MogS11Bss"},
+  {"section": 13, "object": "g_mogS13Data", "type": "MogS13Data"},
+  {"section": 14, "object": "g_mogS14Bss",  "type": "MogS14Bss"},
+  {"section": 17, "object": "g_mogS17Data", "type": "MogS17Data"},
+  {"section": 19, "object": "g_mogS19Data", "type": "MogS19Data"},
+  {"section": 41, "object": "g_mogS41Data", "type": "MogS41Data"},
+  {"section": 42, "object": "g_mogS42Data", "type": "MogS42Data"}
+ ]
+}

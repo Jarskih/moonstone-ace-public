@@ -1,0 +1,22 @@
+# ROADMAP 9.7: mods_examples/cave_troll (creature + arena + lair row): a strong knight enters lair 7 (index 6), which now holds cave trolls:
+# the arena logs `creature row 10 like 7 hp 60` for each troll and the wave line `waves: ...`. Run with: py tools/modsboot.py cave_troll
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+frame 1630 poke warp_lair 6
+frame 1631 poke strength 9
+frame 1633 poke constitution 30
+frame 1636 poke endurance 9
+frame 1640 poke hpmax 310
+frame 1645 poke hp 310
+
+sync
+frame 40 joy1 fire pulse 8
+wait log creature_row_10 max 3000
+frame 60 log mods_troll_arena
+frame 120 quit

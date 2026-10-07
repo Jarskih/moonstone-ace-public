@@ -1,0 +1,44 @@
+# Lair 6: the creature arena LAB_0196 (one creature at a time, kList0199), covered by no other play script (play_lair = lair 0, the ratmen LAB_018C). Same flow as play_lair.mk.
+# A lair fight (lair 0: the ratmen) with a strong knight; the autopilot `mash` plays the fight (random enemy moves: loose
+# tolerances), `wait var scene 2` waits for the creature loot screen, the gold is taken (a click on the pile) and the screen left.
+# Keep the poked stats small: the stat sheet registers one click region per stat point and the screen loop has a pool of 100 regions
+# (24 bytes each, 0x960): with strength 40 / constitution 60 / endurance 40 the loot icons were never registered and clicking them did nothing.
+# shotcmp-tol play-lair6-arena 15
+# shotcmp-tol play-lair6-fight 15
+# shotcmp-tol play-lair6-loot 3
+# shotcmp-tol play-lair6-loot-gold 3
+# shotcmp-tol play-lair6-map 3
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke warp_lair 6
+frame 1631 poke strength 9
+frame 1633 poke constitution 30
+frame 1636 poke endurance 9
+frame 1640 poke hpmax 310
+frame 1645 poke hp 310
+frame 1675 shot play-lair6-map-at-lair
+frame 1685 joy1 fire pulse 8
+frame 2485 shot play-lair6-arena
+frame 2495 mash joy1 10
+frame 3195 shot play-lair6-fight
+wait var scene 2 max 25000
+frame 0 mash joy1 off
+frame 1 joy1 none
+frame 151 shot play-lair6-loot
+frame 161 poke cursorx 248
+frame 161 poke cursory 76
+frame 186 joy1 fire pulse 12
+frame 286 shot play-lair6-loot-gold
+frame 296 poke cursorx 308
+frame 296 poke cursory 140
+frame 321 joy1 fire pulse 8
+frame 721 shot play-lair6-map
+frame 821 quit

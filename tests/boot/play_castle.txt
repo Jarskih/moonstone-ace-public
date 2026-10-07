@@ -1,0 +1,20 @@
+# The home village of the knight (node 0, id $15): a castle visit gives a life, then the status screen (left by the right pillar)
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke lives 1
+frame 1640 poke warp_node 0
+frame 1710 joy1 fire pulse 8
+frame 2010 shot play-castle-status
+frame 2020 poke cursorx 236
+frame 2020 poke cursory 150
+frame 2045 joy1 fire pulse 8
+frame 2445 shot play-castle-map
+frame 2545 quit

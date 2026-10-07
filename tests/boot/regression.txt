@@ -1,0 +1,60 @@
+# Boot regression 1 (docs/AUTOPLAY.md, tools/integrate.py --boot): intro skip -> menu -> Select Knight -> name entry -> map.
+# Input is injected by the game itself (rt/autoplay): keys through the keyboard ISR path, joystick through ms::joyRead's inputs.
+# The menu, the knight screen and the name entry read PORT 1 (mog LAB_00EE -> LAB_0630).
+# Timing: nothing here depends on how fast the host or the loads are. Joystick presses are `pulse`s (released by the harness after
+# 3 frames or at the next file open, so a press can never be seen by the next screen: the name entry takes fire as "OK"), the end of
+# the intro (the menu's input loop starting) is waited for, and every shot freezes the guest while the host captures it. Between the
+# menu screens plain frame offsets are exact: the autoplay frame is emulated time and stands still during loads. The `frame N` after
+# a wait counts from the wait's release.
+# the name line of the knight screen may or may not have appeared yet (load timing): ~1.3 % of the picture
+# shotcmp-tol reg-knight-select 1.8
+# shotcmp-tol reg-name-entry 1.5
+# shotcmp-tol reg-name-typed 2.5
+# the map's colour-cycled movement/region outlines vary 0.1-0.6 % with timing
+# shotcmp-tol reg-map 1.0
+# shotdiff reg-menu reg-menu-knight 0.2
+# shotdiff reg-name-entry reg-name-typed 0.2
+
+# intro skip (Space, as a user would), then wait for the menu's input loop
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 60 shot reg-menu
+
+# cursor down x3: Players -> Gore -> Practice -> Select Knight
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 200 shot reg-menu-knight
+
+# fire: the knight screen loads (the press is consumed by the menu, never seen by the next screen)
+frame 230 joy1 fire pulse
+frame 630 shot reg-knight-select
+
+# fire on the first knight: name entry ("SIR GODBER_" preset)
+frame 730 joy1 fire pulse
+frame 1030 shot reg-name-entry
+
+# erase the preset name (16 backspaces, 30 frames apart like `type`), then type ACE
+frame 1130 key BACKSPACE tap
+frame 1160 key BACKSPACE tap
+frame 1190 key BACKSPACE tap
+frame 1220 key BACKSPACE tap
+frame 1250 key BACKSPACE tap
+frame 1280 key BACKSPACE tap
+frame 1310 key BACKSPACE tap
+frame 1340 key BACKSPACE tap
+frame 1370 key BACKSPACE tap
+frame 1400 key BACKSPACE tap
+frame 1430 key BACKSPACE tap
+frame 1460 key BACKSPACE tap
+frame 1490 key BACKSPACE tap
+frame 1520 key BACKSPACE tap
+frame 1550 key BACKSPACE tap
+frame 1580 key BACKSPACE tap
+frame 1730 type ACE
+frame 2000 shot reg-name-typed
+
+# Return: the map
+frame 2030 key RETURN tap
+frame 2630 shot reg-map
+frame 2660 quit

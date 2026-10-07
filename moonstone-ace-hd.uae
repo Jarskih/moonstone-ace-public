@@ -1,0 +1,22 @@
+config_description=moonstone-ace HD (A1200 68020 AGA, 2MB chip, DH0 = build-game-debug/hd)
+
+; A1200: 68020, AGA, PAL, 2MB chip RAM
+cpu_model=68020
+chipset=aga
+ntsc=false
+chipmem_size=4
+bogomem_size=0
+fastmem_size=0
+cpu_compatible=false
+
+kickstart_rom_file=C:\Users\Public\Documents\Amiga Files\WinUAE\Kickstart v3.1 r40.068 (1993-12)(Commodore)(A1200)[!].rom
+
+; bootable directory-mounted HD: cmake --build build-game-debug --target hdinstall
+; (point the path at build-game/hd for the Release build). No floppy inserted.
+filesystem2=rw,DH0:hd:D:\moonstone-ace-public\build-game-debug\hd,0
+
+use_gui=no
+
+; player 1 joystick = WinUAE keyboard layout "kbd2": arrow keys move, Right Ctrl (or Right Alt) is fire
+joyport1=kbd2
+joyport1autofire=none

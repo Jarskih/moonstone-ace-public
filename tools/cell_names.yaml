@@ -1,0 +1,905 @@
+# tools/cell_names.yaml -- C++ names of the original data cells (ROADMAP 7.1s).  HUMAN-owned.
+#
+# Since ROADMAP 7.1r the game links no asm: `mog_LAB_0633` in C++ is a C++-owned cell (a link-time alias into the owned object that
+# tools/gen_data.py generates).  A cell listed here is spelled with its C++ name everywhere (tools/rename_cells.py applies this file to
+# the sources, tools/gen_data.py names the alias after it); a cell NOT listed keeps its `<bin>_LAB_xxxx` alias name.
+#
+#   binary:                   `mog` (the main game overlay) or `program` (intro / ending)
+#     LAB_xxxx: cppName       # what it is; where the typed view lives (owned object, tools/data_types.yaml typed member)
+#
+# Naming: `mog` / `prg` + the thing; unknown cells in a known area keep the label number in the name (`mogUiRegionKind` = the long
+# at +20 of the clickable-region record the UI builds).  The type of a cell is whatever each declaration says: the rename changes
+# no type.  Names are unique over both binaries.  The `typed` members of the owned game state (asm/patches/mog.data_state.json)
+# carry the same words: mogCurKnight is g_mogState.curKnight.
+
+mog:
+  # ---- game state (the typed members of g_mogState, include/game/state_bind.hpp) ----
+  LAB_0613: mogKnights                 # Knight[5]: the four knights + the dragon (g_mogState.knights)
+  LAB_0618: mogInventories             # Inventory[5]
+  LAB_05E4: mogActive                  # ActiveKnights: the fight pair, player count, lunar cell (g_mogState.active)
+  LAB_0649: mogJobs                    # Job[10], the sprite job table (g_mogState.jobs)
+  LAB_069F: mogMapNodes                # MapNode[10]: the overworld node table
+  LAB_0633: mogCurKnight               # Knight* current knight, the working "this" of the turn and fight code
+  LAB_05F2: mogFirstFighter            # Knight* first fighter copy
+  LAB_068B: mogUiKnight                # Knight* current knight, snapshot for the UI
+  LAB_068C: mogUiInventory             # Inventory* of mogUiKnight
+  LAB_068D: mogUiKnight2               # Knight* second knight of the UI (opponent / dragon / black knight)
+  LAB_068E: mogUiInventory2            # Inventory* of mogUiKnight2 (or Lair loot)
+  LAB_08C6: mogCurLair                 # Lair* current lair record
+  LAB_05C3: mogCreatureHeap            # Knight* base of the 20 heap creature records
+  LAB_05B9: mogHeapTable               # pointer table of the arena carve (68 = lair records, 72 = lair loot, ...)
+  LAB_068F: mogSceneId                 # the mog state machine selector
+  LAB_068A: mogPrevScene               # scene to return to
+  LAB_05C5: mogHumanPlayers            # number of human players (1..4)
+  LAB_05DB: mogHumanPlayersSaved
+  LAB_05DC: mogDefeatBits              # defeat bits of the last fight
+  LAB_05DF: mogLocationMode            # location / screen mode byte
+  LAB_0654: mogTurnCursor              # knight index whose turn it is
+  LAB_0655: mogMoveSpent               # movement spent this turn
+  LAB_0663: mogRoundDone               # knights that have finished the round
+  LAB_0665: mogTurnBudget              # Knight::ubDerivedEnd << 4
+  LAB_0659: mogBudgetQuarter
+  LAB_065A: mogBudgetThreeQuarters
+  LAB_06C0: mogDayCounter
+  LAB_06C1: mogLunarIndex
+  LAB_06C2: mogMoonFrameByIndex        # S_4 table "-/.010./"
+  LAB_0973: mogRandomSeed              # the game's random seed (long)
+  LAB_0974: mogSeedTable               # the four seeds LAB_04A5 picks from by the beam position
+  LAB_08C7: mogHandlerTable            # per-type creature AI handler table (longs)
+  LAB_08C8: mogArenaTable              # arena set-up table (rt entry addresses)
+  LAB_08C4: mogArenaRegion             # the region of the map the fight is in (0 / 4 / 8 / $C)
+  LAB_06DA: mogGore                    # gore on/off (also the demo flag the combat script reads)
+  LAB_06DB: mogMenuMoved
+  LAB_06DC: mogMenuCursor
+  LAB_06DE: mogDamageDiv               # progress points a stat costs (3)
+  LAB_0689: mogInvChanged              # "something changed" counter of the inventory screens
+  LAB_0690: mogMarketStock             # Inventory: the merchant's stock
+  LAB_0691: mogMarketPrices            # market price list (u16[12])
+  LAB_0699: mogLootUseButtons          # ButtonCell[]: the "use" buttons
+  LAB_069A: mogLootTakeButtons         # ButtonCell[]: the "take" buttons
+  LAB_053B: mogLastSlot                # last item used ($FFFF none), a word in the code hunk
+  LAB_053C: mogHandOver                # hand-over flag (code hunk)
+  LAB_05D3: mogBadLuck                 # a gamble failed
+  LAB_090B: mogMathKind                # result kind of the Math roll (1 item, 2 gold, 3 stat, 4 curse)
+  LAB_0909: mogMathText                # Math message text pointer
+  LAB_090D: mogLastGift                # last gift (item slot), starts $FFFFFFFF
+  LAB_0906: mogGoldCycle
+  LAB_0908: mogItemCycle
+  LAB_0976: mogDonation                # mystic / healer donation
+  LAB_0977: mogPurse                   # mystic purse (copy of the gold while the donation screen runs)
+  LAB_065E: mogMapForced               # forced-mode word of the map (LAB_0E02 saves the position, mapModeForce)
+  LAB_065C: mogMapAmbush
+  LAB_0660: mogMapPosSaved  # 1 while the map position is saved (set by mapModeAmbush, cleared on leaving the forced / ambush mode; LAB_0E04, LAB_0E05)
+  LAB_065F: mogMapSavedPos             # u16[2]: x, y saved by mapModeForce / mapModeAmbush
+  LAB_0662: mogMapLocked
+  LAB_0666: mogDragonTimer             # 100 -> 0 cycle
+  LAB_0667: mogDragonActive
+  LAB_0DDC: mogDragonSpeed             # int16[2]: speed x / y (data inside the code hunk)
+  LAB_0DDA: mogTerrain                 # u16[2]: terrain counter / blocked flag (code hunk)
+  LAB_08FC: mogDragonScripts           # the dragon's flight scripts
+  LAB_0664: mogMapCelTable             # cel table of the map sprites
+  LAB_0668: mogMoveStage3Latch  # movement-phase latch 3: the move budget reached the last threshold (LAB_065A); cleared at every turn start
+  LAB_0669: mogMoveStage2Latch  # movement-phase latch 2: the budget reached the middle threshold (LAB_0659)
+  LAB_066A: mogMoveStage1Latch  # movement-phase latch 1: below both thresholds
+  LAB_066B: mogStepGate  # non-zero skips the opponent / scroll / speed steps of the AI turn (cleared by LAB_0E23); meaning inferred
+  LAB_066C: mogAiGoalXY  # u32: packed x,y goal of the AI knight walking home ($005E002F / $0129009D, LAB_0E36); cleared when a turn ends
+  LAB_0673: mogRoamLair
+  LAB_0672: mogRoamList                # RoamEntry[24]: sorted roam list
+  LAB_0656: mogAiMove
+  SECSTRT_2: mogArrivals               # ArrivalEntry[10]: the arrival list
+
+  # ---- fights: combat state, creatures, daggers, arenas ----
+  LAB_061D: mogFightVars               # FightVars: the handlers' working cells (LAB_061D..LAB_062D)
+  LAB_062E: mogDaggerBlock
+  LAB_0301: mogDaggerSlots             # the dagger trajectories (DaggerSlot[])
+  LAB_0302: mogDaggerDamage            # the dagger damage table (nine longs of 3)
+  LAB_07EB: mogDaggerScript
+  LAB_02DA: mogDaggerAimDist
+  LAB_02EC: mogSoundStep               # the sound pickers' counters (code hunk)
+  LAB_0634: mogFightTarget             # Knight* the target
+  LAB_01A1: mogBodyA
+  LAB_01A2: mogBodyB
+  LAB_0193: mogBatLinkA
+  LAB_0194: mogBatLinkB
+  LAB_0EB6: mogSnatchFlags
+  LAB_05F0: mogFightSpawn              # the arena's spawn routine of the fight (rt entry)
+  LAB_05F1: mogFightInit               # the arena's init routine of the fight (rt entry)
+  LAB_05F4: mogFightSecond             # the second fighter / the job the pause pass skips
+  LAB_05EC: mogFightTotal  # creatures still to be defeated in this fight (counts down; written back to Lair::uwCreaturesLeft); was LAB_05EC
+  LAB_05ED: mogMaxAliveAtOnce  # creatures alive on the field at most (was LAB_05ED); owner decision 8.1: co-op +1
+  LAB_05EE: mogAliveNow  # creatures spawned so far / alive now (was LAB_05EE)
+  LAB_05EF: mogSpawnToggle
+  LAB_05BA: mogFrameBudget             # frames of delay per tick
+  LAB_0A98: mogArenaLowEdge            # the lowest edge (read by the arena set-up)
+  LAB_076E: mogLairParam
+  LAB_0411: mogPaletteScene            # the scene code of the last palette-mode call (LAB_03F3)
+
+  # ---- screens, backgrounds, memory carve ----
+  LAB_05C0: mogBackground              # background bitmap (the clean screen)
+  LAB_05C1: mogForeground              # foreground picture / sprite sheet
+  LAB_05C2: mogPicScreen               # spare screen the pictures are loaded into
+  LAB_05C4: mogSceneSheet              # sprite sheet the scenes draw from
+  LAB_0D92: mogDrawScreen              # the screen being drawn
+  SECSTRT_35: mogShownScreen           # the screen being shown
+  LAB_05BB: mogSetValue
+  LAB_0648: mogSetValues               # five copies of mogSetValue
+  LAB_0647: mogFrameSets               # frame-set list
+  LAB_05BC: mogChipFree
+  LAB_05BD: mogChipSize
+  LAB_05BE: mogFastFree
+  LAB_05BF: mogFastSize
+  LAB_05B8: mogBufTable                # buffer pointers of the arena carve
+  LAB_05C6: mogLairs                   # Lair* base of the lair records
+  LAB_05C7: mogBankKnights             # sound-bank buffers (the arena carve)
+  LAB_05C8: mogBankCreature
+  LAB_05C9: mogBankCampaign
+  LAB_05CA: mogBankWizard
+  LAB_05CB: mogBankRatmen
+  LAB_0A83: mogTileScript              # pointer: the tile script buffer
+  LAB_0A8E: mogSkipSheet               # clip state that survives a tile: sheet bytes skipped
+  LAB_0A8F: mogSkipMask                # ... mask bytes skipped
+  SECSTRT_14: mogRecordTable           # pointer: the obstacle table / record pool
+  LAB_0A58: mogRecordTemplate          # the 24-byte clickable-region record template
+  LAB_0D2B: mogPicPalette              # u16[32]: the palette the last loaded picture carried
+  LAB_0D05: mogTextFlag
+  LAB_0E93: mogLivePalette             # pointer to the live palette (32 words + 1)
+  LAB_08D9: mogScenePalette            # the scene palette under construction
+  LAB_0FC4: mogMusicFade               # music fade request (the synth reads it)
+  LAB_0E8D: mogSpriteStart             # start of the last sprite built
+  LAB_0E8E: mogSpritePartner           # start of its partner (attached frames)
+
+  # ---- dirty rectangles, job lists ----
+  LAB_063E: mogRectListA
+  LAB_063F: mogRectListB
+  LAB_0641: mogRectList                # the one in use
+  LAB_0645: mogRectCount               # entries in the list in use
+  LAB_0640: mogCurJob
+  LAB_0643: mogHurtList
+  LAB_0644: mogAttackList
+  LAB_064A: mogScratchJob
+  LAB_064B: mogJobWork
+  LAB_064C: mogScratchWork
+  LAB_064D: mogDrawBuffer              # the draw-event buffer
+  LAB_064F: mogAttackLists
+  LAB_0650: mogHurtLists
+
+  # ---- input and cursor (rt/input.hpp IrqCells: the twin of program's cells) ----
+  SECSTRT_21: mogKeyAny                # "any key" word; the low byte is the last key
+  LAB_0B86: mogKeyLast
+  LAB_0B87: mogFrameOn
+  LAB_0B8B: mogBlitDone
+  LAB_0B8C: mogPrevV
+  LAB_0B8D: mogPrevH
+  LAB_0B8E: mogIdleWord
+  LAB_0B8F: mogIdleLong
+  LAB_0B90: mogKeyXlat                 # raw -> game key table (128 bytes)
+  LAB_0B91: mogKeyDown                 # game key -> 0/1 (128 bytes)
+  LAB_0B96: mogHooks                   # VBL hook list, 0-terminated
+  SECSTRT_22: mogMouseX
+  LAB_0B99: mogMouseY
+  LAB_0B9A: mogButton
+  LAB_0B9B: mogButton2
+  LAB_0B9D: mogFrame                   # VBL frame counter
+  LAB_062F: mogJoyPort0
+  LAB_0630: mogJoyPort1
+  LAB_097C: mogCursorOn
+  LAB_097D: mogCursorData
+  LAB_097E: mogCursorData2
+  LAB_097F: mogCursorX                 # mouse / menu cursor x
+  LAB_0980: mogCursorY
+  LAB_0981: mogCursorLock
+  LAB_0982: mogCursorHook              # the hook-list slot of the cursor sprite
+
+  # ---- combat / loot UI (rt/combat_ui.cpp: the icon-run primitives) ----
+  LAB_0680: mogUiFrameBase
+  LAB_0681: mogUiIconFrame
+  LAB_0682: mogUiIconX
+  LAB_0683: mogUiIconY
+  LAB_0684: mogUiIconStep
+  LAB_0685: mogUiRegionKind  # clickable-region record +20: region kind (1, 2, 3, $C)
+  LAB_0686: mogUiButton
+  LAB_0687: mogUiRegionTextId  # clickable-region record +22: text / help id ($4A, 4, $46, $48); meaning inferred
+  LAB_0688: mogUiButtonTable
+  LAB_0632: mogUiStatKnight            # the record the stat panel draws from
+  LAB_0984: mogUiDone                  # 1 ends the screen loop
+  LAB_0985: mogUiXShift
+  LAB_0986: mogUiCelTable              # the cel table in use
+  LAB_098A: mogWideScenes
+
+  # ---- text printer, loaders, hit data ----
+  LAB_08E7: mogCharMap
+  LAB_08E5: mogSpanWidth
+  LAB_08E6: mogSpanMargin
+  LAB_05E3: mogSmallFont               # u32[5]: [4] = the small font table
+  LAB_0A4D: mogHitData                 # write cursor of the hit data
+  LAB_0A4E: mogHitPairs                # write cursor of the (cel table, hit data) pair table
+  LAB_0A4F: mogHitDataBase
+  LAB_0A50: mogHitPairsBase
+  LAB_0A51: mogHitPairTable
+  LAB_0A57: mogHitName                 # "collide.hit"
+  SECSTRT_10: mogHitFileSize
+  LAB_0C59: mogPicPlanes
+  LAB_0CFF: mogPicDest
+  LAB_0CC9: mogCelLastName
+  LAB_0CCA: mogCelLastTotal
+  LAB_0D4F: mogCelScratch
+  LAB_0BA6: mogFileErr                 # the original file layer's error word (+2 = the open result)
+
+  # ---- dice screen (screens.cpp) ----
+  LAB_0F5F: mogDice                    # u8[3]: the three dice
+  LAB_0F59: mogDicePlayer              # Knight* of the dice player
+  LAB_0F62: mogDiceBet
+  LAB_067D: mogTextX
+  LAB_067E: mogTextY
+  LAB_067F: mogTextStyle
+  LAB_06B5: mogKnightName1             # knight name buffers (22 bytes each)
+  LAB_06B6: mogKnightName2
+  LAB_06B7: mogKnightName3
+  LAB_06B8: mogKnightName4
+  LAB_0714: mogMenuPopCell             # the cell the menu's last pop wrote to
+  LAB_05A5: mogSelectJob               # job handle of the knight-select animation
+  LAB_0525: mogKnightAddrs             # the four Knight addresses (DC.L in the code hunk)
+  LAB_0526: mogCycleCounter            # cycle counter of LAB_0528 (code hunk)
+  LAB_0F5A: mogDiceCelTable            # cel table of the dice screen
+  LAB_0F5B: mogDiceState               # 2 = the dice have been thrown
+  LAB_0F5D: mogDiceMode
+  LAB_0F58: mogDiceStop
+
+  # ---- combat set-up loaders (include/game/combat_load.hpp MS_CL_LABELS: the data model of the originals) ----
+  LAB_05E0: mogCelSlotsCreature        # five longs: where the cel set of a creature ended up
+  LAB_05E1: mogCelSlotsKnight          # ... of a knight
+  LAB_05E2: mogCelSlotsMap             # ... the map / practice sets
+  LAB_05B7: mogTownPalette  # the 16-long palette table of the town screens (LAB_03F2)
+  LAB_05E5: mogUiPalette  # palette of the wizard / UI screens (faded by rt_scr_ramp5); meaning inferred
+  LAB_05E6: mogPicturePalette  # palette shown with a loaded picture (copy of mogPicPalette)
+  LAB_05DD: mogCycleLast0  # colour-cycle channel 0: last value written ($FF = none yet)
+  LAB_05DE: mogCycleLast1  # colour-cycle channel 1: last value written ($FF = none yet)
+  LAB_05E7: mogCyclePtr  # pointer into the colour-cycle data; meaning inferred
+  LAB_05E8: mogCycleStep0  # colour-cycle step counter 0..7 (channel 0)
+  LAB_05E9: mogCycleStep1  # colour-cycle step counter 0..7 (channel 1)
+  LAB_05EA: mogCycleStep2  # colour-cycle step counter 0..7 (channel 2)
+  LAB_05EB: mogCycleStep3  # colour-cycle step counter 0..7 (channel 3, a byte)
+  LAB_07B6: mogCycleTab0
+  LAB_07B7: mogCycleTab1
+  LAB_07B8: mogCycleTab2
+  LAB_07B9: mogCycleTab3
+  LAB_05D0: mogDrives
+  LAB_05CC: mogDiskUnit0
+  LAB_05CD: mogDiskUnit1
+  LAB_05CE: mogDiskUnit2
+  LAB_05CF: mogDiskUnit3
+  LAB_06FE: mogUnitDisk1
+  LAB_06FF: mogUnitDisk2
+  LAB_0700: mogUnitDisk3
+  LAB_0701: mogUnitDisk4
+  LAB_0B35: mogUnitSel
+  LAB_0D4D: mogDiskFlag
+  LAB_071D: mogPicNext
+  LAB_071E: mogPicTable
+  LAB_0704: mogPicBase
+  LAB_0705: mogCelBase
+  LAB_0713: mogPicAnimScript  # script pointer of the current picture animation (LAB_071B / LAB_071C)
+  LAB_076D: mogEncounterKind  # u32: 2 = the fight is a lair creature fight (set by LAB_01A3), 0 = other (the overworld clears it)
+
+  # ===== ROADMAP 7.1s, second pass: scripts, tables, texts and files =====
+  # ---- creature script tables (src/rt/arena.cpp: the table fill LAB_0156 and the per-creature initialisers) ----
+  LAB_05F5: mogKnightActionScripts  # action -> script table of the fighting knights (9 longs, index = action / 4)
+  LAB_05F6: mogKnightHurtScripts  # hurt script by the attacker's action (9 longs)
+  LAB_05F7: mogKnightDamageTable  # base damage by action (9 longs)
+  LAB_05F8: mogKnightDefenseTable  # required defence action by the attacker's action (9 longs)
+  LAB_0610: mogKnightWalkScripts  # walk scripts: 3 blocks of 4 scripts and a zero (24 longs)
+  LAB_05F9: mogTroggSpearHurtScripts  # hurt scripts of the spear troggs (init LAB_0176)
+  LAB_05FA: mogTroggAxeDamageTable  # damage table of the axe troggs, type $18 (init LAB_0169)
+  LAB_05FB: mogTroggAxeActionScripts  # action scripts of the axe troggs
+  LAB_05FC: mogTroggAxeHurtScripts  # hurt scripts of the axe troggs
+  LAB_05FD: mogTroggAxeBDamageTable  # damage table of the second axe trogg kind, type $1C (init LAB_0170)
+  LAB_05FE: mogTroggAxeBActionScripts  # action scripts of the second axe trogg kind
+  LAB_05FF: mogTroggAxeBHurtScripts  # hurt scripts of the second axe trogg kind
+  LAB_0600: mogBeHurtScripts  # hurt scripts of the Be (init LAB_018B)
+  LAB_0601: mogRatmenDamageTable  # damage table of the ratmen (init LAB_018F; the moon frame raises two entries)
+  LAB_0602: mogRatmenHurtScripts  # hurt scripts of the ratmen
+  LAB_0603: mogDragonDamageTable  # damage table of the dragon (init LAB_0195)
+  LAB_0604: mogDragonHurtScripts  # hurt scripts of the dragon
+  LAB_0605: mogBalokDamageTable  # damage table of Balok (init LAB_0198)
+  LAB_0606: mogMudmenDamageTable  # damage table of the mudmen (init LAB_019D)
+  LAB_0607: mogMudmenHurtScripts  # hurt scripts of the mudmen
+  LAB_0608: mogMudmenWalkScripts  # walk scripts of the mudmen (9 longs)
+  LAB_0609: mogTrollDamageTable  # damage table of the troll (init LAB_019F)
+  LAB_060A: mogTrollHurtScripts  # hurt scripts of the troll
+  LAB_060B: mogTrollWalkScripts  # walk scripts of the troll (9 longs)
+  LAB_060C: mogTroggAxeWalkScripts  # walk scripts of the axe troggs (24 longs: 3 blocks of 4 scripts and a zero)
+  LAB_060D: mogTroggSpearWalkScripts  # walk scripts of the spear troggs
+  LAB_060E: mogTroggAxeBWalkScripts  # walk scripts of the second axe trogg kind
+  LAB_060F: mogDragonWalkScripts  # walk scripts of the dragon
+  LAB_0611: mogBeWalkScripts  # walk scripts of the Be
+  LAB_0612: mogRatmenWalkScripts  # walk scripts of the ratmen
+  # ---- animation scripts (code-hunk DC data; the creature owning them is named, Be = file be1.c / be2.c) ----
+  LAB_07DB: mogKnightIdleScript  # idle script of a fighting knight (action 0, hurt 0)
+  LAB_07DC: mogKnightAltScript  # knight alternate script (hurt by actions 4 and 7)
+  LAB_07DD: mogKnightWalk00  # knight walk script, block 0 (direction), phase 0
+  LAB_07DE: mogKnightWalk01  # knight walk script, block 0 (direction), phase 1
+  LAB_07DF: mogKnightWalk02  # knight walk script, block 0 (direction), phase 2
+  LAB_07E0: mogKnightWalk03  # knight walk script, block 0 (direction), phase 3
+  LAB_07E1: mogKnightWalk10  # knight walk script, block 1 (direction), phase 0
+  LAB_07E2: mogKnightWalk11  # knight walk script, block 1 (direction), phase 1
+  LAB_07E3: mogKnightWalk12  # knight walk script, block 1 (direction), phase 2
+  LAB_07E4: mogKnightWalk13  # knight walk script, block 1 (direction), phase 3
+  LAB_07E5: mogKnightWalk20  # knight walk script, block 2 (direction), phase 0
+  LAB_07E6: mogKnightWalk21  # knight walk script, block 2 (direction), phase 1
+  LAB_07E7: mogKnightWalk22  # knight walk script, block 2 (direction), phase 2
+  LAB_07E8: mogKnightWalk23  # knight walk script, block 2 (direction), phase 3
+  LAB_07EF: mogKnightActionScript1  # knight action 1 script (action word = 4 * index)
+  LAB_07ED: mogKnightActionScript2  # knight action 2 script (action word = 4 * index)
+  LAB_07EA: mogKnightActionScript3  # knight action 3 script (action word = 4 * index)
+  LAB_07F4: mogKnightActionScript4  # knight action 4 script (action word = 4 * index)
+  LAB_07E9: mogKnightActionScript5  # knight action 5 script (action word = 4 * index)
+  LAB_07F1: mogKnightActionScript6  # knight action 6 script (action word = 4 * index)
+  LAB_07F3: mogKnightActionScript7  # knight action 7 script (action word = 4 * index)
+  LAB_07EE: mogKnightActionScript8  # knight action 8 script (action word = 4 * index)
+  LAB_07F0: mogKnightRatmenAction7Script  # replaces action 7 of the knight in the ratmen arena (LAB_018C)
+  LAB_07F2: mogKnightRatmenAction4Script  # replaces action 4 of the knight in the ratmen arena
+  LAB_07F6: mogKnightHurtScriptA  # knight hurt script (attacker actions 1, 2, 5)
+  LAB_07F5: mogKnightHurtScriptB  # knight hurt script (attacker actions 3, 6, 8); also the dragon's hurt A
+  LAB_07FB: mogKnightHurtScriptC  # hurt script the creature arenas give the knight (Balok, troll, guardian)
+  LAB_07FE: mogKnightHurtByDragonScript  # hurt script of the knight the dragon hits
+  LAB_07FC: mogKnightEnterScript  # script of a knight walking into the arena
+  LAB_0800: mogTroggAxeIdleScript
+  LAB_0801: mogTroggAxeActionScriptA  # actions 1, 2, 3, 4, 5, 7
+  LAB_0802: mogTroggAxeActionScriptB  # actions 6 and 8
+  LAB_0803: mogTroggAxeWalk00
+  LAB_0804: mogTroggAxeWalk01
+  LAB_0805: mogTroggAxeWalk02
+  LAB_0806: mogTroggAxeWalk10
+  LAB_0807: mogTroggAxeWalk11
+  LAB_0808: mogTroggAxeWalk12
+  LAB_0809: mogTroggAxeWalk13
+  LAB_080A: mogTroggAxeWalk20
+  LAB_080B: mogTroggAxeWalk21
+  LAB_080C: mogTroggAxeWalk22
+  LAB_080D: mogTroggAxeWalk23
+  LAB_080E: mogTroggAxeHurtScriptA
+  LAB_080F: mogTroggAxeHurtScriptB
+  LAB_0810: mogTroggAxeHurtScriptC
+  LAB_0814: mogTroggSpearHurtScriptA
+  LAB_0815: mogTroggSpearHurtScriptB
+  LAB_0816: mogTroggSpearHurtScriptC
+  LAB_081A: mogTroggSpearIdleScript
+  LAB_081D: mogTroggSpearWalk00
+  LAB_081E: mogTroggSpearWalk01
+  LAB_081F: mogTroggSpearWalk02
+  LAB_0820: mogTroggSpearWalk10
+  LAB_0821: mogTroggSpearWalk11
+  LAB_0822: mogTroggSpearWalk12
+  LAB_0823: mogTroggSpearWalk13
+  LAB_0824: mogTroggSpearWalk20
+  LAB_0825: mogTroggSpearWalk21
+  LAB_0826: mogTroggSpearWalk22
+  LAB_0827: mogTroggSpearWalk23
+  LAB_0828: mogTroggAxeBIdleScript
+  LAB_0829: mogTroggAxeBActionScriptA
+  LAB_082A: mogTroggAxeBActionScriptB
+  LAB_082B: mogTroggAxeBWalk00
+  LAB_082C: mogTroggAxeBWalk01
+  LAB_082D: mogTroggAxeBWalk02
+  LAB_082E: mogTroggAxeBWalk10
+  LAB_082F: mogTroggAxeBWalk11
+  LAB_0830: mogTroggAxeBWalk12
+  LAB_0831: mogTroggAxeBWalk13
+  LAB_0832: mogTroggAxeBWalk20
+  LAB_0833: mogTroggAxeBWalk21
+  LAB_0834: mogTroggAxeBWalk22
+  LAB_0835: mogTroggAxeBWalk23
+  LAB_0836: mogTroggAxeBHurtScriptA
+  LAB_0837: mogTroggAxeBHurtScriptB
+  LAB_0838: mogTroggAxeBHurtScriptC
+  LAB_083C: mogBeWalk00
+  LAB_083D: mogBeWalk01
+  LAB_083E: mogBeWalk02
+  LAB_083F: mogBeWalk03
+  LAB_0840: mogBeIdleScript  # also the first script of the walk block 1 and a hurt script
+  LAB_0841: mogBeWalk11
+  LAB_0842: mogBeWalk12
+  LAB_0843: mogBeWalk13
+  LAB_0844: mogBeAltScript
+  LAB_0845: mogBeHurtScriptA
+  LAB_0847: mogBeHurtScriptB
+  LAB_084A: mogKnightHurtByBeScript  # the knight's hurt script in the Be arena (LAB_0188)
+  LAB_084F: mogRatmenIdleScript
+  LAB_0852: mogRatmenWalk10
+  LAB_0853: mogRatmenWalk11
+  LAB_0854: mogRatmenWalk12
+  LAB_0855: mogRatmenWalk13
+  LAB_0860: mogRatmenHurtScriptA
+  LAB_0862: mogRatmenHurtScriptB
+  LAB_086A: mogRatmenHurtScriptC
+  LAB_086C: mogRatmenWalk00
+  LAB_086D: mogRatmenWalk01
+  LAB_086E: mogRatmenWalk02
+  LAB_086F: mogRatmenWalk03
+  LAB_0870: mogRatmenFirstScript  # the ratman that is on the field from the start (LAB_018C)
+  LAB_0873: mogDragonWalk10
+  LAB_0874: mogDragonWalk11
+  LAB_0875: mogDragonWalk12
+  LAB_0876: mogDragonWalk13
+  LAB_0877: mogDragonWalk1Hold  # last script of block 1 (used four times)
+  LAB_0879: mogDragonWalk20
+  LAB_087A: mogDragonWalk21
+  LAB_087B: mogDragonWalk22
+  LAB_087C: mogDragonWalk23
+  LAB_087D: mogDragonWalk2Hold  # last script of block 2 (used four times)
+  LAB_087F: mogDragonHurtScript  # the dragon's hurt script (every attacker action)
+  LAB_0880: mogDragonBatScript  # script of the bat the dragon spawns
+  LAB_0882: mogDragonIdleScript
+  LAB_0888: mogBalokIdleScript
+  LAB_088F: mogBalokAltScript
+  LAB_089A: mogMudmenIdleScript
+  LAB_089B: mogMudmenWalkScriptA
+  LAB_089C: mogMudmenWalkScriptB
+  LAB_089D: mogMudmenWalkScriptC
+  LAB_08A3: mogMudmenHurtScript
+  LAB_08A5: mogTrollIdleScript
+  LAB_08A6: mogTrollWalk0
+  LAB_08A7: mogTrollWalk1
+  LAB_08A8: mogTrollWalk2
+  LAB_08A9: mogTrollWalk3
+  LAB_08AE: mogDemonIdleScript  # idle script of the guardian (LAB_01A0)
+  LAB_08B0: mogDemonAltScript
+  # ---- arena set-up data (src/rt/arena.cpp) ----
+  LAB_07BA: mogSpawnListTroggTroll  # first wave positions {x, y, z, facing} x 4 (trogg arenas, troll)
+  LAB_07BB: mogSpawnListBe  # first wave positions of the Be arena
+  LAB_07BC: mogSpawnListRatmenMudmen  # first wave positions of the ratmen and mudmen arenas
+  LAB_07BD: mogLairInitHandlers  # per lair (24): word handler offset into mogArenaTable, word count
+  LAB_07BE: mogLairInitMapPos  # per lair: map x, y words
+  LAB_07BF: mogLairInitRegion  # per lair: the arena region word (copied to mogArenaRegion)
+  LAB_07C0: mogLairInitTileFiles  # per lair: pointer to the tile file name (fol1.t ... gll6.t)
+  LAB_08C5: mogLairLootOdds  # lair loot by percentile: pairs {limit, kind}
+  LAB_08C0: mogAiNameBanner  # default name of the first computer knight
+  LAB_08C1: mogAiNameDwain
+  LAB_08C2: mogAiNameBalain
+  LAB_08C3: mogAiNameEdward
+  LAB_0186: mogFightWaveLevel  # creature wave level 0..3 from the knight's HP maximum (LAB_0177)
+  LAB_01AD: mogSpawnEntryCounter  # cycles 1, 2, 3 over the three entry points of a creature
+  LAB_061A: mogEntryX0  # x of entry point 0
+  LAB_061B: mogEntryX1  # x of entry point 1
+  LAB_061C: mogEntryX2  # x of entry point 2
+  LAB_062B: mogCreatureStateBits  # bit field of the creature fight (bits 2, 3, 5 tested by the creature steps); cleared by the ratmen arena
+  LAB_05F3: mogNewGameStarted  # set to 1 by a new game (LAB_01AE); never read back
+  # ---- fight loop cells (src/rt/combat.cpp, combat_script.cpp, fighters.cpp) ----
+  LAB_05AB: mogFightFrameFlag  # set to 1 at the start of every fight
+  LAB_05AC: mogFightFrameStart  # tick counter at the start of the fight
+  LAB_05AD: mogFightSwapped  # 1 = the attacker lost and the pair was swapped for the screen
+  LAB_05D1: mogConfusedKnight  # knight whose controls are reversed (cursed protection scroll); also the avoid-dialog knight
+  LAB_05D2: mogAvoidDefender  # defender of the avoid dialog
+  LAB_0620: mogActionDoneLatch  # 1 once a creature action has finished (set by LAB_02DB / LAB_01F5); cleared at the start of a fight; the AI waits on it
+  LAB_0623: mogDragonFlags  # dragon flags (bit 4 attack running, 5 phase, 6 reduced tunables, 7 hit)
+  LAB_0628: mogDaggerSteps  # flight time of a thrown dagger: dist / 8
+  LAB_0629: mogDaggerArc  # arc of a thrown dagger: dist / 2
+  LAB_0638: mogBoxMaxX  # bounding box of the draws of the job being run
+  LAB_0639: mogBoxMinX
+  LAB_063A: mogBoxMinY
+  LAB_063B: mogBoxMaxY
+  LAB_063C: mogBoxArmed
+  LAB_063D: mogJobIndex  # loop counter of the job passes
+  LAB_064E: mogDrawBufferB  # twin of mogDrawBuffer
+  LAB_06FC: mogExtraPassFlag  # non-zero: the fight loop runs the extra pass
+  LAB_0234: mogFlyerToggle  # the flyer's alternation word (in the code hunk)
+  LAB_0EC1: mogBatCounter  # bat spawn counter
+  LAB_0EEA: mogDemonFlags  # flag bytes of the guardian
+  LAB_0F38: mogAiLastAction  # last action of the computer knight
+  LAB_0F3A: mogMoveVars  # MoveVars of the movement helper (LAB_0F3A..LAB_0F3F)
+  LAB_08CC: mogHopScriptA  # hop script table of the demon / flyer
+  LAB_08CD: mogHopScriptB
+  LAB_08CE: mogHopTable
+  LAB_08CF: mogHopStep
+  LAB_08D0: mogHopDir  # only the byte at the label is used
+  LAB_097B: mogAiOdds  # byte per difficulty: the computer knight's guard / attack odds
+  LAB_0414: mogPaletteRampSlot  # ramp slot of the palette fade (LAB_0412)
+  SECSTRT_41: mogAiSteps  # the computer knight's step table
+  SECSTRT_1: mogWarnColours  # three adjacent words: the low-HP warning colours (with LAB_05A3 / LAB_05A4)
+  # ---- overworld / map (src/rt/overworld.cpp) ----
+  LAB_0651: mogAiOpponentDist  # distances of the opponent candidates (4 longs)
+  LAB_0652: mogAiOpponentPtr  # their record pointers (4 longs)
+  LAB_0653: mogMapMenuDigit  # the digit of the row number of the arrival menu
+  LAB_0658: mogMapColourOn  # the map colour jobs exist
+  LAB_0661: mogMapColourRamp  # ramp slot of the map colours
+  LAB_0DDE: mogMapColourCycle  # cycle slot of the map colours
+  LAB_066E: mogMapSavedSelf  # saved current knight of the self draw
+  LAB_066F: mogTownDist1  # distance to the first town
+  LAB_0670: mogTownDist2  # distance to the second town
+  LAB_0671: mogDragonSpawnWork  # five longs of work for the dragon spawn
+  LAB_0674: mogAiWalk  # AiWalk: seven words (LAB_0674..LAB_067A)
+  LAB_067B: mogRoamBuilt  # roam list built this turn
+  LAB_067C: mogRoamHidden  # DS.L, only the word at the label is used
+  LAB_069C: mogDragonLastId
+  LAB_069D: mogDragonLastX
+  LAB_069E: mogDragonTouch  # four longs: the records the dragon touched
+  LAB_08F4: mogMapPlaceTexts  # the 14 place-name text pointers of the arrival menu
+  LAB_08F5: mogMapMenuX
+  LAB_08F6: mogMapMenuY
+  LAB_08F7: mogShopCost  # the item the computer knight wants to buy: cost
+  LAB_08F8: mogShopKind  # kind
+  LAB_08F9: mogShopItem  # item pointer
+  LAB_08FA: mogMapTileMask  # byte per map tile
+  LAB_08FB: mogMapTileArena  # arena region per map tile
+  LAB_0900: mogDragonHoverScript
+  LAB_0E21: mogMapTileIndex  # map tile index of the last colour pick
+  LAB_0D4C: mogPictureFlag
+  LAB_06D9: mogProgramName  # the file name "program"
+  LAB_08EA: mogTextMapMay  # " may ..."
+  LAB_08F1: mogTextEnterLair
+  LAB_08F2: mogTextBattleWith  # the three battle announcements start here
+  LAB_06CD: mogTextTempleOffer  # text list: to be granted a longer life ...
+  LAB_06D1: mogTextQuestDone  # text list: you have completed the quest
+  LAB_06E1: mogTextGuardianWin  # text list: you have proven your skill against the Guardian
+  LAB_06E8: mogTextValleyKeys  # text list: the valley needs-all-four-keys message
+  LAB_06E6: mogTextGameOver  # text list: GAME OVER
+  LAB_06E7: mogTextSelectKnight  # text list: Select a Knight
+  LAB_06C3: mogTextAvoidBattle  # text list: may use their Scroll of protection to avoid this battle
+  LAB_06C8: mogAvoidNameLine  # the 18-byte line the knight name is copied into
+  LAB_0706: mogTextListCreatedBy  # text list: created by
+  LAB_0709: mogTextListNextDay  # text list: Next Day
+  LAB_070F: mogTextListWelcome  # text list: Welcome
+  LAB_071B: mogTextHighwood
+  LAB_071C: mogTextWaterdeep
+  # ---- menu, towns, wizard, dice (src/rt/scene_*.cpp, screens.cpp) ----
+  LAB_06AE: mogMenuItemsMain  # text item list of the main menu (Players, Gore, Practice, Select Knight)
+  LAB_06B3: mogMenuGoreItem  # the Gore item: first long = the text pointer
+  LAB_06B9: mogMenuPlayersValue  # the 4-byte number field of the Players item
+  LAB_06BA: mogMenuGoreOn  # "On"
+  LAB_06BB: mogMenuGoreOff  # "Off"
+  LAB_06FD: mogMenuPalette  # palette of the menu screens
+  LAB_056C: mogSoundTextGoldTake  # the sound-text of the gold take (LAB_0BB3 is an RTS: kept for the call)
+  LAB_056D: mogSoundTextTempleStat
+  LAB_056E: mogSoundTextUse  # the player sound of an item use
+  LAB_056F: mogSoundTextSell
+  LAB_0570: mogSoundTextBuy
+  LAB_0905: mogMathGoldTexts  # gold gift message pointers (3)
+  LAB_0907: mogMathItemTexts  # item gift message pointers (4)
+  LAB_090A: mogMathStatRows  # stat gift rows {offset, text pointer} x 9
+  LAB_090C: mogMathStatOffset  # stat offset of a stat gift
+  LAB_090F: mogMathItemNames  # item name table {word slot, long text pointer} x 10
+  LAB_092D: mogWizardCurseText  # the curse speech
+  LAB_092F: mogMathItemName  # item name buffer (31 bytes)
+  LAB_0931: mogMathGoldText  # gold text buffer (15 bytes)
+  LAB_091E: mogWizardIntroSpeech  # the wizard's greeting speech
+  LAB_092E: mogWizardSpeechItem  # speech for a gift of an item (kind 1)
+  LAB_0930: mogWizardSpeechGold  # speech for a gift of gold (kind 2)
+  LAB_0932: mogWizardSpeechStat  # speech for a stat gift (kind 3)
+  LAB_0933: mogWizardSpeechOmen  # speech of the default (no gift) case
+  LAB_0934: mogWizardSpeechToad  # speech of the toad curse (kind 4)
+  LAB_097A: mogWizardTowerScript  # the wizard sprite script of the first page
+  LAB_0978: mogWizardGiftScriptA  # sprite scripts of the gift page
+  LAB_0979: mogWizardGiftScriptB
+  LAB_0935: mogHealerGreeting  # text list of the healer screen
+  LAB_0947: mogMysticGreeting  # text list of the mystic screen
+  LAB_0938: mogDonationRefused  # text list: the knight left without giving
+  LAB_0939: mogDonationNone  # text list: nothing was donated
+  LAB_093A: mogHealerReplyTiny  # text list: a donation of 9 or less
+  LAB_093C: mogHealerReplyPlain  # text list: a larger donation, no effect on the mask bit
+  LAB_093D: mogHealerReplyHealed  # text list: a larger donation, healed
+  LAB_0956: mogMysticNothing  # text list: nothing to raise
+  LAB_0959: mogMysticUnchanged  # text list: unchanged
+  LAB_095B: mogMysticRaiseTable  # mystic text table {stat, text} (raise)
+  LAB_095C: mogMysticLowerTable  # mystic text table {stat, text} (lower)
+  LAB_091A: mogDonationCel  # portrait cel of the donation screen: 0 mystic, 1 healer
+  LAB_0975: mogNumberField  # the 4-byte number field of the donation screen
+  LAB_0F42: mogTextListDiceLost  # text list: You lost
+  LAB_0F43: mogTextListDiceWon  # text list: You won
+  LAB_0F47: mogDiceBetText  # the number field behind "You lost "
+  LAB_0F49: mogDiceWonText  # the number field behind "You won "
+  LAB_0F4B: mogDicePurseText  # the number field behind "You now have "
+  LAB_0F54: mogDiceScript  # script of the dice sprite
+  LAB_0F55: mogDiceRollScript
+  LAB_0F56: mogHenScriptA  # scripts of the tavern hen sprites
+  LAB_0F57: mogHenScriptB
+  LAB_0F5C: mogDiceBackground  # copy of the dice screen background
+  LAB_0F5E: mogDiceGoldText
+  LAB_0F63: mogDicePayoutTable  # payout rows (6 bytes each, 11 rows)
+  SECSTRT_42: mogTextListHen  # text list of the hen screen
+  # ---- loot / meeting screen button tables and captions (src/rt/combat_ui.cpp, loot.cpp) ----
+  LAB_0692: mogButtonTabStat  # item screen buttons: the stat "Increase" row and the use captions (27 longs)
+  LAB_0693: mogButtonTabTemple  # use buttons of the temple (scene 9)
+  LAB_0694: mogButtonTabLoot  # take buttons of the loot screens (scenes 1, 2, 8, 10)
+  LAB_0695: mogButtonTabMarketBuy  # take buttons of the market (scenes 5, 6): the Buy captions
+  LAB_0696: mogButtonTabWizard  # use buttons of the wizard (scene 3): the Offer captions
+  LAB_0697: mogButtonTabMarketSell  # use buttons of the market: the Sell captions
+  LAB_0698: mogButtonTabPlain  # the plain table (default use and take)
+  LAB_0987: mogUiTextBuffer
+  LAB_09EB: mogTextBlank  # a blank caption
+  LAB_09EE: mogButtonExit  # the Exit button record
+  LAB_09EF: mogButtonNextKnight  # the "Select next knight" button record
+  LAB_09F0: mogLootPalette
+  LAB_09F1: mogLootPaletteTail
+  LAB_0983: mogFilePoCel
+  # ---- graphics and palettes ----
+  LAB_08D1: mogMapPaletteRegion0  # map colour table of the region 0
+  LAB_08D2: mogMapPaletteRegion4
+  LAB_08D3: mogMapPaletteRegion12
+  LAB_08D4: mogMapPaletteRegion8
+  LAB_08D5: mogMapPaletteCave
+  LAB_08D8: mogPaletteBlack  # fade-out target (black)
+  LAB_08DA: mogHitX  # cursor x of the hit test
+  LAB_08DB: mogHitY
+  LAB_0D94: mogDisplayPalette  # default palette of the display (32 words)
+  LAB_0D95: mogDisplayPaletteFlag
+  LAB_0D99: mogKeyTranslation  # raw key -> game key table (98 bytes after one pad byte)
+  LAB_0E91: mogPalettePeriod  # palette cycling: period
+  LAB_0E92: mogPaletteCounter  # palette cycling: counter
+  LAB_0E94: mogPaletteCycles  # PaletteCycle[]
+  LAB_0E95: mogPaletteRamps  # PaletteRamp[]
+  SECSTRT_39: mogPaletteTarget  # pointer to the palette the cycling works on
+  SECSTRT_38: mogNoSprite  # the "no sprite" data: height 5, no pixels
+  SECSTRT_15: mogTileMask  # chip: the 200-byte tile mask buffer
+  SECSTRT_43: mogCursorSprite  # hardware sprite data of the cursor
+  # ---- files, banks, texts the loaders name ----
+  LAB_0122: mogFileDragon5  # name of the fifth dragon file
+  LAB_013B: mogFilePackTest  # the arena picture pack "Test"
+  LAB_0AB7: mogBankFileBe  # sound bank file names (Be.a ...)
+  LAB_0AB8: mogBankFileBalok
+  LAB_0AB9: mogBankFileDragon
+  LAB_0ABA: mogBankFileTroll
+  LAB_0ABB: mogBankFileTroggSpear
+  LAB_0ABD: mogBankFileDemon
+  LAB_0ABE: mogBankFileWizard
+  LAB_0ABF: mogBankFileRatmen
+  LAB_0AC0: mogBankFileMudmen
+  LAB_0AC1: mogBankFileCampaign
+  LAB_0AC2: mogBankFileScreen
+  SECSTRT_17: mogBankFileKnights
+  # ---- file names (S_4 / S_0) and button / caption texts, named after their content ----
+  LAB_0994: mogTextNewMoonMoonstone  # "New moon Moonstone"
+  LAB_0995: mogTextFullMoonstone  # "Full Moonstone"
+  LAB_0996: mogTextHalfMoonstone  # "Half Moonstone"
+  LAB_0997: mogTextKeyToTheValley  # "Key to the Valley"
+  LAB_09B1: mogTextPaddedArmour  # "Padded armour"
+  LAB_09B5: mogTextLongSword  # "Long sword"
+  LAB_098D: mogTextRingOfProtection  # "Ring of Protection"
+  LAB_098E: mogTextTalismanOfTheWyrm  # "Talisman of the Wyrm"
+  LAB_09AB: mogTextStrength  # "Strength"
+  LAB_09AC: mogTextEndurance  # "Endurance"
+  LAB_09AD: mogTextConstitution  # "Constitution"
+  LAB_09AE: mogTextLifePoints  # "Life points"
+  LAB_09AF: mogTextGold  # "Gold"
+  LAB_09B0: mogTextDagger  # "Dagger"
+  LAB_09B2: mogTextChainMail  # "Chain mail"
+  LAB_09B3: mogTextPlateArmour  # "Plate armour"
+  LAB_09B4: mogTextBattleArmour  # "Battle armour"
+  LAB_09B6: mogTextBroadSword  # "Broad sword"
+  LAB_09B7: mogTextClaymoreSword  # "Claymore sword"
+  LAB_09B8: mogTextSwordOfSharpness  # "Sword of Sharpness"
+  LAB_09CB: mogTextTakeMoonstone  # "Take Moonstone"
+  LAB_09DE: mogTextBuyMoonstone  # shop: buy price 20 GP
+  LAB_09EA: mogTextSellMoonstone  # shop: sell price 10 GP
+  LAB_098B: mogTextDrinkHealingPotion  # "Drink Healing potion"
+  LAB_098C: mogTextUseGemOfSeeing  # "Use Gem of Seeing"
+  LAB_098F: mogTextCastScrollOfHaste  # "Cast scroll of Haste"
+  LAB_0990: mogTextCastScrollOfAquisition  # item / menu text
+  LAB_0991: mogTextCastScrollOfTheHawk  # "Cast scroll of the Hawk"
+  LAB_0992: mogTextCastScrollOfTheWyrm  # "Cast scroll of the Wyrm"
+  LAB_0993: mogTextCastScrollOfProtection  # item / menu text
+  LAB_076F: mogFileKn1Ob  # file name "kn1.ob"
+  LAB_0770: mogFileKn2Ob  # file name "kn2.ob"
+  LAB_0771: mogFileKn3Ob  # file name "kn3.ob"
+  LAB_0772: mogFileKn4Ob  # file name "kn4.ob"
+  LAB_0773: mogFileKn5Ob  # file name "Kn5.ob"
+  LAB_0774: mogFileBloCel  # file name "blo.cel"
+  LAB_0775: mogFileHe1Ob  # file name "He1.ob"
+  LAB_0776: mogFileHe2Ob  # file name "He2.ob"
+  LAB_0777: mogFileHe3Ob  # file name "He3.ob"
+  LAB_0778: mogFileTroggAxe1Cel  # file name "TroggAxe1.cel"
+  LAB_0779: mogFileTroggAxe2Cel  # file name "TroggAxe2.cel"
+  LAB_077A: mogFileTroggSpear1Cel  # file name "TroggSpear1.cel"
+  LAB_077B: mogFileTroggSpear2Cel  # file name "TroggSpear2.cel"
+  LAB_077C: mogFileRatmen1Cel  # file name "Ratmen1.cel"
+  LAB_077D: mogFileRatmen2Cel  # file name "Ratmen2.cel"
+  LAB_077E: mogFileBe1C  # file name "be1.c"
+  LAB_077F: mogFileBe2C  # file name "be2.c"
+  LAB_0780: mogFileDragon1Cel  # file name "Dragon1.cel"
+  LAB_0781: mogFileDragon2Cel  # file name "Dragon2.cel"
+  LAB_0782: mogFileMudmen1Cel  # file name "Mudmen1.cel"
+  LAB_0783: mogFileMudmen2Cel  # file name "Mudmen2.cel"
+  LAB_0784: mogFileKiCel  # file name "ki.cel"
+  LAB_0785: mogFileBalok1Cel  # file name "Balok1.cel"
+  LAB_0786: mogFileBalok3Cel  # file name "Balok3.cel"
+  LAB_0787: mogFileBalok2Cel  # file name "Balok2.cel"
+  LAB_0788: mogFileWi1C  # file name "wi1.c"
+  LAB_0789: mogFileWi1P  # file name "wi1.p"
+  LAB_078A: mogFileWi2P  # file name "wi2.p"
+  LAB_078B: mogFileBoldF  # file name "bold.f"
+  LAB_078C: mogFileSmallFont  # file name "Small.font"
+  LAB_07AD: mogFileSelCel  # file name "Sel.cel"
+  LAB_07AE: mogFileMessagePiv  # file name "message.piv"
+  LAB_07AF: mogFileChPiv  # file name "ch.piv"
+  LAB_07B0: mogFileDemon1Cel  # file name "Demon1.cel"
+  LAB_07B1: mogFileDemon2Cel  # file name "Demon2.cel"
+  LAB_07B2: mogFileDemon3Cel  # file name "Demon3.cel"
+  LAB_07B3: mogFileDemon4Cel  # file name "Demon4.cel"
+  LAB_07B4: mogFileTroll1Cel  # file name "Troll1.cel"
+  LAB_07B5: mogFileTroll2Cel  # file name "Troll2.cel"
+  LAB_070E: mogFileMiC  # file name "mi.c"
+  LAB_0715: mogFileHighWoodPiv  # file name "HighWood.piv"
+  LAB_0716: mogFileWaterDeepPiv  # file name "WaterDeep.piv"
+  LAB_0998: mogTextPotionOfHealing  # "Potion of Healing"
+  LAB_0999: mogTextGemOfSeeing  # "Gem of Seeing"
+  LAB_099A: mogTextScrollOfHaste  # "Scroll of Haste"
+  LAB_099B: mogTextScrollOfAquisition  # "Scroll of Aquisition"
+  LAB_099C: mogTextScrollOfTheHawk  # "Scroll of the Hawk"
+  LAB_099D: mogTextScrollOfTheWyrm  # "Scroll of the Wyrm"
+  LAB_099E: mogTextScrollOfProtection  # "Scroll of Protection"
+  LAB_099F: mogTextOfferPotionOfHealing  # item / menu text
+  LAB_09A0: mogTextOfferGemOfSeeing  # "Offer Gem of Seeing"
+  LAB_09A1: mogTextOfferRingOfProtection  # item / menu text
+  LAB_09A2: mogTextOfferTalismanOfTheWyrm  # item / menu text
+  LAB_09A3: mogTextOfferScrollOfHaste  # "Offer scroll of Haste"
+  LAB_09A4: mogTextOfferScrollOfAquisition  # item / menu text
+  LAB_09A5: mogTextOfferScrollOfTheHawk  # item / menu text
+  LAB_09A6: mogTextOfferScrollOfTheWyrm  # item / menu text
+  LAB_09A7: mogTextOfferScrollOfProtection  # item / menu text
+  LAB_09A8: mogTextIncreaseStrength  # "Increase Strength"
+  LAB_09A9: mogTextIncreaseEndurance  # "Increase Endurance"
+  LAB_09AA: mogTextIncreaseConstitution  # item / menu text
+  LAB_09B9: mogTextTakePotionOfHealing  # "Take Potion of Healing"
+  LAB_09BA: mogTextTakeGemOfSeeing  # "Take Gem of Seeing"
+  LAB_09BB: mogTextTakeRingOfProtection  # item / menu text
+  LAB_09BC: mogTextTakeTalismanOfTheWyrm  # item / menu text
+  LAB_09BD: mogTextTakeScrollOfHaste  # "Take scroll of Haste"
+  LAB_09BE: mogTextTakeScrollOfAquisition  # item / menu text
+  LAB_09BF: mogTextTakeScrollOfTheHawk  # "Take scroll of the Hawk"
+  LAB_09C0: mogTextTakeScrollOfTheWyrm  # "Take scroll of the Wyrm"
+  LAB_09C1: mogTextTakeScrollOfProtection  # item / menu text
+  LAB_09C2: mogTextTakeGold  # "Take Gold"
+  LAB_09C3: mogTextTakeDaggers  # "Take Daggers"
+  LAB_09C4: mogTextTakeClaymoreSword  # "Take Claymore sword"
+  LAB_09C5: mogTextTakeSwordOfSharpness  # item / menu text
+  LAB_09C6: mogTextTakeBroadSword  # "Take Broad sword"
+  LAB_09C7: mogTextTakeBattleArmour  # "Take Battle armour"
+  LAB_09C8: mogTextTakePlateArmour  # "Take Plate armour"
+  LAB_09C9: mogTextTakeChainmail  # "Take Chainmail"
+  LAB_09CA: mogTextTakeKeyToTheValley  # "Take Key to the Valley"
+  LAB_09CC: mogTextLifePointsLeft  # "Life points left"
+  LAB_09CD: mogTextBuyBroadSword  # shop: buy price 10 GP
+  LAB_09CE: mogTextBuyClaymoreSword  # shop: buy price 25 GP
+  LAB_09CF: mogTextBuyChainmail  # shop: buy price 30 GP
+  LAB_09D0: mogTextBuyPlateArmour  # shop: buy price 50 GP
+  LAB_09D1: mogTextBuyBattleArmour  # shop: buy price 75 GP
+  LAB_09D2: mogTextBuyADagger  # shop: buy price 2 GP
+  LAB_09D3: mogTextBuySwordOfSharpness  # shop: buy price 52 GP
+  LAB_09D4: mogTextBuyKey  # shop: buy price 12 GP
+  LAB_09D5: mogTextBuyPotionOfHealing  # shop: buy price 20 GP
+  LAB_09D6: mogTextBuyGemOfSeeing  # shop: buy price 32 GP
+  LAB_09D7: mogTextBuyRingOfProtection  # shop: buy price 40 GP
+  LAB_09D8: mogTextBuyTalisman  # shop: buy price 52 GP
+  LAB_09D9: mogTextBuyScrollOfHaste  # shop: buy price 36 GP
+  LAB_09DA: mogTextBuyScrollOfAquisition  # shop: buy price 52 GP
+  LAB_09DB: mogTextBuyScrollOfTheHawk  # shop: buy price 52 GP
+  LAB_09DC: mogTextBuyScrollOfTheWyrm  # shop: buy price 40 GP
+  LAB_09DD: mogTextBuyScrollOfProtection  # shop: buy price 24 GP
+  LAB_09DF: mogTextSellSwordOfSharpness  # "Sword of Sharpness"
+  LAB_09E0: mogTextSellKey  # shop: sell price 6 GP
+  LAB_09E1: mogTextSellPotionOfHealing  # shop: sell price 10 GP
+  LAB_09E2: mogTextSellGemOfSeeing  # shop: sell price 16 GP
+  LAB_09E3: mogTextSellRing  # shop: sell price 20 GP
+  LAB_09E4: mogTextSellTalisman  # shop: sell price 26 GP
+  LAB_09E5: mogTextSellScrollOfHaste  # shop: sell price 16 GP
+  LAB_09E6: mogTextSellScrollOfAquisition  # shop: sell price 26 GP
+  LAB_09E7: mogTextSellScrollOfTheHawk  # shop: sell price 26 GP
+  LAB_09E8: mogTextSellScrollOfTheWyrm  # shop: sell price 20 GP
+  LAB_09E9: mogTextSellScrollOfProtection  # shop: sell price 12 GP
+  LAB_091B: mogFileHEAPiv  # file name "HEA.piv"
+  LAB_091C: mogFileMYSPiv  # file name "MYS.piv"
+  LAB_091D: mogFileMysCel  # file name "mys.cel"
+  LAB_0971: mogTextYourGold  # "Your Gold"
+  LAB_0972: mogTextDonation  # "Donation"
+  LAB_0F4D: mogFileTavPiv  # file name "tav.piv"
+  LAB_0F4E: mogFileDicePiv  # file name "dice.piv"
+  LAB_0F4F: mogFileDiceCel  # file name "dice.cel"
+  LAB_0F50: mogFileHen1P  # file name "Hen1.p"
+  LAB_0F51: mogFileHen1C  # file name "Hen1.c"
+
+program:
+  # ---- memory carve, screens ----
+  LAB_00C2: prgChipFree
+  LAB_00C3: prgChipSize
+  LAB_00C4: prgFastFree
+  LAB_00C5: prgFastSize
+  LAB_00C6: prgBackground              # the clean background
+  LAB_056C: prgDrawScreen              # the screen being drawn
+  SECSTRT_30: prgShownScreen           # the screen being shown
+  LAB_05D2: prgLivePalette
+  SECSTRT_32: prgVolumeFade            # volume fade mode: 0 off, 1 ramp, else fade down
+  # ---- wipe ----
+  LAB_05B8: prgWipeState               # u16[2]: [0] progress 0..1000, [1] step
+  LAB_05BC: prgWipeRows                # rows of blocks to draw
+  LAB_05BD: prgWipeFirstRow
+  LAB_05D7: prgWipePicture
+  SECSTRT_33: prgWipeTiles             # tile map: 10 words per row of blocks
+  # ---- jobs, scene engine ----
+  LAB_0282: prgJobPool
+  LAB_0283: prgJobTemp
+  LAB_0284: prgJobStates
+  LAB_0285: prgJobTempState
+  LAB_0277: prgJobFullFlag
+  LAB_0273: prgJobScriptFlag
+  LAB_0270: prgBoxMinX
+  LAB_0271: prgBoxMinY
+  LAB_0272: prgBoxMaxY
+  LAB_011B: prgHandlers                # job handler table
+  LAB_0123: prgSceneGap
+  LAB_0060: prgIntroState
+  LAB_0276: prgFrames
+  LAB_0281: prgFrameSets
+  LAB_0286: prgDrawListA
+  LAB_0287: prgDrawListB
+  LAB_0279: prgRectListB
+  LAB_027A: prgRectListA
+  LAB_027C: prgRectList
+  # ---- text, pictures, files ----
+  LAB_00F8: prgCharMap
+  LAB_011A: prgFontRecord
+  LAB_04DF: prgTextFlag
+  LAB_0434: prgPicPlanes
+  LAB_0506: prgPicPalette
+  LAB_04D9: prgPicDest
+  LAB_04A3: prgCelLastName
+  LAB_04A4: prgCelLastTotal
+  LAB_052A: prgCelScratch
+  LAB_0382: prgFileErr
+  # ---- input (rt/input.hpp IrqCells) ----
+  SECSTRT_16: prgKeyAny
+  LAB_0362: prgKeyLast
+  LAB_0363: prgFrameOn
+  LAB_0367: prgBlitDone
+  LAB_0368: prgPrevV
+  LAB_0369: prgPrevH
+  LAB_036A: prgIdleWord
+  LAB_036B: prgIdleLong
+  LAB_036C: prgKeyXlat
+  LAB_036D: prgKeyDown
+  LAB_0372: prgHooks
+  SECSTRT_17: prgMouseX
+  LAB_0375: prgMouseY
+  LAB_0376: prgButton
+  LAB_0377: prgButton2
+  LAB_0379: prgFrame
+
+  # ===== ROADMAP 7.1s, second pass =====
+  # ---- program cells (src/rt/enhanced.cpp, engine_*.cpp, wipe.cpp, audio.cpp) ----
+  LAB_00C7: prgScreenBufA  # chip: second full-screen buffer of the carve
+  LAB_00C8: prgScreenBufB
+  LAB_00C9: prgScreenBufC
+  LAB_00CA: prgScreenBufD
+  LAB_0124: prgModuleBase  # chip: the module (music) base
+  LAB_0045: prgFastBase  # fast base of the carve (the cell sits in the code)
+  LAB_00CB: prgFastBufA  # five full-screen buffers in fast RAM
+  LAB_00CC: prgFastBufB
+  LAB_00CD: prgFastBufC
+  LAB_00CE: prgFastBufD
+  LAB_00CF: prgFastBufE
+  SECSTRT_3: prgScreenBufs  # three screen buffer pointers
+  LAB_00D0: prgIntroPhase  # intro step counter (init 4, the skip sets 2)
+  LAB_0005: prgBootFlagsCopy  # copy of the boot flags
+  LAB_003E: prgOverlayPhase  # credit overlay phase word
+  LAB_00EF: prgSpawnId  # spawn id word of the job pool
+  LAB_00F0: prgSpawnPair  # the spawn pair (two longs)
+  LAB_00F9: prgWipeBlockHeight  # block height of the wipe
+  LAB_0120: prgSceneEnded  # set by job handler 0: the script ended, stop the frame loop
+  LAB_0121: prgCreditCels  # cel table of the credit overlay
+  LAB_0274: prgPaletteHook  # palette hook buffer
+  LAB_027E: prgDrawListANext  # next entry of draw list A
+  LAB_027F: prgDrawListBNext  # next entry of draw list B
+  LAB_0280: prgCallTable  # routines of opcode $B4 with a selector
+  SECSTRT_11: prgBoxMaxX  # dirty box of the job being run
+  LAB_0002: prgCaptionText0  # caption text blocks of the intro
+  LAB_00A2: prgCaptionText1
+  LAB_00AA: prgCaptionText2
+  LAB_05E7: prgBoundaryFlag  # non-zero: leave straight to the game
+  LAB_05E6: prgPageFlag  # set to 1 by the page-flag step
+  LAB_056E: prgDisplayPalette  # default palette of the display (32 words)
+  LAB_056F: prgDisplayPaletteFlag
+  LAB_05CF: prgPaletteTarget  # pointer to the palette the cycling works on
+  LAB_05D0: prgPalettePeriod
+  LAB_05D1: prgPaletteCounter
+  LAB_05D3: prgPaletteCycles  # PaletteCycle[]
+  LAB_05D4: prgPaletteRamps  # PaletteRamp[]
+  LAB_05D6: prgWipePictures  # the three source pictures of the wipe
+  LAB_05E0: prgWipeSkip  # source skip of the last clipped block

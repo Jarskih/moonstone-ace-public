@@ -1,0 +1,24 @@
+# Boot regression 2: menu -> Practice -> the knight walks right. (The map of regression.txt never returns to the menu, so
+# Practice is a second boot.) Practice's knight reads PORT 0 (mog LAB_00EA picks the port from the record), the menu port 1.
+# The fight scene is not deterministic (random enemy moves, load timing), hence the loose tolerances.
+# Joystick presses are pulses, screens are waited for, see regression.txt.
+# shotcmp-tol reg-practice-start 12
+# shotcmp-tol reg-practice-right 12
+# shotdiff reg-practice-start reg-practice-right 1.0
+# shotdiff reg-menu-practice reg-practice-start 20
+
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 10 joy1 down pulse
+frame 40 joy1 down pulse
+frame 100 shot reg-menu-practice
+
+# fire: Practice loads (the load's frames do not count, 2000 are generous for the fight to start)
+frame 130 joy1 fire pulse
+frame 2000 shot reg-practice-start
+
+# hold right on port 0 for 190 frames: the knight walks to the right edge
+frame 2010 joy0 right
+frame 2200 shot reg-practice-right
+frame 2210 joy0 none
+frame 2300 quit

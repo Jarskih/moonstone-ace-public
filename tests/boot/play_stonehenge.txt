@@ -1,0 +1,42 @@
+# Stonehenge (node 7, id $1B) without the moonstone of the phase: Danu's offer. The item screen (scene 3) lets the player pick
+# the item to give: click the sword; then the ritual (the druids, the knight, the lightning, the fade) and the status screen
+# with the extra life. The ritual runs on the game's timers: loose tolerances.
+# shotcmp-tol play-stone-offer 1.0
+# shotcmp-tol play-stone-items 1.0
+# shotcmp-tol play-stone-item-click 10
+# shotcmp-tol play-stone-ritual1 5
+# shotcmp-tol play-stone-ritual2 10
+# shotcmp-tol play-stone-ritual3 10
+# shotcmp-tol play-stone-ritual4 30
+# (ritual4 lands on one of two fade frames, 23% apart, depending on CPU timing of the build)
+# shotcmp-tol play-stone-ritual5 10
+# shotcmp-tol play-stone-ritual6 5
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke warp_node 7
+frame 1710 joy1 fire pulse 8
+frame 2010 shot play-stone-offer
+frame 2020 joy1 fire pulse 8
+frame 2320 shot play-stone-items
+frame 2330 poke cursorx 165
+frame 2330 poke cursory 100
+frame 2355 joy1 fire pulse 8
+frame 2555 shot play-stone-item-click
+frame 2755 shot play-stone-ritual1
+frame 2955 shot play-stone-ritual2
+frame 3255 shot play-stone-ritual3
+frame 3555 shot play-stone-ritual4
+frame 3955 shot play-stone-ritual5
+frame 3965 poke cursorx 236
+frame 3965 poke cursory 150
+frame 3990 joy1 fire pulse 8
+frame 4290 shot play-stone-ritual6
+frame 4390 quit

@@ -1,0 +1,31 @@
+# ROADMAP 8.4a perf probe (knight vs lair 15): boot to the map, warp_lair 15, autopilot for 2000 frames, quit. No shots (a shot freezes the guest); the
+# per-window PERFX lines of the serial log carry the numbers (docs/PERF.md). Keep the knight alive with a periodic hp poke.
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+frame 1630 poke warp_lair 15
+frame 1631 poke strength 9
+frame 1633 poke constitution 30
+frame 1636 poke endurance 9
+frame 1640 poke hpmax 310
+frame 1645 poke hp 310
+
+frame 1685 joy1 fire pulse 8
+frame 2485 log perf_lair15_arena
+frame 2495 mash joy1 10
+frame 2700 poke hp 310
+frame 2900 poke hp 310
+frame 3100 poke hp 310
+frame 3300 poke hp 310
+frame 3500 poke hp 310
+frame 3700 poke hp 310
+frame 3900 poke hp 310
+frame 4100 poke hp 310
+frame 4300 poke hp 310
+frame 4495 log perf_lair15_end
+frame 4505 quit

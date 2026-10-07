@@ -1,0 +1,21 @@
+{
+ "about": "Raw acquire/release calls that stay (tests/test_raii.py, docs/RAII.md section 3). Every entry needs a reason; the count is the number of raw calls the exemption covers. The lint fails on a new raw call and on an entry whose calls are gone: this list only shrinks.",
+ "allow": [
+  {"file": "src/engine/memstack.cpp", "kind": "mem-mark", "count": 1, "reason": "the definition of memStackRelease itself (MemMark in include/engine/guard.hpp calls it)"},
+  {"file": "src/game/flow/machine.cpp", "kind": "mem-mark", "count": 3, "reason": "scene slots: the per-level mark is taken in enter() and released in leave(), two calls of the scene stack machine (aulMark[level]), so no scope holds it; flowInit's game mark is the permanent bottom of the stack"},
+  {"file": "src/main.cpp", "kind": "system-use", "count": 2, "reason": "ACE state callbacks: splashCreate hands the system back (systemUnuse), splashDestroy takes it again (systemUse); the pair spans two callbacks of the state manager"},
+  {"file": "src/rt/adfdisks.cpp", "kind": "dos-object", "count": 1, "reason": "AllocDosObject; its FreeDosObject is the ms::scopeExit on the next line"},
+  {"file": "src/rt/adfdisks.cpp", "kind": "dos-open", "count": 1, "reason": "adfShutdown closes the image handles that tryImage released into s_aImg[] (the images stay open for the whole run)"},
+  {"file": "src/rt/combat_load.cpp", "kind": "file-open", "count": 1, "reason": "opFileOpen is the asm-side op of the scripted combat loader (src/game/combat_load.cpp, whose guard OpenFile pairs it with fileClose); open and close are two separate ops of the Ops table"},
+  {"file": "src/rt/crash.cpp", "kind": "dos-open", "count": 2, "reason": "rt_crash_c, the exception reporter: never returns (loops in Delay), so the log handle is deliberately never released"},
+  {"file": "src/rt/crash.cpp", "kind": "system-use", "count": 1, "reason": "rt_crash_c, the exception reporter: never returns, the OS is never handed back"},
+  {"file": "src/rt/enhanced.cpp", "kind": "mem-alloc", "count": 2, "reason": "the 7-plane cel temp buffer s_pTemp lives from enhancedEnable to enhancedDisable (displayAceActivate / displayAceRelease), a static resource owned by the display lifetime"},
+  {"file": "src/rt/files.cpp", "kind": "dos-object", "count": 1, "reason": "AllocDosObject in rt_file_list; its FreeDosObject is the ms::scopeExit on the next line"},
+  {"file": "src/rt/files.cpp", "kind": "dos-open", "count": 5, "reason": "the file layer owns the handles that outlive a call: s_logFh (files.log, whole run), s_fh (the single file slot; tryOpen hands the stub / real file over, closeCurrent closes it), plus the stub bookkeeping of tryOpen"},
+  {"file": "src/rt/files.cpp", "kind": "file-open", "count": 2, "reason": "the definitions of the C ABI rt_file_open / rt_file_open_exact that rt::FileHandle wraps"},
+  {"file": "src/rt/files.hpp", "kind": "file-open", "count": 2, "reason": "the declarations of the C ABI rt_file_open / rt_file_open_exact that rt::FileHandle wraps"},
+  {"file": "src/rt/game.cpp", "kind": "mem-alloc", "count": 2, "reason": "the overlay DATA snapshots (OverlayDef::pBackup): taken at the first entry of an overlay (imageEnter), freed after the overlay loop of rtGameRun; the overlay switches leave non-locally, so no scope spans them"},
+  {"file": "src/rt/irq.cpp", "kind": "dos-open", "count": 1, "reason": "MS_IRQ_TRACE debug build only: s_bpLog stays open for the whole run (the trace flush runs inside an OsAccess guard)"},
+  {"file": "src/rt/system.cpp", "kind": "dos-object", "count": 2, "reason": "fatal(): OpenLibrary intuition.library; the CloseLibrary is the ms::scopeExit right after it"}
+ ]
+}

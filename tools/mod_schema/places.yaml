@@ -1,0 +1,73 @@
+# Schema of PROGDIR:mods/places.ini (ROADMAP 9.5c).  Format: see shops.yaml and rules.yaml.
+# The node numbers of the places are the ones src/game/scene_places.cpp placeClassify had before 9.5c.  The positions of the map
+# nodes are not in this tree (the game reads them from the disks): -1 keeps them.
+file: places.ini
+title: Places on the map
+sections:
+  place:
+    doc: >-
+      What the map nodes are.  Arriving at a node whose number is in `node_first`..`node_last` of a row visits a place of that row's
+      `kind`; a node in no row is not a place.  The first row that matches wins.  The kinds are the places of the game; a new row
+      (`base = <row>`) can give another node the visit of an existing kind.
+    struct: PlaceDef
+    target: aPlaces
+    layout: [ubNodeFirst, ubNodeLast, ubKind]
+    names: [village, town_a, town_b, stonehenge, valley, wizard, duel]
+    max: 12
+    keys:
+      node_first:
+        member: ubNodeFirst
+        type: int
+        size: 1
+        min: 0
+        max: 255
+        default: {village: 21, town_a: 25, town_b: 26, stonehenge: 27, valley: 28, wizard: 30, duel: 33}
+        source: "const: src/game/scene_places.cpp placeClassify (before ROADMAP 9.5c)"
+        doc: The lowest map node number of the row.
+      node_last:
+        member: ubNodeLast
+        type: int
+        size: 1
+        min: 0
+        max: 255
+        default: {village: 24, town_a: 25, town_b: 26, stonehenge: 27, valley: 28, wizard: 30, duel: 33}
+        source: "const: src/game/scene_places.cpp placeClassify (before ROADMAP 9.5c)"
+        doc: The highest map node number of the row.
+      kind:
+        member: ubKind
+        type: enum
+        size: 1
+        values: {none: 0, village: 1, town_a: 2, town_b: 3, stonehenge: 4, valley: 5, wizard: 6, duel: 7}
+        default: {village: village, town_a: town_a, town_b: town_b, stonehenge: stonehenge, valley: valley, wizard: wizard, duel: duel}
+        source: "const: src/game/scene_places.hpp PlaceKind"
+        doc: >-
+          What the node is: a castle village (a life and the temple), the two towns, Stonehenge, the Valley of the Gods, the
+          wizard's house, the duel place, or `none`.
+  map_node:
+    doc: >-
+      The nodes of the map: the places a knight can walk to (the node table of the game).  The rows are named by the node number in
+      hexadecimal.  A -1 keeps the position of the original data.
+    struct: MapNodeDef
+    target: aMapNodes
+    layout: [swX, swY]
+    max: 9
+    names: [n15, n16, n17, n18, n19, n1a, n1c, n1b, n1e]
+    keys:
+      x:
+        member: swX
+        type: int
+        size: 2
+        min: -1
+        max: 351
+        default: -1
+        source: "decision: -1 = the original value, which is read from the disks (ROADMAP 9.5c)"
+        doc: Map x of the node (the knight arrives when it is on this spot).
+      y:
+        member: swY
+        type: int
+        size: 2
+        min: -1
+        max: 199
+        default: -1
+        source: "decision: -1 = the original value, which is read from the disks (ROADMAP 9.5c)"
+        doc: Map y of the node.

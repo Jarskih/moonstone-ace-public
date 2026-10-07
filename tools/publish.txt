@@ -1,0 +1,28 @@
+# tools/publish.txt -- what of this tree goes into the public repository (ROADMAP 10.1, docs/PUBLISHING.md).
+#
+#   keep <glob>   published (our own work); listed only where a broader drop/gen pattern would catch it
+#   drop <glob>   not published: derived from the original code (the IRA listing) and only needed by the reference tools of a
+#                 developer checkout (they skip without it, tools/origin.py)
+#   gen  <glob>   not published: the build or setup produces it from the player's disks when it is needed
+#
+# The first matching line wins; everything that matches no line is published.  tools/leakscan.py (tests/test_leakscan.py) scans
+# every published file against the extracted disks.  Globs are fnmatch patterns on the path below moonstone-ace/; dir/** = all
+# below dir.
+
+# the data-hunk configuration gen_data reads: which hunks/cells C++ owns, their names and types (no original text in them)
+keep asm/patches/*.data.json
+keep asm/patches/*.data_*.json
+
+# the reassembled IRA listing and the patch tables against it (instruction text of the original quoted in "orig" fields)
+drop asm/**
+
+# the 68k routines lifted literally from the listing (src/lifted, the differential-test oracle)
+drop src/lifted/**
+# their tests (the lift pipeline replays the listing; these two files belong to the lifting session, which can make them skip
+# instead: tests/origskip.py)
+drop tests/test_lift.py
+drop tests/test_diffharness.py
+
+# the synth tables (original data); gen_synth_tables.py writes them into build/gen when MS_DATA_COMPILED wants them compiled in,
+# the game fills them at start-up otherwise
+gen src/engine/synth_data.cpp

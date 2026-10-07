@@ -1,0 +1,91 @@
+# Schema of PROGDIR:mods/lairs.ini (ROADMAP 9.5c).  Format: see shops.yaml and rules.yaml.
+# The numbers of the lairs and of the loot odds are the original game's and are not in this tree (the game reads them from the
+# disks at start-up), so every key defaults to -1 = "keep the original"; a mod writes only what it changes.
+file: lairs.ini
+title: Lairs and their loot
+sections:
+  lair:
+    doc: >-
+      The 24 lairs of the map, in the order of the game (`lair01` first).  A game started with a lair row set uses it instead of
+      the original: which creatures live there (`arena`), how many (`count`), where it is drawn (`x`, `y`) and its map region.  The
+      rows are fixed: no lair can be added or removed.  Without a value (-1) the original is used.
+    struct: LairDef
+    target: aLairs
+    layout: [sbArena, swCount, swX, swY, swRegion]
+    max: 24
+    names: [lair01, lair02, lair03, lair04, lair05, lair06, lair07, lair08, lair09, lair10, lair11, lair12, lair13, lair14, lair15,
+           lair16, lair17, lair18, lair19, lair20, lair21, lair22, lair23, lair24]
+    keys:
+      arena:
+        member: sbArena
+        type: int
+        size: 1
+        min: -1
+        max: 16
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5c)"
+        doc: Which of the game arenas (monster kinds and fights) the lair uses, 0 to 16, the position in the arena table.
+      count:
+        member: swCount
+        type: int
+        size: 2
+        min: -1
+        max: 60
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5c)"
+        doc: How many monsters the lair holds when the game starts (the fight scales it with the knight's strength).
+      x:
+        member: swX
+        type: int
+        size: 2
+        min: -1
+        max: 351
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5c)"
+        doc: Where the lair is drawn on the map, x.
+      y:
+        member: swY
+        type: int
+        size: 2
+        min: -1
+        max: 199
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5c)"
+        doc: Where the lair is drawn on the map, y.
+      region:
+        member: swRegion
+        type: int
+        size: 2
+        min: -1
+        max: 255
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5c)"
+        doc: The lair's map region word (which terrain pictures its fight uses).
+  loot_odds:
+    doc: >-
+      What a lair holds at the start of a game: a percentile draw is compared with `up_to` of the bands in order, and the first band
+      the draw does not exceed gives the kind of loot.  The rows are fixed; -1 keeps the original.
+    struct: LootOddsDef
+    target: aLootOdds
+    layout: [swUpTo, sbKind]
+    max: 4
+    names: [band1, band2, band3, band4]
+    keys:
+      up_to:
+        member: swUpTo
+        type: int
+        size: 2
+        min: -1
+        max: 100
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5c)"
+        doc: The highest draw (1..100) this band takes.
+      loot:
+        member: sbKind
+        type: enum
+        size: 1
+        values: {original: -1, gold: 1, items: 2, mixed: 3, none: 4}
+        default: original
+        source: "decision: -1 = the original value (ROADMAP 9.5c)"
+        doc: >-
+          What the lair holds: `gold` (a gold roll), `items` (three item rolls), `mixed` (a gold roll and two item rolls) or `none`.

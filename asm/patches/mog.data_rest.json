@@ -1,0 +1,15 @@
+{
+ "binary": "mog",
+ "_doc": "ROADMAP 7.1n5: mog's last DATA/BSS hunks as C++ objects (tools/gen_data.py); with program.data_rest.json no DATA/BSS hunk of either binary is asm-owned any more. S_6 = program S_5 (own object: non-zero constants), S_7 = program S_6 and S_8 = program S_7 and S_24 = program S_19 (zero: ONE object shared with program's, the overlays never run together and image_tab zeroes it at each entry, as the hunk loader did), S_33 = program S_28 (own typed font object), S_3 the disk-prompt text lists (typed rows + writable strings), S_38 (CHIP) the 'no sprite' data, S_45 (CHIP) the synth waveforms and instrument table: ONE object that both the C++ synth (ms::kSynthWave aliases its first 170 bytes in a game build, src/engine/synth_data.cpp) and the asm synth of the MS_SYNTH_ASM A/B build (the whole hunk) use.",
+ "patches": [],
+ "extern_data": [
+  {"section": 3,  "object": "g_mogDiskPrompt", "type": "MogDiskPrompt", "strings": true},
+  {"section": 6,  "object": "g_mogLdrCfg",    "twin_of": "program:5"},
+  {"section": 7,  "object": "g_mogLdrState",  "twin_of": "program:6",  "share": true},
+  {"section": 8,  "object": "g_mogLdrSector", "twin_of": "program:7",  "share": true},
+  {"section": 24, "object": "g_mogWork",      "twin_of": "program:19", "share": true},
+  {"section": 33, "object": "g_mogFont",      "type": "MogFont"},
+  {"section": 38, "object": "g_mogNoSprite",  "type": "MogNoSprite", "names": {"SECSTRT_38": "noSprite"}},
+  {"section": 45, "object": "g_mogSynthData", "type": "MogSynthData"}
+ ]
+}

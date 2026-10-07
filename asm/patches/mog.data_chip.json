@@ -1,0 +1,11 @@
+{
+ "binary": "mog",
+ "_doc": "ROADMAP 7.1n4: mog's CHIP data hunks. S_32 is byte-congruent with program S_27 (zero BSS, 45,744 bytes) and SHARES its object (one chip copy for both overlays; image_tab zeroes it at each entry, exactly what the loader's re-read did); S_35 is the twin of program S_30 (own object: its pointer cells point into mog); S_15 (tile mask buffer, 200 bytes) and S_43 (hardware cursor sprite buffer, 80 bytes) are own chip BSS objects. See program.data_chip.json.",
+ "patches": [],
+ "extern_data": [
+  {"section": 32, "object": "g_mogScratch", "twin_of": "program:27", "share": true},
+  {"section": 35, "object": "g_mogScreen",  "twin_of": "program:30"},
+  {"section": 15, "object": "g_mogTileMask", "type": "MogTileMask", "names": {"SECSTRT_15": "mask"}},
+  {"section": 43, "object": "g_mogCursorSprite", "type": "MogCursorSprite", "names": {"SECSTRT_43": "sprite"}}
+ ]
+}

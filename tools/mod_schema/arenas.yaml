@@ -1,0 +1,95 @@
+# Schema of PROGDIR:mods/arenas.ini (ROADMAP 9.5e2, docs/ARCHITECTURE.md 3.2).  Format: see rules.yaml.
+# The arenas' numbers (how many creatures, which palette, which loader) are the original game's and are not in this tree, so every
+# key defaults to -1 = "keep the built-in value"; a mod writes only what it changes.
+file: arenas.ini
+title: Creature arenas (the fights of the lairs)
+sections:
+  arena:
+    doc: >-
+      The creature arenas: what a lair fight is made of.  The built-in rows are the original arenas (named after their creature).
+      A row starts from the built-in arena `like` names and changes what you set.  A lair uses an arena through its slot in the arena
+      table (`arena` of lairs.ini): the built-in rows keep their slots; a new row (`base = <row>` first) needs a free `slot`
+      (10, 11, 13 or 15).  A new monster in a lair: a creature row (creatures.ini), an arena row whose `creature` is that row's number,
+      and a lair row whose `arena` is the arena's slot.  The `demon` row is the guardian's arena: it honours only `creature` and `palette`.
+    struct: ArenaDef
+    target: aArenas
+    layout: [ubLike, sbSlot, sbCreature, swAliveMax, swTotal, swPalette, sbCels, sbSounds]
+    names: [be, mudmen, demon, trogg_axe, trogg_axe_b, trogg_spear, ratmen, balok, troll]
+    max: 13
+    keys:
+      like:
+        member: ubLike
+        type: enum
+        size: 1
+        values: {be: 0, mudmen: 1, demon: 2, trogg_axe: 3, trogg_axe_b: 4, trogg_spear: 5, ratmen: 6, balok: 7, troll: 8}
+        default: {be: be, mudmen: mudmen, demon: demon, trogg_axe: trogg_axe, trogg_axe_b: trogg_axe_b, trogg_spear: trogg_spear, ratmen: ratmen, balok: balok, troll: troll}
+        source: "const: the row's own name"
+        doc: The built-in arena this row starts from (its loader, spawn lists and script changes).
+      slot:
+        member: sbSlot
+        type: int
+        size: 1
+        min: -1
+        max: 16
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e2)"
+        doc: >-
+          The slot of the arena table the row is stored in (the number a lair row names as `arena`).  -1 keeps the built-in slot; a new row needs a free one: 10, 11, 13 or 15.
+      creature:
+        member: sbCreature
+        type: int
+        size: 1
+        min: -1
+        max: 15
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e2)"
+        doc: >-
+          The creature that spawns: its row number in creatures.ini (built-in rows 0-9 in the order be, mudmen, trogg_axe, trogg_axe_b, trogg_spear, ratmen, balok, troll, demon, dragon; new rows follow in the order of the file).  -1 = the built-in arena creature.
+      alive_max:
+        member: swAliveMax
+        type: int
+        size: 2
+        min: -1
+        max: 20
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e2)"
+        doc: >-
+          Monsters alive at the same time, before the wave scaling of rules.ini.
+      total:
+        member: swTotal
+        type: int
+        size: 2
+        min: -1
+        max: 60
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e2)"
+        doc: >-
+          Monsters in the fight in all, before the wave scaling (a lair fight takes its own count, lairs.ini).
+      palette:
+        member: swPalette
+        type: int
+        size: 2
+        min: -1
+        max: 255
+        default: -1
+        source: "decision: -1 = the original value (ROADMAP 9.5e2)"
+        doc: >-
+          The palette kind of the fight screen (the colours of the arena).
+      cels:
+        member: sbCels
+        type: enum
+        size: 1
+        values: {original: -1, trogg_axe: 0, trogg_spear: 1, ratmen: 2, mudmen: 3, balok: 4, be: 5, troll: 6, dragon: 7, demon: 8}
+        default: original
+        source: "decision: original = the built-in arena's own (ROADMAP 9.5e3)"
+        doc: >-
+          The cel set (the pictures of the monsters) the arena loads, by the name of the original monster set.  A new monster's
+          own pictures come with the monster kit (ROADMAP 9.8); until then a variation can borrow another monster's set.
+      sounds:
+        member: sbSounds
+        type: enum
+        size: 1
+        values: {original: -1, balok: 0, dragon: 1, be: 2, demon: 3, troll: 4, trogg_spear: 5, ratmen: 6, mudmen: 7}
+        default: original
+        source: "decision: original = the cel set's own (ROADMAP 9.5e3)"
+        doc: The sound bank (the creature sounds) started with the cel set, by the name of the original monster's bank.

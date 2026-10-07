@@ -1,0 +1,68 @@
+# tools/data_types.yaml -- curated typed regions of the C++-owned DATA hunks (ROADMAP 7.1n2), read by tools/gen_data.py.
+# HUMAN-owned.  Sits next to tools/tables.yaml, whose row structs and table facts (label, struct/element, count,
+# row_bytes, notes) it re-uses, so a table is described once.
+#
+#   binary, section   which owned hunk (asm/patches/<bin>.data*.json `extern_data`)
+#   name              member name in the generated struct (camelCase), unique per hunk
+#   table             name of a tools/tables.yaml table (label, struct|struct_inline|element, count, row_bytes come from it), or
+#   at + struct|element|struct_inline + count     an inline region (`at`: LABEL, LABEL+n or SECSTRT_n)
+#
+# A region becomes `Struct name[count]` / `u16 name[count]` / `const char *name[count]` in the owned struct.  A pointer field
+# (cstr_ptr, ref) is a `const char *` link-time constant (0 allowed); no value of the original is changed.  Whatever no
+# region (and no string rule) covers stays a byte-run member named after its asm label.  gen_data checks every region:
+# row size == the yaml row_bytes, the region lies inside the hunk, regions do not overlap, a pointer field holds a relocation
+# or 0, a cstr[N] ends in NUL.
+
+# Row structs (TextItem, KnightName, CreatureTypeDef, Point16, EncounterBand) come from tools/tables.yaml; a `structs:` key here adds more.
+
+regions:
+  # --- mog S_4 (tables, strings, scripts) ---------------------------------------------------------------
+  - {binary: mog, section: 4, name: playerCountTable, at: SECSTRT_4, element: u16, count: 4,
+     notes: "LAB_06DE value for 1, 2, 3, 4 players: DC.L $00030002,$00010001 (read at mog.asm:1826 by the main menu; scene_menu.cpp)."}
+  - {binary: mog, section: 4, name: menuMain,              table: menu_main}
+  - {binary: mog, section: 4, name: knightNames,           table: knight_names}
+  - {binary: mog, section: 4, name: menuScrollProtection,  table: menu_scroll_protection}
+  - {binary: mog, section: 4, name: moonFrameByIndex,      at: LAB_06C2, element: u8, count: 8,
+     notes: "DC.B \"-/.010./\" = 45,47,46,48,49,48,46,47: moon frame per index (include/game/state_bind.hpp)."}
+  - {binary: mog, section: 4, name: menuDanuOffer,         table: menu_danu_offer}
+  - {binary: mog, section: 4, name: menuQuestDone,         table: menu_quest_done}
+  - {binary: mog, section: 4, name: mainMenuItemY,         table: main_menu_item_y}
+  - {binary: mog, section: 4, name: menuText06DE,          at: LAB_06DE+2, struct: TextItem, count: 3,
+     notes: "three TextItem rows (14 bytes each) right after the LAB_06DE word; the last one is LAB_06CC 'Press fire to continue' with next = 0."}
+  - {binary: mog, section: 4, name: menuGuardianProven,    table: menu_guardian_proven}
+  - {binary: mog, section: 4, name: menuValleyKeys,        table: menu_valley_keys}
+  - {binary: mog, section: 4, name: creatureTypeDef,       table: creature_type_def}
+  - {binary: mog, section: 4, name: creatureNodePos,       table: creature_node_pos}
+  - {binary: mog, section: 4, name: creatureNodeAux,       table: creature_node_aux}
+  - {binary: mog, section: 4, name: creatureNodeScript,    table: creature_node_script}
+  - {binary: mog, section: 4, name: combatActionOffsetRight, table: combat_action_offset_right}
+  - {binary: mog, section: 4, name: combatActionOffsetLeft,  table: combat_action_offset_left}
+  - {binary: mog, section: 4, name: encounterBands,        table: encounter_bands}
+  - {binary: mog, section: 4, name: menuText06E6,          at: LAB_06E6, struct: TextItem, count: 2,
+     notes: "the two TextItem rows after menu_guardian_proven (LAB_06E6, LAB_06E7; the last has next = 0)."}
+
+  # --- 7.1n5: the last DATA hunks ------------------------------------------------------------------------
+  # the two 1024-byte bold-font buffers (program S_28, mog S_33): 128 glyphs of 8 rows, indexed by ASCII code ('!' = glyph 33
+  # starts at +264, the 33 control/space glyphs before it are zero); filled from `bold.f` at run time, read by the text printer.
+  - {binary: program, section: 28, name: font, at: SECSTRT_28, struct: Glyph8, count: 128,
+     notes: "1024-byte bold font: 128 glyphs x 8 bytes (one byte per pixel row), ASCII-indexed; the asm DC data is the built-in default."}
+  - {binary: mog, section: 33, name: font, at: SECSTRT_33, struct: Glyph8, count: 128,
+     notes: "twin of program S_28."}
+  # mog S_3: the disk-prompt text lists (tables.yaml menu_disk_prompt: 7 TextItem rows, then the NUL-terminated texts)
+  - {binary: mog, section: 3, name: menuDiskPrompt, table: menu_disk_prompt}
+  # mog S_45 (CHIP): the synth's nine waveforms + the 131-record instrument table (the C++ synth reads only the 170-byte wave
+  # part through ms::kSynthWave; the asm synth of the MS_SYNTH_ASM A/B build reads all of it)
+  - {binary: mog, section: 45, name: synthWave, at: SECSTRT_45, element: u8, count: 168,
+     notes: "single-cycle waveforms (LAB_109A..LAB_10A1 are the individual cycles inside); Paula reads them, hence CHIP."}
+  - {binary: mog, section: 45, name: synthInstWave, at: LAB_10A2, struct: SynthInstWave, count: 9,
+     notes: "instruments 0..8 play the on-hunk waveforms: the sample cell is a pointer into the wave part (14-byte records: loop word, loop offset, length in words, sample address, pitch table address)."}
+  - {binary: mog, section: 45, name: synthInst, at: LAB_10A3, struct: SynthInstRec, count: 122,
+     notes: "instruments 9..130 (sample banks): the sample cell holds the offset in the bank, a plain value; ms::kSynthInst is the C++ copy of the whole table. LAB_10AE (14 bytes) follows as the unparsed terminator."}
+
+structs:
+  Glyph8:
+    fields: [[rows, 'u8[8]']]
+  SynthInstWave:
+    fields: [[loop, i16], [loopOff, u16], [words, u16], [sample, ref], [pitch, ref]]
+  SynthInstRec:
+    fields: [[loop, i16], [loopOff, u16], [words, u16], [sampleOffset, u32], [pitch, ref]]

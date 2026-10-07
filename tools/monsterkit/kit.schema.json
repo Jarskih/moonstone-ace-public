@@ -1,0 +1,95 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "$id": "kit.schema.json",
+ "title": "Moonstone monster kit, format 1 (docs/MONSTER_KIT.md section 2.2)",
+ "description": "One kit = a folder with kit.json (this schema) + PNG sheets.  Checked by tools/monsterkit/jsonschema_lite.py (a subset validator: type, enum, const, properties, required, additionalProperties, items, min/max, pattern, oneOf, anyOf, $ref).  Cross-field rules (checklist per AI, palette classes, memory budgets) are monsterkit.py check, not JSON Schema.",
+ "type": "object",
+ "required": ["kit", "name", "ai", "planes", "palette", "sheets", "celsets", "animations", "roles", "stats", "sounds", "arena"],
+ "additionalProperties": false,
+ "properties": {
+  "kit": {"const": 1, "description": "format version"},
+  "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$", "description": "identifier: lower case, digits, underscore; the base of the cel file names (<name>N.cel) and of the [creature <name>] row"},
+  "title": {"type": "string", "maxLength": 60},
+  "cloned_from": {"oneOf": [
+    {"type": "null"},
+    {"type": "object", "required": ["kind", "creature"], "additionalProperties": false,
+     "properties": {"kind": {"const": "game"}, "creature": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "a creature of ai_catalog.json"}}},
+    {"type": "object", "required": ["kind", "name"], "additionalProperties": false,
+     "properties": {"kind": {"const": "kit"}, "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"}}}
+  ]},
+  "ai": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "AI by name (ai_catalog.json ais); the checklist, tunables and the type byte follow it"},
+  "planes": {"enum": [5, 6], "description": "5 = 32 colours (original), 6 = 64 colours (MS_ENHANCED)"},
+  "palette": {"type": "object", "required": ["scene"], "additionalProperties": false, "properties": {
+    "scene": {"type": "string", "description": "the original creature whose fight palette scene (indices 9..15) the kit uses, or a new scene row (9.5e2)"},
+    "colors": {"type": "array", "maxItems": 64, "items": {"$ref": "#/definitions/color"}, "description": "the kit's palette as 12-bit RGB (editor working palette)"},
+    "own": {"type": "object", "description": "creature-owned colours: index (9..14 editable, 15 blood red) -> colour", "additionalProperties": false,
+            "patternProperties": {"^(9|1[0-5])$": {"$ref": "#/definitions/color"}}},
+    "allow": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 63}, "description": "indices the art may use"}}},
+  "sheets": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"type": "object", "required": ["file"], "additionalProperties": false, "properties": {
+    "file": {"type": "string", "pattern": "^[A-Za-z0-9_./-]+\\.png$"},
+    "grid": {"type": "object", "required": ["w", "h"], "additionalProperties": false, "properties": {
+      "w": {"type": "integer", "minimum": 1, "maximum": 1024}, "h": {"type": "integer", "minimum": 1, "maximum": 1024}, "pad": {"type": "integer", "minimum": 0, "maximum": 64}}}}}},
+  "celsets": {"type": "array", "minItems": 1, "maxItems": 5, "description": "up to 5 cel files = the 5 frame-set slots (LAB_05E0); draw opcodes $00..$10 are slot * 4", "items": {
+    "type": "object", "required": ["slot", "frames"], "additionalProperties": false, "properties": {
+      "slot": {"type": "integer", "minimum": 0, "maximum": 4},
+      "file": {"type": "string", "description": "\"auto\" (<name>N.cel) or the original file name a T0 reskin replaces"},
+      "hits": {"type": "boolean", "description": "the set has a collide.hit set (attack points)"},
+      "hit_name": {"type": "string", "description": "the set's name line in collide.hit (matched case-insensitively), e.g. Troll1.cel"},
+      "hit_frames": {"type": "integer", "minimum": 0, "maximum": 256, "description": "number of frames the original hit set lists (it can be shorter than the cel); the converter writes at least this many"},
+      "frames": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/definitions/frame"}}}}},
+  "animations": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/definitions/animation"}, "propertyNames": {"pattern": "^[a-z][a-z0-9_.]*$"}},
+  "roles": {"type": "object", "description": "role name -> animation name (or, for walk.* tables, an array of animation names / null)", "additionalProperties": {
+    "oneOf": [{"type": "string"}, {"type": "null"}, {"type": "array", "maxItems": 24, "items": {"type": ["string", "null"]}}]}},
+  "hurt_by_action": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": ["string", "null"]}, "description": "animation per attacker action / 4"},
+  "damage": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": "integer", "minimum": 0, "maximum": 255}, "description": "damage by own action / 4 (only the entries the AI reads count: ai_catalog.json damage)"},
+  "stats": {"type": "object", "required": ["hp"], "additionalProperties": false, "properties": {
+    "hp": {"type": "integer", "minimum": 1, "maximum": 255},
+    "reach": {"type": "integer", "minimum": 0, "maximum": 400}, "keep_away": {"type": "integer", "minimum": 0, "maximum": 400}, "depth": {"type": "integer", "minimum": 0, "maximum": 100},
+    "wave_row": {"type": "string"}}},
+  "sounds": {"type": "object", "required": ["bank"], "additionalProperties": false, "properties": {
+    "bank": {"type": "string", "description": "an existing creature sound bank (ai_catalog.json sound_banks); new samples are out of scope for v1"}}},
+  "arena": {"type": "object", "additionalProperties": false, "properties": {
+    "backdrop": {"type": "string"},
+    "alive_max": {"type": "integer", "minimum": 1, "maximum": 4}, "total": {"type": "integer", "minimum": 1, "maximum": 20},
+    "spawn": {"enum": ["alternating", "list"]}, "frame_budget": {"type": "integer", "minimum": 1, "maximum": 12}}},
+  "tier": {"enum": ["auto", "t0", "t1", "t2"]},
+  "origin": {"type": "object", "description": "provenance of a game clone (written by monsterkit.py clone, read by check/build T0): the source creature, per cel file the sha1 of the file and of its decoded planes, the original frame sizes / plane bits / anchors, the colours the source art used (those stay legal even when they are forbidden classes), a hash of the source scripts, the source's stats and its largest per-tick draw area"}
+ },
+ "definitions": {
+  "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
+  "frame": {"type": "object", "required": ["id"], "additionalProperties": false, "properties": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
+    "src": {"type": "object", "required": ["sheet", "rect"], "additionalProperties": false, "properties": {
+      "sheet": {"type": "integer", "minimum": 0}, "rect": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "integer", "minimum": 0}, "description": "x, y, w, h in the sheet"}}},
+    "png": {"type": "string", "description": "alternative to src: a per-frame PNG (frames/NNN.png)"},
+    "anchor": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}, "description": "the frame's ground point; the converter emits dx = -anchorX, dy = -anchorY (dy fits s8)"},
+    "attack": {"type": "object", "required": ["points"], "additionalProperties": false, "properties": {
+      "type": {"type": "integer", "minimum": 0, "maximum": 99, "description": "the TT line of collide.hit (never read by the engine)"},
+      "points": {"type": "array", "maxItems": 98, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 0, "maximum": 255}}, "description": "attack points x, y in 0..255 from the frame's top-left (bytes in the hit record)"}}}}},
+  "draw": {"type": "object", "required": ["frame"], "additionalProperties": false, "properties": {
+    "frame": {"type": "string"}, "slot": {"type": "integer", "minimum": 0, "maximum": 31},
+    "dx": {"type": "integer", "minimum": -32768, "maximum": 32767}, "dy": {"type": "integer", "minimum": -128, "maximum": 127},
+    "hurt": {"type": "boolean"}, "attack": {"type": "boolean"}, "bg": {"type": "boolean", "description": "flag $10: draw into the background"},
+    "text": {"type": "boolean", "description": "flag $20"}, "nobox": {"type": "boolean", "description": "flag $40"}, "nogore": {"type": "boolean", "description": "flag $80: skipped when Gore is off"},
+    "flags": {"type": "integer", "minimum": 0, "maximum": 255, "description": "raw flags byte (bits 2 / 3 have no name)"}}},
+  "event": {"type": "object", "required": ["poke"], "additionalProperties": false, "properties": {
+    "name": {"type": "string"},
+    "poke": {"type": "object", "required": ["off", "size", "value"], "additionalProperties": false, "properties": {
+      "off": {"type": "integer", "minimum": -32768, "maximum": 32767, "description": "offset in the owner record"},
+      "size": {"enum": ["byte", "word", "long"]},
+      "op": {"const": "store", "description": "$A8 STORES (the low byte of) the value: it never ORs a bit"},
+      "value": {"oneOf": [{"type": "integer"}, {"type": "string", "description": "an animation name: a script pointer (the original pokes +22 with script addresses)"}]}}}}},
+  "animation": {"type": "object", "required": ["steps"], "additionalProperties": false, "properties": {
+    "loop": {"type": "integer", "minimum": 0, "maximum": 255, "description": "$88 count (0 = none)"},
+    "steps": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["draws"], "additionalProperties": false, "properties": {
+      "ticks": {"type": "integer", "minimum": 1, "maximum": 255, "description": "fight frames ($FF markers) this step lasts"},
+      "draws": {"type": "array", "items": {"$ref": "#/definitions/draw"}},
+      "move": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer"}},
+      "sound": {"type": ["integer", "null"], "minimum": 0, "maximum": 255},
+      "events": {"type": "array", "items": {"$ref": "#/definitions/event"}}}}},
+    "motion": {"oneOf": [{"type": "null"}, {"type": "object", "additionalProperties": false, "properties": {
+      "param": {"type": "integer"}, "count": {"type": "integer"}, "flags": {"type": "integer"}, "vy": {"type": "integer"}, "vylim": {"type": "integer"}, "vx": {"type": "integer"}, "vxlim": {"type": "integer"}}}]},
+    "on_dead": {"type": ["string", "null"], "description": "animation to jump to (ifdead, $B4) when the owner's HP is <= 0: the die sequence"},
+    "asm": {"type": ["string", "null"], "description": "opcodes the steps cannot express, in the tools/fightscript.py text syntax, kept verbatim so a clone converts back byte-identical"}}}
+ }
+}

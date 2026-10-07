@@ -1,0 +1,8 @@
+{
+ "binary": "mog",
+ "_doc": "ROADMAP 7.1n2: mog S_4 (tables, strings, scripts) is C++-owned. tools/gen_data.py emits struct MogTables with the curated regions of tools/data_types.yaml typed (row structs from tools/tables.yaml), NUL-terminated text as writable char arrays ('strings') and everything else as byte-run members named after their asm labels. All mog_LAB_* names stay as .set aliases. Separate from mog.data.json (n1 twins) and mog.data_state.json (n3).",
+ "patches": [],
+ "extern_data": [
+  {"section": 4, "object": "g_mogTables", "type": "MogTables", "strings": true}
+ ]
+}

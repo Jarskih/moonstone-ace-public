@@ -1,0 +1,34 @@
+# tools/contracts.yaml -- hand-written register contracts for thunked routines (ROADMAP 3.2a).
+# Validated by tools/thunks.py (load_contracts); tools/symbols.yaml stays owned by tools/routines.py.
+# A routine with `approx`, `uses_sp_tricks`, `ccr_live_out` or `self_modifying` in routines.json may
+# only be swapped for its lifted C++ body when it has an entry here.  Keys per routine:
+#   regs_in   registers read              regs_out  registers the thunk writes back
+#   ccr_out   caller uses the exit CCR    sp_delta  bytes popped beyond the own return address
+#   reason    mandatory: evidence for the contract
+
+program:
+  LAB_01A1:
+    regs_in: [d3, a6]
+    regs_out: [d3, a6]
+    ccr_out: true
+    reason: >-
+      RNC bit reader (program.asm 3706): LSL.B #1,D3 / refill from -(A6) / ROXL.B. The callers
+      branch on the carry it returns, so the exit CCR is part of the interface (ccr_live_out).
+  LAB_049B:
+    regs_in: [a2]
+    regs_out: [d0, a1, a2]
+    ccr_out: false
+    sp_delta: 4
+    reason: >-
+      Continuation reached by RTS, not by a call (program.asm 8719, pushed by `PEA LAB_049B(PC)`):
+      it pops one more stack word into A1 and RTSes through the next one, so the stack is
+      unbalanced by 4 bytes (uses_sp_tricks) and the thunk must return through [SP+4].
+
+mog:
+  LAB_0CC1:
+    regs_in: [a2]
+    regs_out: [d0, a1, a2]
+    ccr_out: false
+    sp_delta: 4
+    reason: >-
+      Same continuation as program LAB_049B (mog.asm 22897, `PEA LAB_0CC1(PC)` at 22906).

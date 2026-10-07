@@ -1,0 +1,12 @@
+{
+ "about": "Known layer violations (tests/test_layers.py). Every entry needs a reason and the ROADMAP task that removes it. The lint fails on a new violation and on an entry whose violation is gone: this list only shrinks.",
+ "allow": [
+  {
+   "file": "src/game/api/creatures.cpp",
+   "kind": "knight-pointer-field",
+   "detail": "ulWalkScripts",
+   "reason": "creatureApply is the one writer of a creature record's table pointers (it replaces the init* bodies); a World accessor would only wrap the same store",
+   "task": "9.5e1"
+  }
+ ]
+}

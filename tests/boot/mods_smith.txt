@@ -1,0 +1,6 @@
+# ROADMAP 9.5b: mods/items.ini + shops.ini that halve the smith's prices are applied (the log shows the changed rows); the game boots to the menu.
+# Run with: py tools/modsboot.py smith
+wait log done_applied_2_skipped_0 max 3000
+wait input 10 max 3000
+frame 60 log mods_smith_reached_menu
+frame 120 quit

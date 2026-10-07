@@ -1,0 +1,13 @@
+{
+ "binary": "mog",
+ "_doc": "ROADMAP 7.1n1: twins of the program hunks (program S_16/17/22/24/26 = mog S_21/22/27/29/31). A twin re-uses the struct type of its program entry; 'share' (no pointer cells) makes the mog labels alias the program's object, so the engine data exists once (image_tab re-initialises it at each overlay entry, as the loader's re-read did). mog S_39 is NOT a twin of program S_32 (different layout). See program.data.json.",
+ "patches": [],
+ "extern_data": [
+  {"section": 21, "object": "g_mogIoFlags",   "twin_of": "program:16"},
+  {"section": 22, "object": "g_mogIoKeys",    "twin_of": "program:17", "share": true},
+  {"section": 27, "object": "g_mogLdConst",   "twin_of": "program:22", "share": true},
+  {"section": 29, "object": "g_mogBlitState", "twin_of": "program:24", "share": true},
+  {"section": 31, "object": "g_mogBlitTab",   "twin_of": "program:26"},
+  {"section": 39, "object": "g_mogPalConst",  "type": "MogPalConst"}
+ ]
+}

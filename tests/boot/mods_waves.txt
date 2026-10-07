@@ -1,0 +1,23 @@
+# ROADMAP 9.5a/9.4d: a strong knight (strength 9, 310 HP) enters lair 0; the arena logs `waves: scaling=.. total=.. alive=.. level=..`
+# (src/rt/arena.cpp scaleWave -> game/rules/waves.cpp). With `[waves] scaling = none` the counts stay unscaled (level=0), by default
+# they grow. Run with: py tools/modsboot.py waves|plain|defaults   (same script; only mods/ differs)
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+frame 1630 poke warp_lair 0
+frame 1631 poke strength 9
+frame 1633 poke constitution 30
+frame 1636 poke endurance 9
+frame 1640 poke hpmax 310
+frame 1645 poke hp 310
+
+sync
+frame 40 joy1 fire pulse 8
+wait log level max 3000
+frame 60 log mods_waves_reached_arena
+frame 120 quit

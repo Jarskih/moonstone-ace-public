@@ -1,0 +1,79 @@
+/* Monster kit editor, web edition: theme tokens (light by default, dark by prefers-color-scheme or data-theme) and the
+   layout overrides for the page (stacked panels at narrow widths).  The editor.css :root block is replaced by this one. */
+:root {
+  --bg: #f3f5f9; --panel: #ffffff; --panel2: #e8ecf4; --line: #c3cbdb; --text: #1b2230; --dim: #566178;
+  --ok: #17803f; --bad: #c42626; --warn: #9a5700; --acc: #1a5fc4; --accbg: #d3e3ff;
+  --btn: #eef1f7; --btnline: #a9b3c8; --btnhov: #dde4f1; --chipbg: #dfe5f0; --okbg: #d2f0de; --badbg: #fadada; --badtxt: #a31d1d;
+  --text2: #3a455c; --badrow: #fdeeee; --canvasbg: #d5dbe8; --listbg: #eef1f7; --sel: #d18a00; --selbg: #fff1cf;
+  --chk1: #cfd6e4; --chk2: #dde3ee; --tr1: #bbb; --tr2: #eee; --swline: #000; --swlabel: rgba(0, 0, 0, .6); --swtext: #fff; --mute: #8a93a6; --mute2: #9aa3b5;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171d; --panel: #1b1f27; --panel2: #232833; --line: #333a49; --text: #dde3ef; --dim: #9aa4b9;
+    --ok: #4cd37b; --bad: #ff5d5d; --warn: #ffb347; --acc: #4a9eff; --accbg: #1f4f8f;
+    --btn: #2a3040; --btnline: #424b60; --btnhov: #343c50; --chipbg: #2e3547; --okbg: #1c4a2f; --badbg: #5a2020; --badtxt: #ff9a9a;
+    --text2: #b8c2d8; --badrow: #2b2024; --canvasbg: #0f1217; --listbg: #11141a; --sel: #ffd24a; --selbg: #2a2a1a;
+    --chk1: #262b36; --chk2: #2e3441; --tr1: #555; --tr2: #888; --swline: #000; --swlabel: rgba(0, 0, 0, .55); --swtext: #fff; --mute: #555; --mute2: #666;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171d; --panel: #1b1f27; --panel2: #232833; --line: #333a49; --text: #dde3ef; --dim: #9aa4b9;
+  --ok: #4cd37b; --bad: #ff5d5d; --warn: #ffb347; --acc: #4a9eff; --accbg: #1f4f8f;
+  --btn: #2a3040; --btnline: #424b60; --btnhov: #343c50; --chipbg: #2e3547; --okbg: #1c4a2f; --badbg: #5a2020; --badtxt: #ff9a9a;
+  --text2: #b8c2d8; --badrow: #2b2024; --canvasbg: #0f1217; --listbg: #11141a; --sel: #ffd24a; --selbg: #2a2a1a;
+  --chk1: #262b36; --chk2: #2e3441; --tr1: #555; --tr2: #888; --swline: #000; --swlabel: rgba(0, 0, 0, .55); --swtext: #fff; --mute: #555; --mute2: #666;
+  color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--text); }
+html, body { overflow: auto; height: auto; min-height: 100%; }
+#app { height: 100vh; min-height: 640px; min-width: 0; position: relative; }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+button, select, input, textarea, [tabindex] { font-family: inherit; }
+textarea { background: var(--btn); color: var(--text); border: 1px solid var(--btnline); border-radius: 4px; }
+.jsonbox { width: 100%; font: 11px/1.3 Consolas, monospace; resize: vertical; }
+.badge.warn.exbadge { background: var(--selbg); color: var(--warn); border: 1px solid var(--warn); }
+.confirmbar { position: fixed; left: 50%; top: 52px; transform: translateX(-50%); z-index: 20; max-width: min(640px, calc(100vw - 32px)); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; background: var(--panel); color: var(--text); border: 2px solid var(--warn); border-radius: 6px; box-shadow: 0 4px 18px rgba(0, 0, 0, .35); }
+#app.dropping::after { content: "Drop the kit here"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; background: var(--panel2); opacity: .92; border: 3px dashed var(--acc); z-index: 30; pointer-events: none; }
+.dropzone { max-width: 1000px; padding: 26px 16px; text-align: center; border: 2px dashed var(--btnline); border-radius: 8px; background: var(--panel); cursor: pointer; margin-bottom: 10px; }
+.dropzone:hover { background: var(--panel2); }
+.btnrow.wrap { flex-wrap: wrap; margin: 6px 0; }
+.home ul { margin: 4px 0 8px 18px; padding: 0; }
+.home p { max-width: 900px; }
+.exportwrap { display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 1fr); gap: 20px; }
+.exportctl { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.exsheets { display: flex; flex-wrap: wrap; gap: 12px; align-content: flex-start; min-width: 0; }
+.exsheet { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
+.imgwrap { max-width: 100%; overflow: auto; max-height: 220px; background: var(--canvasbg); border: 1px solid var(--line); }
+.sheetimg { image-rendering: pixelated; display: block; }
+a.btnlink { display: inline-block; padding: 3px 8px; border: 1px solid var(--btnline); border-radius: 4px; background: var(--btn); color: var(--text); text-decoration: none; }
+a { color: var(--acc); }
+
+@media (max-width: 1099px) {
+  html, body { height: auto; }
+  #app { display: flex; flex-direction: column; height: auto; min-height: 0; }
+  #topbar { flex-wrap: wrap; height: auto; padding: 6px 16px; gap: 6px; }
+  #homeview { padding: 14px 16px; overflow: visible; }
+  #left, #right { border: 0; border-bottom: 1px solid var(--line); padding: 8px 16px; overflow: visible; }
+  #center { min-height: 380px; height: 70vh; }
+  #bottom { min-height: 300px; border-top: 1px solid var(--line); }
+  #statusbar { padding: 4px 16px; position: sticky; bottom: 0; }
+  .bbody { padding: 6px 16px; overflow: visible; }
+  .canvaswrap { max-height: none; }
+  .tabs { flex-wrap: wrap; padding-left: 16px; padding-right: 16px; }
+  .toolbar { padding-left: 16px; padding-right: 16px; }
+  .animwrap { flex-direction: column; }
+  .animctl { width: 100%; }
+  .animstage { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  .animstage .small, .chips { grid-column: 1; grid-row: auto; }
+  .animcv { grid-row: auto; width: 100%; max-width: 320px; height: auto; aspect-ratio: 320 / 176; }
+  .exportwrap, .buildwrap { grid-template-columns: minmax(0, 1fr); }
+  .cards { grid-template-columns: 1fr; }
+  .kititem { flex-wrap: wrap; }
+  .confirmbar { top: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

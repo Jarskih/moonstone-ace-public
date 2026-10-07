@@ -1,0 +1,55 @@
+# The map: the knight walks (port 1: right, then down), the status screen (Space), the end of the turn (E): the black knights
+# move, the day changes ("Next Day", fire: the autopilot presses it), and the knight's turn comes round again. A dump of the map
+# (knights, places, lairs) goes to the serial log. Walking costs turn points: stay short, the turn ends when they are spent.
+# the map's colour-cycled movement/region outlines vary 0.1-0.6 % with timing
+# shotcmp-tol play-map-start 1.0
+# shotcmp-tol play-map-walked 1.0
+# shotcmp-tol play-map-after-status 1.0
+# shotcmp-tol play-map-ai-moves 3
+# shotcmp-tol play-map-next-day 3
+# shotcmp-tol play-map-next-turn 3
+# shotcmp-tol play-map-arrival-menu 3
+# shotcmp-tol play-map-arrival-village 3
+# shotcmp-tol play-map-end 3
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 shot play-map-start
+frame 1640 poke dump 1
+frame 1670 joy1 right
+frame 1710 joy1 none
+frame 1720 joy1 down
+frame 1740 joy1 none
+frame 1770 shot play-map-walked
+frame 1780 key SPACE tap
+frame 2080 shot play-map-status
+frame 2090 poke cursorx 236
+frame 2090 poke cursory 150
+frame 2115 joy1 fire pulse 8
+frame 2415 shot play-map-after-status
+frame 2425 key E tap
+wait var turn 1 max 4000
+frame 100 shot play-map-ai-moves
+wait var turn 0 max 20000
+frame 100 shot play-map-next-day
+frame 110 joy1 fire pulse 8
+frame 410 shot play-map-next-turn
+
+# the knight is standing on its home village and a lair: fire opens the arrival menu, key 1 enters the village
+frame 420 joy1 fire pulse 8
+frame 520 shot play-map-arrival-menu
+frame 530 key 1 tap
+frame 830 shot play-map-arrival-village
+frame 840 poke cursorx 236
+frame 840 poke cursory 150
+frame 865 joy1 fire pulse 8
+frame 1165 shot play-map-end
+frame 1175 poke dump 1
+frame 1275 quit

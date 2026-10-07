@@ -1,0 +1,22 @@
+config_description=moonstone-ace (A1200 68020 AGA, 2MB chip)
+
+; A1200: 68020, AGA, PAL, 2MB chip RAM
+cpu_model=68020
+chipset=aga
+ntsc=false
+chipmem_size=4
+bogomem_size=0
+fastmem_size=0
+cpu_compatible=false
+
+kickstart_rom_file=C:\Users\Public\Documents\Amiga Files\WinUAE\Kickstart v3.1 r40.068 (1993-12)(Commodore)(A1200)[!].rom
+
+; boots from the ADF built by: cmake --build build --target adf
+floppy0=D:\moonstone-ace-public\build\moonstone.adf
+floppy0type=0
+
+; Alternative: mount the build dir as a drive instead (comment floppy0 above)
+; filesystem2=rw,dh1:build:D:\moonstone-ace-public\build,0
+
+; boot straight into the game, no GUI
+use_gui=no

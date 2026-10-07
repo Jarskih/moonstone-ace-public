@@ -1,0 +1,59 @@
+# Co-op for two (ROADMAP 8.2): Players right x4 = "Coop 2", Select Knight twice; after each name the controller line: knight 1
+# keeps Joystick 1 (joy1 fire), knight 2 steps from Joystick 2 to Keys arrows with the cursor-right key and takes it with Ctrl
+# (the keyboard set's fire; the knight screen listens to every controller). The map: knight 1 walks with joy1 and ends its turn
+# (E); on knight 2's turn joy1 must NOT move it (dump), the cursor-right key must (dump). The log has the party lines
+# ("party: co-op, 2 knights", "party: knight N kind K controller C <name>").
+# shotcmp-tol play-coop-menu 0.5
+# shotcmp-tol play-coop-players 0.5
+# shotcmp-tol play-coop-knight1 1.8
+# shotcmp-tol play-coop-pad1 1.8
+# shotcmp-tol play-coop-pad2 1.8
+# shotcmp-tol play-coop-pad2-keys 1.8
+# shotcmp-tol play-coop-map 1.0
+# shotcmp-tol play-coop-turn2 1.0
+# shotcmp-tol play-coop-walk2 1.0
+# shotdiff play-coop-pad2 play-coop-pad2-keys 0.05
+# shotdiff play-coop-turn2 play-coop-walk2 0.05
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 60 shot play-coop-menu
+frame 160 joy1 right pulse
+frame 190 joy1 right pulse
+frame 220 joy1 right pulse
+frame 250 joy1 right pulse
+frame 290 shot play-coop-players
+frame 300 joy1 down pulse
+frame 330 joy1 down pulse
+frame 360 joy1 down pulse
+frame 400 joy1 fire pulse
+frame 850 shot play-coop-knight1
+frame 860 joy1 fire pulse
+frame 1150 joy1 fire pulse
+frame 1210 shot play-coop-pad1
+frame 1220 joy1 fire pulse
+frame 1610 joy1 fire pulse
+frame 1900 joy1 fire pulse
+frame 2000 shot play-coop-pad2
+frame 2010 key RIGHT down
+frame 2013 key RIGHT up
+frame 2073 shot play-coop-pad2-keys
+frame 2083 key CTRL down
+frame 2086 key CTRL up
+wait log knight_1_kind max 1500
+frame 600 shot play-coop-map
+frame 610 poke dump 1
+frame 640 joy1 right
+frame 680 joy1 none
+frame 710 key E tap
+wait var turn 1 max 3000
+frame 100 shot play-coop-turn2
+frame 110 poke who 1
+frame 121 poke dump 1
+frame 151 joy1 right
+frame 191 joy1 none
+frame 211 poke dump 1
+frame 241 key RIGHT down
+frame 281 key RIGHT up
+frame 321 shot play-coop-walk2
+frame 331 poke dump 1
+frame 431 quit

@@ -1,0 +1,7 @@
+# ROADMAP 9.4c: a deliberately broken mods/rules.ini (+ an unknown mods/typo.ini) does not stop the game: the loader logs the
+# file and line, skips the file, the splash turns red for 3 s and the game then boots to the menu.  NOT part of the regression
+# globs (needs mods/ staged first): py tools/modsboot.py bad
+wait log done_applied_0_skipped_1 max 3000
+wait input 10 max 3000
+frame 60 log mods_bad_game_reached_menu
+frame 120 quit

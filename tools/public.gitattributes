@@ -1,0 +1,4 @@
+# .gitattributes of the public repository (tools/export_public.py installs it; same rule as the archive).
+# Store/check out every file byte-for-byte: AmigaOS text files (startup-sequence
+# etc.) must stay LF-only, so git must never run CRLF conversion in this repo.
+* -text

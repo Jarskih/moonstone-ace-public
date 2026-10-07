@@ -1,0 +1,77 @@
+# Town B (node 5, id $1A): the same town menu as town A but the fourth button is Mythral the mystic. The panel is on the left; the
+# cursor starts at 30,100 each time the menu is drawn. The mystic and the healer share the donation screen: arrows (153,174) /
+# (168,174) change the donation, Ok (140,189) pays, Exit (190,189) leaves.
+# shotcmp-tol play-townB-mystic-ok 5
+# shotcmp-tol play-townB-mystic-ok2 5
+# shotcmp-tol play-townB-map 100
+# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+# --- the map (about 600 frames after the last press) ---
+frame 1630 poke gold 200
+frame 1640 poke warp_node 5
+frame 1710 joy1 fire pulse 8
+wait input 10 gap 6 max 3000
+frame 60 shot play-townB-menu
+
+# Mystic (button 4): 25 frames down, click; donation 5, Ok, Exit
+frame 70 joy1 down
+frame 95 joy1 none
+frame 125 shot play-townB-hover
+frame 135 joy1 fire pulse 8
+frame 435 shot play-townB-mystic
+frame 445 poke cursorx 168
+frame 445 poke cursory 174
+frame 470 joy1 fire pulse 8
+frame 500 poke cursorx 168
+frame 500 poke cursory 174
+frame 525 joy1 fire pulse 8
+frame 555 poke cursorx 168
+frame 555 poke cursory 174
+frame 580 joy1 fire pulse 8
+frame 610 poke cursorx 168
+frame 610 poke cursory 174
+frame 635 joy1 fire pulse 8
+frame 665 poke cursorx 168
+frame 665 poke cursory 174
+frame 690 joy1 fire pulse 8
+frame 720 shot play-townB-mystic-donation
+frame 730 poke cursorx 140
+frame 730 poke cursory 189
+frame 755 joy1 fire pulse 8
+frame 955 shot play-townB-mystic-ok
+frame 1055 shot play-townB-mystic-ok2
+frame 1065 poke cursorx 190
+frame 1065 poke cursory 189
+frame 1090 joy1 fire pulse 8
+frame 1340 shot play-townB-menu2
+
+# Healer (button 3): 1 frame down, click; donation 1, Ok, Exit
+frame 1350 joy1 down
+frame 1351 joy1 none
+frame 1381 joy1 fire pulse 8
+frame 1681 shot play-townB-healer
+frame 1691 poke cursorx 168
+frame 1691 poke cursory 174
+frame 1716 joy1 fire pulse 8
+frame 1746 poke cursorx 140
+frame 1746 poke cursory 189
+frame 1771 joy1 fire pulse 8
+frame 1921 shot play-townB-healer-ok
+frame 1931 poke cursorx 190
+frame 1931 poke cursory 189
+frame 1956 joy1 fire pulse 8
+frame 2206 shot play-townB-menu3
+
+# Exit (button 5): 44 frames down, click: back on the map
+frame 2216 joy1 down
+frame 2260 joy1 none
+frame 2290 joy1 fire pulse 8
+frame 2690 shot play-townB-map
+frame 2790 quit
