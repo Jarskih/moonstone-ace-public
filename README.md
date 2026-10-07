@@ -55,6 +55,8 @@ Rule tweaks need no rebuild: put an `.ini` file into the `mods` drawer next to t
 `mods.log`, and the game plays on with the original values. See [docs/MODDING.md](docs/MODDING.md) and
 [docs/MOD_KEYS.md](docs/MOD_KEYS.md).
 
+<img width="1280" height="457" alt="image" src="https://github.com/user-attachments/assets/6fd8bce6-9111-44d4-91fe-d7ef816a9b1b" />
+
 ---
 
 ## How it was made
