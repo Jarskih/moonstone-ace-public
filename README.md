@@ -38,6 +38,14 @@ A1200 with a 68020 accelerator and 8 MB fast RAM. Map a joystick, or the arrow k
 
 - **Up to four knights** play in turns. Pick your knights and names on the start screens; knights nobody picks are
   played by the computer. **Practice** on the title menu is a single training fight.
+- **Co-op:** team up as one party and travel, fight and collect treasure together. Co-op supports up to four players,
+  locally or over a network.
+- **Multiplayer:** play either classic competitive Moonstone or co-op over a LAN or the internet. Host or find a game
+  through the lobby, or connect directly; a relay is available when players cannot connect directly. Network games
+  support two to four players, and a dropped player can rejoin.
+- **Network setup:** network play needs `bsdsocket.library` (provided by WinUAE's emulation or an Amiga TCP/IP stack).
+  Direct connections use TCP and UDP port 6502; lobby and relay traffic uses port 6510. See
+  [docs/NETPLAY.md](docs/NETPLAY.md) for details.
 - **Joystick:** player one uses the joystick port (port 1); a second human player uses the mouse port (port 0).
   Knights take turns, so more players can share the sticks. The joystick moves your knight on the map, picks buttons in
   towns and on the loot screens, and fights in the arenas: direction plus fire gives the different strikes and blocks.
@@ -50,8 +58,12 @@ A1200 with a 68020 accelerator and 8 MB fast RAM. Map a joystick, or the arrow k
 
 ### Ready-to-play releases
 
-`py tools/package.py` builds the player archives (Amiga HD drawer with a WinUAE config, Windows zip) into `build/release/`: unpack, put your
-three ADFs into `disks/`, start. They hold no original data (checked); details in [BUILD.md](BUILD.md) "Release packages".
+The **Amiga 0.2.0 release** is available as an HD-install archive with a ready WinUAE configuration. Unpack it, put your
+three ADFs into `Moonstone/disks/`, and start the game. The archive contains no original game data (verified by a leak
+scan); see [BUILD.md](BUILD.md) "Release packages".
+
+The **PC/Windows build is not ready for play yet** and is not part of the 0.2.0 release. Its SDL port is still in
+development.
 
 ### Mods
 
