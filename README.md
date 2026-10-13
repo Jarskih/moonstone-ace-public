@@ -46,6 +46,9 @@ A1200 with a 68020 accelerator and 8 MB fast RAM. Map a joystick, or the arrow k
 - **Network setup:** network play needs `bsdsocket.library` (provided by WinUAE's emulation or an Amiga TCP/IP stack).
   Direct connections use TCP and UDP port 6502; lobby and relay traffic uses port 6510. See
   [docs/NETPLAY.md](docs/NETPLAY.md) for details.
+
+![Four-player co-op knight selection](multiplayer.jpg)
+
 - **Joystick:** player one uses the joystick port (port 1); a second human player uses the mouse port (port 0).
   Knights take turns, so more players can share the sticks. The joystick moves your knight on the map, picks buttons in
   towns and on the loot screens, and fights in the arenas: direction plus fire gives the different strikes and blocks.
@@ -71,8 +74,6 @@ Rule tweaks need no rebuild: put an `.ini` file into the `mods` drawer next to t
 `mods/defaults/rules.ini` lists every setting with its default value. A broken file is skipped with a message in
 `mods.log`, and the game plays on with the original values. See [docs/MODDING.md](docs/MODDING.md) and
 [docs/MOD_KEYS.md](docs/MOD_KEYS.md).
-
-<img width="1280" height="457" alt="image" src="https://github.com/user-attachments/assets/6fd8bce6-9111-44d4-91fe-d7ef816a9b1b" />
 
 ---
 
