@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 
+#include "engine/nettick.hpp"
 #include "engine/util.hpp"
 #include "game/api/data.hpp"
 #include "game/scene_places.hpp"
@@ -30,6 +31,7 @@
 #include "rt/combat_ui.hpp"
 #include "rt/display_ops.hpp"
 #include "rt/gtext.hpp"
+#include "rt/net_session.hpp"
 #include "rt/sfx.hpp"
 #include "rt/soundbank.hpp"
 #include "rt/stubfn.h"
@@ -211,6 +213,7 @@ uint16_t donationScreen(uint16_t uwCel) {
 	mogTextFlag = 1;
 	donationRedraw();
 	for(;;) {                                                               // LAB_0496
+		ms::tickIdle();                                                     // deterministic mode (ROADMAP 12.4): the cursor moves with ticks
 		const Hit *pHit = hitTest();
 		if(!pHit || mogCursorLock != 0) continue;
 		switch(pHit->uwCode) {
@@ -372,7 +375,10 @@ const uint16_t kRamp5[4][5] = {
 // Writes the ramp at pBase + ulOffset and returns the address of the last word written (the asm leaves A0 there).
 uint8_t *colourRamp(uint8_t *pBase, uint32_t ulOffset, bool bFive) {
 	uint16_t *pOut = reinterpret_cast<uint16_t *>(pBase + ulOffset);
-	const uint32_t ulKind = knightAt(mogCurKnight).ulKind;
+	// Moonstone 2: the dice house, the ritual and the wizard are run by every machine of a network game; each draws ITS OWN knight's colours
+	// (game/local_knight.hpp, display only).  Classic and local co-op: the current knight's, as the original.
+	const Knight &shown = knightAt(mogCurKnight);
+	const uint32_t ulKind = rt::netSessionLocalKind(static_cast<uint8_t>(&shown - mogKnights), shown.ulKind);
 	if(ulKind > raw(KnightKind::Knight3)) return reinterpret_cast<uint8_t *>(pOut);
 	const uint16_t *pRow = kRamp5[ulKind];
 	uint8_t ubWritten = 0;

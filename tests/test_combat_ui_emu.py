@@ -23,7 +23,8 @@ H = AE.H
 sym = AE.sym
 DATA = AE.DATA_BASE
 
-UI_FILES = ('src/rt/combat_ui.cpp', 'src/rt/asmcall.cpp', 'src/game/creatures.cpp', 'src/engine/util.cpp',
+UI_FILES = ('src/rt/combat_ui.cpp', 'src/rt/amiga/combat_ui_entries.cpp', 'src/rt/asmcall.cpp', 'src/game/creatures.cpp', 'src/engine/util.cpp', 'src/engine/nettick.cpp', 'src/engine/pad.cpp',
+            'src/game/rules/stats.cpp',
             'tests/combat_ui_emu_support.cpp', AE.GAMEDATA_REL)
 JOY0 = AE.BLOB_BASE + 0x1F100                # what the LAB_00EE stub returns in D0 / D1
 JOY1 = AE.BLOB_BASE + 0x1F104

@@ -1,0 +1,69 @@
+# Moonstone 2 co-op on the map, poke-driven shortcut (ROADMAP 8.3; play_coop is the menu-driven run): `poke party 2` switches the co-op rules on (default pads: knight 1 joystick 1, knight 2 joystick 2), then Players = 2 and two knights as in
+# play_2p.  The party starts as ONE token at the first player's home; the black-knight group is one token too.  The leader (knight 1)
+# walks with port 1 and ends the turn (E); the BK group moves; the round ends ("Next Day", fire); the leader is now knight 2: port 1
+# no longer moves the token, port 0 does.  Space shows the status sheet of every party member (two sheets).  The dumps log the party
+# (size, leader, the leader's port, the BK records 5..6) and every knight's position (the members share the token's).
+# the map's colour-cycled movement/region outlines vary 0.1-0.6 % with timing
+# shotcmp-tol play-coop-map-map 1.0
+# shotcmp-tol play-coop-map-walk1 1.0
+# shotcmp-tol play-coop-map-bk 3
+# shotcmp-tol play-coop-map-next-day 3
+# shotcmp-tol play-coop-map-leader2 3
+# shotcmp-tol play-coop-map-port1 3
+# shotcmp-tol play-coop-map-walk2 3
+# shotcmp-tol play-coop-map-status1 3
+# shotcmp-tol play-coop-map-status2 3
+# shotcmp-tol play-coop-map-end 3
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 20 joy1 fire pulse
+frame 40 poke party 2
+frame 80 joy1 right pulse
+frame 120 shot play-coop-map-players
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 190 joy1 down pulse
+frame 240 joy1 fire pulse
+frame 690 joy1 fire pulse
+frame 990 joy1 fire pulse
+frame 1060 joy1 fire pulse
+frame 1390 joy1 right pulse
+frame 1440 joy1 fire pulse
+frame 1790 joy1 fire pulse
+frame 1860 joy1 fire pulse
+frame 2390 shot play-coop-map-map
+frame 2400 poke dump 1
+frame 2430 joy1 right
+frame 2470 joy1 none
+frame 2490 shot play-coop-map-walk1
+frame 2500 poke dump 1
+frame 2510 key E tap
+wait var turn 1 max 3000
+frame 100 shot play-coop-map-bk
+frame 110 poke dump 1
+wait var turn 0 max 20000
+frame 100 shot play-coop-map-next-day
+frame 110 joy1 fire pulse 8
+frame 410 shot play-coop-map-leader2
+frame 420 poke dump 1
+frame 450 joy1 right
+frame 490 joy1 none
+frame 510 shot play-coop-map-port1
+frame 520 poke dump 1
+frame 550 joy0 down
+frame 590 joy0 none
+frame 610 shot play-coop-map-walk2
+frame 620 poke dump 1
+frame 630 key SPACE tap
+frame 930 shot play-coop-map-status1
+frame 940 poke cursorx 236
+frame 940 poke cursory 150
+frame 965 joy0 fire pulse 8
+frame 1265 shot play-coop-map-status2
+frame 1275 poke cursorx 236
+frame 1275 poke cursory 150
+frame 1300 joy1 fire pulse 8
+frame 1600 shot play-coop-map-end
+frame 1610 poke dump 1
+frame 1710 quit

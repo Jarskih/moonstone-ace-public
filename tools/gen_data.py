@@ -59,9 +59,12 @@ PATCH_DIR = os.path.join(ROOT, 'asm', 'patches')
 DEFAULT_OUT = os.path.join(ROOT, 'build', 'gen')
 TYPES_YAML = os.path.join(ROOT, 'tools', 'data_types.yaml')
 TABLES_YAML = os.path.join(ROOT, 'tools', 'tables.yaml')
+UNITS_YAML = os.path.join(ROOT, 'tools', 'data_units.yaml')
 PREFIX = {'program': 'prg_', 'mog': 'mog_'}
 BINARY_OF = {'prg_': 'program', 'mog_': 'mog'}
 LABEL_TOKEN = re.compile(r'\b(?:prg|mog)_(?:LAB_[0-9A-Fa-f]{4}|SECSTRT_\d+)\b')
+PC32 = False               # ROADMAP 11.4 (--target pc32): i686 COFF host build: no chip sections, `_`-prefixed asm aliases
+PC32_PINNED_OBJECTS = ('g_mogSynthData',)
 ALL_ALIASES = False        # tests (and --all-aliases): a label alias for EVERY label, not only for the ones the sources spell
 PASTE_N = re.compile(r'\b(SYM|E|X)\(([0-9A-Fa-f]{4})\)')
 CEL_BIND_CALL = re.compile(r'^CEL_BIND\((prg|mog),([^)]*)\)', re.M)
@@ -74,6 +77,7 @@ SECTION_RE = re.compile(r'^\s+SECTION\s+S_(\d+),(CODE|DATA|BSS)(,CHIP)?\s*$')
 DCDS_RE = re.compile(r'^\s+(DC|DS)\.([BWL])\s+(.*)$')
 SYM_RE = re.compile(r'^((?:LAB|SECSTRT)_[0-9A-Fa-f]+|SECSTRT_\d+|rt_[A-Za-z0-9_]+)([+-]\d+)?$')
 LAST_LAYOUT = []
+LAST_MODEL = None
 CHIP_SECTION = {'DATA': '.chipdata.MEMF_CHIP', 'BSS': '.chipbss.MEMF_CHIP'}   # elf2hunk: input sections ending .MEMF_CHIP -> chip hunks
 
 
@@ -428,6 +432,9 @@ class Member:
         self.cells = cells                 # kind 'ptr': [(off, w, ('sym', ...))] ; 'region': [label]; else values
         self.decl, self.init = decl, init
         self.ctype = ctype                 # kind 'typed': C type of one element (zero-initialised); width = sizeof
+        self.fields = None                 # kind 'region': [(field name, field type)] of one row (the swap units of the start-up fill)
+        self.rows = 0
+        self.explicit_width = False        # a "widths" entry of the data json fixed the element size: the endian units leave it alone
         self._size = size
         self.note = ''
 
@@ -522,12 +529,11 @@ def load_regions(binary, num, sec, types_path=None, tables_path=None):
         return [], {}
     try:
         import yaml
+        import yamlfast
     except ImportError:
         raise GenError('PyYAML is needed for tools/data_types.yaml (pip install pyyaml)')
-    with open(tp, encoding='utf-8') as f:
-        types = yaml.safe_load(f) or {}
-    with open(tables_path or TABLES_YAML, encoding='utf-8') as f:
-        tables = yaml.safe_load(f)
+    types = yamlfast.load_path(tp) or {}          # parsed once per file version, read-only here (238 calls per test run)
+    tables = yamlfast.load_path(tables_path or TABLES_YAML)
     structs = {}
     for src in (tables.get('structs', {}), types.get('structs', {})):
         for name, d in src.items():
@@ -593,6 +599,7 @@ def load_regions(binary, num, sec, types_path=None, tables_path=None):
             else:
                 init = lambda rf, rows=rows: rows[0][0](rf)
         mem = Member(r['name'], off, 0, 0, 'region', labels, decl=decl, init=init, size=row * count)
+        mem.fields, mem.rows = (None if r.get('bytes') else fl), count
         mem.note = (src.get('notes') or r.get('notes') or '').strip()
         out.append(mem)
     out.sort(key=lambda m: m.off)
@@ -697,6 +704,7 @@ def rename_members(members, names, where, widths=None):
         raw = b''.join(v.to_bytes(m.width, 'big') for v in m.cells)
         m.cells = [int.from_bytes(raw[i:i + w], 'big') for i in range(0, len(raw), w)]
         m.width, m.count = w, len(raw) // w
+        m.explicit_width = True
     have = {m.name for m in members}
     for lab, new in names.items():
         hit = [m for m in members if m.name == lab]
@@ -707,6 +715,86 @@ def rename_members(members, names, where, widths=None):
         hit[0].name = new
         have.add(new)
     return members
+
+
+# ---- byte order of the fill (ROADMAP 11.3, docs/PC_ENDIAN.md) ---------------------------------------------------------------
+def load_units(path=None):
+    """{binary: {label: unit}} of tools/data_units.yaml: the element size (1, 2 or 4) in which the C++ reads a data cell NATIVELY.
+    `direct` is generated from the listing (tools/endian_scan.py --write-units: the narrowest direct access of the asm), `curated`
+    is kept by hand and wins (tables the asm reaches by address and the C++ reads as u16 / u32 arrays)."""
+    p = path or UNITS_YAML
+    if not os.path.exists(p):
+        return {'program': {}, 'mog': {}}
+    try:
+        import yaml
+        import yamlfast
+    except ImportError:
+        raise GenError('PyYAML is needed for tools/data_units.yaml (pip install pyyaml)')
+    with open(p, encoding='utf-8') as f:
+        y = yamlfast.safe_load(f) or {}
+    out = {'program': {}, 'mog': {}}
+    for part in ('direct', 'curated'):
+        for b, d in (y.get(part) or {}).items():
+            for lab, u in (d or {}).items():
+                if u not in (1, 2, 4):
+                    raise GenError(f'{p}: {part} {b} {lab}: unit {u!r} is not 1, 2 or 4')
+                out.setdefault(b, {})[lab] = u
+    return out
+
+
+def rewidth(m, w):
+    """Re-cut a plain data member into elements of w bytes (the bytes do not change)."""
+    raw = b''.join(v.to_bytes(m.width, 'big') for v in m.cells)
+    m.cells = [int.from_bytes(raw[i:i + w], 'big') for i in range(0, len(raw), w)]
+    m.width, m.count = w, len(raw) // w
+
+
+def apply_units(sec, members, unit_of):
+    """The element size of every plain data member becomes the unit the C++ reads it in: the narrowest of the units of the labels
+    inside it (a label nobody reads directly = a byte blob: scripts, text, tables read with engine/endian.hpp -> u8).  A
+    member can only be re-cut finer (u32 -> u16 -> u8); a unit wider than the member (a run of mixed cells) is left as it is
+    and counted by endian_fill_check."""
+    inv = {}
+    for lab, off in sec.labels.items():
+        inv.setdefault(off, []).append(lab)
+    if sec.kind == 'BSS':
+        return members
+    for m in members:
+        if m.kind != 'data' or m.explicit_width or m.width < 2:
+            continue
+        us = [unit_of[l] for o in range(m.off, m.off + m.size) for l in inv.get(o, []) if l in unit_of]
+        unit = min(us) if us else 1
+        if unit < m.width:
+            rewidth(m, unit)
+    return members
+
+
+def member_units(members, size):
+    """bytearray of the object: the swap unit of every byte the start-up fill writes (1 = byte data; 0 = the fill leaves it:
+    pointer cells and zero-initialised typed members)."""
+    u = bytearray(size)
+    for m in members:
+        if m.kind == 'data':
+            u[m.off:m.off + m.size] = bytes([m.width]) * m.size
+        elif m.kind == 'str':
+            u[m.off:m.off + m.size] = bytes([1]) * m.size
+        elif m.kind == 'region' and m.fields is None:
+            u[m.off:m.off + m.size] = bytes([1]) * m.size           # "bytes: true" in tools/data_types.yaml
+        elif m.kind == 'region':
+            po = m.off
+            for _ in range(m.rows):
+                for fn, ft in m.fields:
+                    n = field_size(ft)
+                    if ft in PTR_TYPES:
+                        pass
+                    elif ft in SCALAR:
+                        u[po:po + n] = bytes([SCALAR[ft][0]]) * n
+                    else:
+                        mm = ARR_RE.match(ft)
+                        w = 1 if mm.group(1) == 'cstr' else SCALAR[mm.group(1)][0]
+                        u[po:po + n] = bytes([w]) * n
+                    po += n
+    return u
 
 
 def apply_member_specs(sec, members, specs, where):
@@ -806,6 +894,7 @@ def generate(patch_dir=None, asm_dir=None, types_path=None, tables_path=None, as
     if not cfg:
         raise GenError('no extern_data configured')
     data = data or {}
+    units = load_units()
     fill = source == 'facts' and not data
     owned = {b: {e['section'] for e in cfg if e['binary'] == b} for b in {e['binary'] for e in cfg}}
     if source == 'listing':
@@ -845,10 +934,12 @@ def generate(patch_dir=None, asm_dir=None, types_path=None, tables_path=None, as
         e['members'] = apply_member_specs(sec, members_of(sec, PREFIX[e['binary']], regions, bool(e.get('strings'))),
                                           e.get('typed', []), f"{e['binary']} S_{e['section']}")
         rename_members(e['members'], e.get('names', {}), f"{e['binary']} S_{e['section']}", e.get('widths'))
+        apply_units(sec, e['members'], units[e['binary']])
         e.setdefault('type', e['object'][0].upper() + e['object'][1:] + 'T')
     for e in cells:
         sec = asms[e['binary']][e['section']]
         e['members'] = members_of(sec, PREFIX[e['binary']])
+        apply_units(sec, e['members'], units[e['binary']])
     for e in cfg:
         sec = asms[e['binary']][e['section']]
         if e.get('twin_of'):
@@ -947,7 +1038,8 @@ def generate(patch_dir=None, asm_dir=None, types_path=None, tables_path=None, as
                 if lab in weak[e['binary']] and not asm_labels:
                     ext_refs[cpp_name] = 'nullptr'          # defined only by the MS_SYNTH_ASM hunk
                     continue
-                cpp.append(f'extern "C" char {ext_refs[cpp_name]}[] asm("{cpp_name}");')
+                # i686 COFF: the symbol of a C function / cell has the `_` the raw asm name lacks (the aliases below define both)
+                cpp.append(f'extern "C" char {ext_refs[cpp_name]}[] asm("{"_" if PC32 else ""}{cpp_name}");')
     cpp.append('')
     chip_bss = []
     for e in objs:
@@ -956,14 +1048,19 @@ def generate(patch_dir=None, asm_dir=None, types_path=None, tables_path=None, as
         cpp.append((f'// {e["binary"]} code-hunk cell {e["cell"]}, {sec.size} bytes; ' if 'cell' in e else
                     f'// {e["binary"]} S_{e["section"]} {sec.kind}{" CHIP" if sec.chip else ""}, {sec.size} bytes; ') +
                    'labels are aliased at the end of the file')
-        if sec.chip and sec.kind == 'BSS':
+        if sec.chip and sec.kind == 'BSS' and not PC32:
             # GCC emits a named non-.bss section as PROGBITS (45 KB of zeros in the exe), so a chip BSS is defined by the
             # asm block at the end of the file (@nobits, section name ending .MEMF_CHIP: elf2hunk makes a MEMF_CHIP HUNK_BSS)
             cpp.append(f'// (defined in the asm block below: {CHIP_SECTION["BSS"]}, @nobits)')
             cpp.append('')
             chip_bss.append((e['object'], sec.size))
             continue
-        attr = '__attribute__((used, externally_visible, aligned(4)' +                (f', section("{CHIP_SECTION["DATA"]}")' if sec.chip else '') + '))'
+        if PC32:                                  # clang has no `externally_visible`
+            # a chip object must lie inside the emulated chip RAM (rt/sdl/chip): the COFF section group `.chip$m` sits between the markers
+            # `.chip$a` / `.chip$z` of src/rt/sdl/abs_cells.cpp, which bound the chip view of the blitter and the display
+            attr = '__attribute__((used, aligned(4)' + (', section(".chip$m")' if sec.chip else '') + '))'
+        else:
+            attr = '__attribute__((used, externally_visible, aligned(4)' +                (f', section("{CHIP_SECTION["DATA"]}")' if sec.chip else '') + '))'
         if sec.kind == 'BSS':
             cpp.append(f'extern "C" {{ ms::owned::{e["type"]} {e["object"]} {attr}; }}')
             cpp.append('')
@@ -1005,7 +1102,8 @@ def generate(patch_dir=None, asm_dir=None, types_path=None, tables_path=None, as
         cpp.append(f'const unsigned g_image{ident}Count = sizeof(g_image{ident}) / sizeof(g_image{ident}[0]);')
     cpp += ['}  // namespace rt', '']
     cpp += object_list(objs, asms)
-    global LAST_LAYOUT                    # owned_layout.json (write()): what tools/datadump.py needs to compare two dumps
+    global LAST_LAYOUT, LAST_MODEL        # owned_layout.json (write()): what tools/datadump.py needs to compare two dumps
+    LAST_MODEL = (objs, asms)             # endian_fill_check
     LAST_LAYOUT = [{'object': e['object'], 'binary': e['binary'], 'size': asms[e['binary']][e['section']].size,
                     'pointers': sorted(o for o, w, v in asms[e['binary']][e['section']].cells if isinstance(v, tuple))}
                    for e in objs]
@@ -1025,13 +1123,29 @@ def generate(patch_dir=None, asm_dir=None, types_path=None, tables_path=None, as
     for legacy, named, obj, off in ld:
         target = f'{obj}+{off}' if off else obj
         if named != legacy:                       # a cell with a C++ name (tools/cell_names.yaml)
-            alias_lines += [f'	.globl {named}', f'	.set {named}, {target}']
+            alias_lines += alias_asm(named, target, named in needed)
             n_named += 1
         if ALL_ALIASES or legacy in needed:       # a label alias the sources (or a pointer cell) still spell
-            alias_lines += [f'	.globl {legacy}', f'	.set {legacy}, {target}']
+            alias_lines += alias_asm(legacy, target, True)
             n_legacy += 1
+    if PC32:                                  # objects an `asm("g_x")` pin names (engine/synth_data.hpp kSynthWave): no `_` on COFF
+        for obj in PC32_PINNED_OBJECTS:
+            if any(e['object'] == obj for e in objs):
+                alias_lines += [f'	.globl {obj}', f'	.set {obj}, _{obj}']
     cpp += ['	.text'] + alias_lines + [')");', '']
     return NL.join(hpp) + NL, NL.join(cpp) + NL, info
+
+
+def alias_asm(name, target, pinned):
+    """The assembler lines of one label alias.  ELF/hunk: `name` as is.  i686 COFF (PC32): a C symbol carries a leading `_`, so the
+    alias a C++ `extern "C"` cell resolves to is `_name`; a pointer cell reaches the alias through an `asm("name")` pin, which has
+    no prefix, so a pinned name is defined both ways.  (The target is an object of this file: C++ definitions carry the `_`.)"""
+    if not PC32:
+        return [f'	.globl {name}', f'	.set {name}, {target}']
+    out = [f'	.globl _{name}', f'	.set _{name}, _{target}']
+    if pinned:
+        out += [f'	.globl {name}', f'	.set {name}, _{target}']
+    return out
 
 
 def object_list(objs, asms):
@@ -1063,15 +1177,39 @@ def fill_runs(e, sec):
     return [(hunk, s, n, d) for s, n, d in runs]
 
 
+def fill_runs_typed(e, sec):
+    """[(hunk, src offset, size, offset in the object, unit)] the same bytes as fill_runs, cut at every change of the swap unit
+    of the member (m.width of a data member, the field widths of a curated region, 1 for text): a run of unit 2 / 4 is an array of
+    native u16 / u32 cells that the fill byte-swaps on a little-endian CPU (engine/origfill, docs/PC_ENDIAN.md)."""
+    units = member_units(e['members'], sec.size)
+    out = []
+    for hunk, src, n, dst in fill_runs(e, sec):
+        i = 0
+        while i < n:
+            u = units[dst + i] or 1
+            j = i
+            while j < n and (units[dst + j] or 1) == u:
+                j += 1
+            if (j - i) % u:
+                raise GenError(f'{e.get("object")}: fill run +{dst + i:#x} ({j - i} bytes) is not whole elements of {u} bytes')
+            out.append((hunk, src + i, j - i, dst + i, u))
+            i = j
+    return out
+
+
 def fill_tables(objs, asms, fill):
-    """rt::g_origFiles (src/rt/origload.hpp): per original executable its size, CRC-32 and the runs that fill the objects."""
+    """rt::g_origFiles (src/rt/origload.hpp): per original executable its size, CRC-32 and the runs that fill the objects.  Two
+    tables per binary: on a big-endian CPU the runs merged as far as the bytes are contiguous (no swap, the table of before
+    ROADMAP 11.3: no growth of the Amiga executable), on a little-endian CPU the same bytes cut at every change of the swap unit."""
     import origfacts
     out = ['// Start-up fill (ROADMAP 10.2a): the objects above hold no original byte; src/rt/origload.cpp reads program and mog',
            '// from the original disk, checks size + CRC-32 against tools/facts/<bin>.json and copies these runs {object byte, hunk',
-           '// offset, size, hunk}.  Empty when the data is compiled in (MS_DATA_COMPILED).', 'namespace rt {']
+           '// offset, size, hunk, unit}.  Byte order (ROADMAP 11.3): a run of unit 2 / 4 is an array of native u16 / u32 and is',
+           '// byte-swapped on a little-endian CPU, so that table has the runs cut at the unit changes; the big-endian table has none',
+           '// (the 68k needs no swap).  Empty when the data is compiled in (MS_DATA_COMPILED).', 'namespace rt {']
     files = []
     for binary, ident in (('program', 'Program'), ('mog', 'Mog')):
-        rows = []
+        rows, merged = [], []
         if fill:
             for e in objs:
                 if e['binary'] != binary:
@@ -1081,21 +1219,95 @@ def fill_tables(objs, asms, fill):
                 for hunk, src, n, dst in fill_runs(e, sec):
                     if src + n > hsize:
                         raise GenError(f'{binary}: {e["object"]}: fill run {src:#x}+{n} past the end of hunk {hunk}')
-                    rows.append((hunk, src, n, e['object'], dst))
+                    if hunk > 255:
+                        raise GenError(f'{binary}: hunk {hunk} does not fit the 8-bit hunk number of OrigFillRun')
+                    merged.append((hunk, src, n, e['object'], dst))
+                for hunk, src, n, dst, unit in fill_runs_typed(e, sec):
+                    rows.append((hunk, src, n, e['object'], dst, unit))
         rows.sort()
+        merged.sort()
         out.append(f'const OrigRun g_origRuns{ident}[] = {{')
-        for hunk, src, n, obj, dst in rows:
+        out.append('#if MS_BIG_ENDIAN')
+        for hunk, src, n, obj, dst in merged:
             out.append(f'	{{reinterpret_cast<unsigned char *>(&{obj}) + {dst}, {src}u, {n}u, {hunk}}},')
+        out.append('#else')
+        for hunk, src, n, obj, dst, unit in rows:
+            out.append(f'	{{reinterpret_cast<unsigned char *>(&{obj}) + {dst}, {src}u, {n}u, {hunk}, {unit}}},')
+        out.append('#endif')
         if not rows:
-            out.append('	{nullptr, 0u, 0u, 0},')
+            out.append('	{nullptr, 0u, 0u, 0, 0},')
         out.append('};')
         if fill:
             b = origfacts.load(binary)['binary']
-            files.append(f'	{{"{binary}", {b["size"]}u, 0x{b["crc32"]:08x}u, g_origRuns{ident}, {len(rows)}u}},')
+            files.append(f'	{{"{binary}", {b["size"]}u, 0x{b["crc32"]:08x}u, g_origRuns{ident}, sizeof(g_origRuns{ident}) / sizeof(g_origRuns{ident}[0])}},')
     out.append('const OrigFile g_origFiles[] = {')
     out += files or ['	{nullptr, 0u, 0u, nullptr, 0u},']
     out += ['};', f'const unsigned g_origFileCount = {len(files)}u;', '}  // namespace rt', '']
     return out
+
+
+def endian_fill_check(binaries=None):
+    """ROADMAP 11.3 proof of the generator side (tests/test_endian.py): the fill table of the blank generation, applied to the
+    ORIGINAL executables the way engine/origfill does on a little-endian CPU (copy the big-endian bytes, then byte-swap every run
+    of unit 2 / 4), gives exactly the bytes the compiled-in generation (generate(data=...), the typed C initialisers) has, for
+    every plain data member and every text member.  Also checks that the cut runs cover the same bytes as the merged runs and
+    that every unit run is whole elements.  Returns the number of unit runs checked; needs the executables (tools/origin.py),
+    else only the structural checks run."""
+    generate()
+    objs, asms = LAST_MODEL
+    structural = 0
+    for e in objs:
+        sec = asms[e['binary']][e['section']]
+        cut = {}
+        for hunk, src, n, dst, u in fill_runs_typed(e, sec):
+            if u not in (1, 2, 4) or n % u:
+                raise GenError(f'{e["object"]}: bad fill run {hunk}:{src:#x}+{n} unit {u}')
+            for k in range(n):
+                cut[dst + k] = (hunk, src + k)
+            structural += u > 1
+        merged = {}
+        for hunk, src, n, dst in fill_runs(e, sec):
+            for k in range(n):
+                merged[dst + k] = (hunk, src + k)
+        if cut != merged:
+            raise GenError(f'{e["object"]}: the unit runs do not cover the bytes of the merged runs')
+    try:
+        import origin
+        data = {b: origin.read_binary(b) for b in (binaries or ('program', 'mog'))}
+    except Exception:
+        return structural
+    hunks = {}
+    for b, d in data.items():
+        hunks[b] = {x.index: x.data for x in origin.parse_hunk_file(d).hunks}
+    blank = [(e, asms[e['binary']][e['section']]) for e in objs if e['binary'] in data]
+    generate(data=data)
+    fobjs, fasms = LAST_MODEL
+    full = {e['object']: (e, fasms[e['binary']][e['section']]) for e in fobjs}
+    n_checked = 0
+    for e, sec in blank:
+        fe, fsec = full[e['object']]
+        got = bytearray(sec.size)
+        have = bytearray(sec.size)
+        for hunk, src, n, dst, u in fill_runs_typed(e, sec):
+            chunk = bytearray(hunks[e['binary']][hunk][src:src + n])
+            if u > 1:
+                for o in range(0, n, u):
+                    chunk[o:o + u] = chunk[o:o + u][::-1]          # the swap of engine/origfill on a little-endian CPU
+            got[dst:dst + n] = chunk
+            have[dst:dst + n] = bytes([1]) * n
+        want = bytearray(sec.size)
+        for m in fe['members']:
+            if m.kind == 'data':
+                want[m.off:m.off + m.size] = b''.join(v.to_bytes(m.width, 'little') for v in m.cells)
+            elif m.kind == 'str':
+                want[m.off:m.off + m.size] = bytes(m.cells)
+            else:
+                have[m.off:m.off + m.size] = bytes(m.size)        # regions, pointers, typed: not compared
+        for o in range(sec.size):
+            if have[o] and got[o] != want[o]:
+                raise GenError(f'{e["object"]}: the filled byte +{o:#x} is {got[o]:#04x}, the compiled-in one {want[o]:#04x}')
+        n_checked += 1
+    return structural
 
 
 GEN_HEAD = ('// GENERATED by tools/gen_data.py from the original game asm -- do not edit, do not commit '
@@ -1142,9 +1354,11 @@ def main():
                     '(MS_DATA_COMPILED); default: no original byte, the game fills them at start-up')
     ap.add_argument('--orig-dir', help='with --full: directory holding program and mog (default: build/disks/A)')
     ap.add_argument('--from-listing', action='store_true', help='read the IRA listing instead of tools/facts (developer cross-check)')
+    ap.add_argument('--target', choices=('amiga', 'pc32'), default='amiga', help='pc32: the SDL build (ROADMAP 11.4): i686 COFF aliases, no chip sections')
     a = ap.parse_args()
-    global ALL_ALIASES
+    global ALL_ALIASES, PC32
     ALL_ALIASES = a.all_aliases
+    PC32 = a.target == 'pc32'
     try:
         source = 'listing' if a.from_listing else 'facts'
         data = read_originals(a.orig_dir) if a.full and source == 'facts' else None

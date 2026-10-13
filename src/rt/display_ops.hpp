@@ -28,9 +28,17 @@ const DisplayCells &displayMogCells();
 // LAB_0552 / LAB_0D77: wait until the beam is on line $F5 and has left it (once per frame, after the display window). The
 // program overlay's version polls the intro-skip keys first (rt/introskip.cpp), the bound overlay decides.
 void displayWaitBeam();
+// The wait alone, without the deterministic mode's tick (ROADMAP 12.4, rt/net_tick): pacing waits whose count depends on real time.
+void displayWaitBeamRaw();
+// Idle step of the loops that wait for input without a beam wait (ms::tickIdle hook, installed by rtMogMain): in deterministic
+// mode one beam wait + tick so the latched input can change, else nothing.
+void netPaceSpin();
 
 // LAB_054F / LAB_0D74: wait ulFrames frames.
 void displayWaitFrames(ULONG ulFrames);
+
+// The error flash of the title menu (mog LAB_0D77 + COLOR00): wait for the beam, colour 0 red, two frames, colour 0 black again.
+void displayErrorFlash();
 
 
 // LAB_054D / LAB_0D72: clear one screen (rt_enh_clrcnt + 1 passes of 200 bytes: 5 or 6 planes of 320x200).

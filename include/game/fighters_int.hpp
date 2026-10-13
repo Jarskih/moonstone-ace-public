@@ -42,6 +42,12 @@ inline uint32_t tab32(uint32_t ulBase, uint16_t uwIndex) {
 HandlerResult finish(const FighterEnv &e);                              // LAB_02BA
 uint16_t damageOf(const FighterEnv &e, const Knight &attacker);         // JSR LAB_021B -> D0.W
 void killCurrent(const FighterEnv &e);                                  // JSR LAB_000D
+// Moonstone 2 co-op fights (ROADMAP 8.4b, game/roster.hpp): each is the original's line when no party fight runs.
+uint32_t targetFor(const FighterEnv &e, Knight &self, bool bHolding = false);   // the handler head `*e.pTarget = *e.pFirst`
+uint32_t firstOf(const FighterEnv &e);                                  // `*e.pFirst` read inside a handler (its own target in a party fight)
+uint32_t heldOf(const FighterEnv &e, uint32_t ulOwner);                 // the knight a creature's script op acts on (a grab)
+void knockOut(const FighterEnv &e, Knight &victim);                     // a finishing blow: LAB_000D / the victim marked dead
+void endIfPartyDown(const FighterEnv &e);                               // LAB_0006 / only when the whole party is down
 Approach approach(const FighterEnv &e);                                 // JSR LAB_0F24
 int32_t dirSign(const Knight &k);                                       // JSR LAB_0F2E (D7)
 void advancePhase(const FighterEnv &e, Knight &k, int32_t d6, int32_t d7);   // JSR LAB_0F32

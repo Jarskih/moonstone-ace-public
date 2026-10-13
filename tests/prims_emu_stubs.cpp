@@ -5,6 +5,7 @@
 #include <hardware/dmabits.h>
 
 #include "engine/blit.hpp"
+#include "rt/combat_pool.hpp"
 
 extern tCustom FAR REGPTR g_pCustom;
 tCustom FAR REGPTR g_pCustom = reinterpret_cast<tCustom FAR REGPTR>(0x00DFF000);
@@ -56,6 +57,13 @@ __attribute__((optimize("no-tree-loop-distribute-patterns"))) ULONG rtLoadBlob_m
 }
 
 }  // extern "C"
+
+// src/rt/combat_pool.cpp: the test game always fights on the classic cells (rtDrawBufClear only reads pDraw).
+extern "C" uint8_t mogDrawBuffer[];
+namespace {
+const rt::CombatPool kClassicPool = {nullptr, nullptr, nullptr, nullptr, mogDrawBuffer, 720};
+}
+const rt::CombatPool &rt::combatPool() { return kClassicPool; }
 
 // blit.cpp and creatures.cpp zero-initialise structs at -O2 (the game's libc / ACE provides memset)
 #include <stddef.h>

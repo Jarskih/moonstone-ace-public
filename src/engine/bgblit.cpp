@@ -1,6 +1,7 @@
 // engine/bgblit - see bgblit.hpp.  mog.asm S_12: SECSTRT_12 / LAB_0A5A..LAB_0A5F (script walk), LAB_0A60 (mask), LAB_0A64 (tile),
 // LAB_0A66 (clip), LAB_0A6A (tile position), LAB_0A6B (coordinates).
 #include "engine/bgblit.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
@@ -118,18 +119,19 @@ void bgDrawTile(BgClipState &st, int16_t x, int16_t y, uint8_t tile, uint32_t sh
 	}
 }
 
-void bgCompose(BgClipState &st, const uint16_t *script, uint32_t sheetFg, uint32_t sheetMain, uint32_t dest, uint32_t mask,
+void bgCompose(BgClipState &st, const void *script, uint32_t sheetFg, uint32_t sheetMain, uint32_t dest, uint32_t mask,
                uint32_t planes, const BgSink &sink) {
 	uint16_t index = 0;                                                // MOVE.W #0,LAB_0A81
 	for(;;) {
-		const uint16_t *e = reinterpret_cast<const uint16_t *>(reinterpret_cast<const uint8_t *>(script) + (int32_t)(int16_t)index);
-		const uint16_t kind = (uint16_t)(e[0] & 0xFF00);               // 0(A5,D6.W) / ANDI.W #$FF00
+		const uint8_t *e = static_cast<const uint8_t *>(script) + (int32_t)(int16_t)index;   // the script is file data: big-endian words
+		const uint16_t kindTile = be::ld16(e);                         // 0(A5,D6.W)
+		const uint16_t kind = (uint16_t)(kindTile & 0xFF00);           // ANDI.W #$FF00
 		if(kind == BG_KIND_END) {                                      // BEQ LAB_0A5F: RTS
 			return;
 		}
 		if(kind != BG_KIND_SKIP) {                                     // BEQ LAB_0A5E
 			const uint32_t sheet = (kind == BG_KIND_FOREGROUND) ? sheetFg : sheetMain;   // LAB_05C1 for 3; LAB_0D92 for 4 and the rest
-			bgDrawTile(st, (int16_t)e[1], (int16_t)e[2], (uint8_t)e[0], sheet, dest, mask, planes, sink);   // D0 = 2(A5,D6), D1 = 4(A5,D6), D2 = 0(A5,D6)
+			bgDrawTile(st, (int16_t)be::ld16(e + 2), (int16_t)be::ld16(e + 4), (uint8_t)kindTile, sheet, dest, mask, planes, sink);   // D0 = 2(A5,D6), D1 = 4(A5,D6), D2 = 0(A5,D6)
 		}
 		index = (uint16_t)(index + 6);                                 // LAB_0A5E: ADDI.W #6,LAB_0A81
 	}

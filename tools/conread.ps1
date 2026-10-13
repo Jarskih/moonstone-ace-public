@@ -55,6 +55,8 @@ for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
 }
 if (-not $ok) { exit 2 }
 $cw = [ConRead]::GetConsoleWindow()
+# the console is only read through its buffer, never looked at: minimise it without taking the focus (SW_SHOWMINNOACTIVE)
+if ($cw -ne [IntPtr]::Zero) { [void][ConRead]::ShowWindow($cw, 7) }
 $h = [ConRead]::CreateFile('CONOUT$', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero)
 # WinUAE's console buffer is small (about 500 rows): make it long enough that a whole run never scrolls.
 $info = New-Object ConRead+CSBI

@@ -251,8 +251,10 @@ PLACE_OF = {'B0': 1, '93': 2, '8A': 3, 'A1': 4, '9D': 5, '7C': 6, '4F': 7, None:
 
 
 def m_button(btn):
-    """LAB_008C / LAB_0095: CMPI.L #1..#5,16(A0) in order."""
-    for n in (1, 2, 3, 4, 5):
+    """LAB_008C / LAB_0095: CMPI.L #1..#5,16(A0) in order.  Moonstone 2 (ROADMAP 8.5a) adds the ids 6 / 7, the co-op corner arrows (previous / next
+    knight: TB_PREV / TB_NEXT, handed out by rt::turnArrowHit only in a party); the original has no such record (LAB_009B / LAB_009C build 1..5), so a
+    classic game never reaches the difference, and the original would answer 0 for them."""
+    for n in (1, 2, 3, 4, 5, 6, 7):
         if btn == n:
             return n
     return 0

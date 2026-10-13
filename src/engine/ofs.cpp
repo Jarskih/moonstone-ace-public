@@ -1,5 +1,6 @@
 // engine/ofs - root-directory file reader for OFS/FFS floppy images (ROADMAP 10.2b; contract in include/engine/ofs.hpp).
 #include "engine/ofs.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
@@ -15,7 +16,8 @@ constexpr uint32_t OFF_CHAIN = 0x1F0;                 // next entry of the same 
 constexpr uint32_t OFF_EXT = 0x1F8;                   // extension block (data block table continued)
 constexpr uint32_t OFF_SEC = 0x1FC;                   // secondary type
 
-uint32_t be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
+// A plain (not inline) wrapper: the compiler keeps the call, as it did with the hand-written byte composition (smaller on the 68k).
+uint32_t be32(const uint8_t *p) { return be::ld32(p); }
 
 char upper(char c) { return (c >= 'a' && c <= 'z') ? (char)(c - 32) : c; }
 

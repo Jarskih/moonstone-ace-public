@@ -2,6 +2,7 @@
 // recording fake Paula and prints the chip-register write log per operation. Plain C++17, host only.
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "engine/synth.hpp"
 
@@ -78,6 +79,10 @@ int main() {
 			if(scanf("%u %u", &idx, &ref) != 2) return 2;
 			uint8_t *p = g_blob + (kSynthSeqTable - kSynthBlobBase) + 4 * idx;
 			p[0] = (uint8_t)(ref >> 24); p[1] = (uint8_t)(ref >> 16); p[2] = (uint8_t)(ref >> 8); p[3] = (uint8_t)ref;
+		} else if(op == 'R') {                      // R: back to a fresh process (several scripts share one run: tests/test_synth.py run_cpp_many)
+			for(uint32_t i = 0; i < kSynthBlobSize; ++i) g_blob[i] = kSynthBlob[i];
+			g_fake = Fake();
+			memset(&s, 0, sizeof s);
 		} else if(op == 'D') {
 			printf("D");
 			for(uint16_t i = 0; i < kSynthInstCount; ++i) printf(" %x", (unsigned)s.aulSample[i]);

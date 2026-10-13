@@ -6,7 +6,7 @@ A static scan of src/ (not src/lifted, not src/rt/gen) for NEW raw acquire/relea
   memAlloc* / memFree                    -> rt::MemBlock          exec Disable / Enable              -> rt::IrqOff
   pr_WindowPtr                           -> rt::NoRequesters      AllocDosObject, OpenLibrary        -> ms::scopeExit
   memStackMark / memStackRelease         -> ms::MemMark
-The guards themselves (src/rt/guards.hpp, include/engine/guard.hpp) are the only places that may call them directly; everything
+The guards themselves (src/rt/guards.hpp, src/rt/file_handle.hpp, include/engine/guard.hpp) are the only places that may call them directly; everything
 else is either converted or listed in tests/raii_allow.json with a reason (the documented exceptions of docs/RAII.md: handles
 that outlive a call, the overlay switches, never-returning crash code, script-driven ops, the C ABI of rt/files).
 
@@ -27,7 +27,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOW_FILE = os.path.join(ROOT, 'tests', 'raii_allow.json')
 SCAN_DIRS = ('src/game', 'src/engine', 'src/rt', 'src/main.cpp')
 SKIP_DIRS = ('src/lifted', 'src/rt/gen')
-GUARD_FILES = ('src/rt/guards.hpp', 'include/engine/guard.hpp')
+GUARD_FILES = ('src/rt/guards.hpp', 'src/rt/file_handle.hpp', 'include/engine/guard.hpp')
 SCAN_EXT = ('.cpp', '.hpp', '.h', '.c')
 
 # kind -> (regex on a comment/string-stripped line, the guard to use)

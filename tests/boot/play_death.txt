@@ -1,6 +1,6 @@
 # Defeat and game over: the knight has one life left and stands idle in a lair fight (the ratmen kill it): the "you lost" status
 # screen (scene 9) with the life gone, then the map; the black knights are parked (frog days) so the turn comes back to the dead
-# knight at once: no human knight alive = game over (farewell text, fire, back to the title menu).
+# knight at once: no human knight alive = game over (farewell text, fire, back to the main menu).
 # shotcmp-tol play-death-arena 15
 # shotcmp-tol play-death-fight 15
 # shotcmp-tol play-death-lost 3
@@ -9,9 +9,12 @@
 # shotcmp-tol play-death-gameover2 3
 # shotcmp-tol play-death-gameover3 3
 # shotcmp-tol play-death-title 3
-# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
-frame 300 key SPACE tap
+# --- boot to the map: intro skip, main menu LOCAL, Select Knight, first knight, keep the preset name (fire = OK) ---
+# the intro skip is event-driven (2026-10-11): the intro opens its first picture (data/mindscape) once it runs, i.e. the skip is armed
+wait file mindscape max 900
+frame 20 key SPACE tap
 wait input 10 max 3000
+frame 40 joy1 fire pulse
 frame 100 joy1 down pulse
 frame 130 joy1 down pulse
 frame 160 joy1 down pulse

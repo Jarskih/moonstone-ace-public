@@ -3,11 +3,14 @@ select with its name editor (LAB_00D3 .. LAB_00E9) in C++, against a literal Pyt
 
 Both sides run the same scripted input (the joystick word LAB_0630 and the key code SECSTRT_21 returned by each
 LAB_00EE poll) and must produce the same trace: every asm primitive the scene calls (LAB_0416, LAB_0CDA, LAB_0432,
-LAB_0D74 ...) with its arguments, in order, and the same game variables at the end (player count, cursor, gore flag,
+LAB_0D74 ...) with its arguments, in order, and the same game variables at the end (player count, cursor, damage divisor,
 knight records, name buffers).  The trace includes every wait, so the frame pacing is part of the comparison.
 
 The model (class Asm below) is written from the asm text: one method per label, registers as locals, signed word
-compares where the asm branches with BGE/BLT/BLE.  The C++ driver is compiled with clang++ (no STL, no exceptions)
+compares where the asm branches with BGE/BLT/BLE.  One deliberate difference (owner 2026-10-11): the title menu has no Gore row, gore is always
+on.  The model is the asm with that row cut out: Practice and Select Knight keep the cursor items 2 and 3, the cursor skips item 1 (the Mode row of
+co-op builds, absent here), the rows are 66, 126 and 146, and the Gore toggle and the Gore text are gone.  The new rows (Mode, Back, the main menu) are checked in tests/test_coop.py
+and tests/test_main_menu.py.  The C++ driver is compiled with clang++ (no STL, no exceptions)
 and linked with src/game/scene_menu.cpp (+ the co-op helpers game/party.cpp, engine/pad.cpp, unused by these classic traces).
 """
 import os
@@ -51,7 +54,6 @@ static void oClear(MenuBuffer b) { printf("clr %d\n", (int)b); }
 static void oTFlag(uint16_t v) { printf("tflag %u\n", (unsigned)v); }
 static void oSprite(MenuBank b, uint16_t i, uint16_t x, uint16_t y) { printf("spr %d %u %u %u\n", (int)b, i, x, y); }
 static void oNum(uint16_t v) { printf("num %u\n", v); }
-static void oGore(bool a) { printf("gore %d\n", a ? 1 : 0); }
 static void oText(MenuText t) { printf("text %d\n", (int)t); }
 static void oStr(const uint8_t *p, uint16_t x, uint16_t y, uint16_t s) {
 	printf("str %d ", nameIndex(p));
@@ -79,8 +81,8 @@ static uint32_t oSpawn(uint16_t a, uint16_t b, uint16_t c, uint16_t d) {
 }
 static void oKill(uint32_t h) { printf("kill %u\n", (unsigned)h); }
 
-static const MenuOps g_ops = {oIrq, oHits, oFlip, oWait, oPlanes, oBlit, oBlit2, oClear, oTFlag, oSprite, oNum, oGore,
-	oText, oStr, oPal, oFade, oJoy, oKey, oKeyClr, oKeyReset, oXlat, oErr, oPub, oSpawn, oKill, nullptr};
+static const MenuOps g_ops = {oIrq, oHits, oFlip, oWait, oPlanes, oBlit, oBlit2, oClear, oTFlag, oSprite, oNum,
+	oText, oStr, oPal, oFade, oJoy, oKey, oKeyClr, oKeyReset, oXlat, oErr, oPub, oSpawn, oKill, nullptr, nullptr};
 
 static void readScript() {
 	scanf("%d", &g_n);
@@ -98,19 +100,18 @@ int main() {
 		if (setjmp(g_jb)) { printf("END\n"); fflush(stdout); continue; }
 		if (!strcmp(kind, "menu")) {
 			SceneMenu m;
-			unsigned players, cursor, moved, gore, div;
-			scanf("%u %u %u %u %u", &players, &cursor, &moved, &gore, &div);
+			unsigned players, cursor, moved, div;
+			scanf("%u %u %u %u", &players, &cursor, &moved, &div);
 			m.state.uwPlayers = (uint16_t)players;
 			m.state.uwCursor = (uint16_t)cursor;
 			m.state.uwMoved = (uint16_t)moved;
-			m.state.ulGore = gore;
 			m.state.uwDamageDiv = (uint16_t)div;
 			readScript();
 			m.enter(g_ops);
 			while (!m.update(g_ops)) {}
 			m.exit(g_ops);
-			printf("state %u %u %u %u %u %d\n", m.state.uwPlayers, m.state.uwCursor, m.state.uwMoved,
-				(unsigned)m.state.ulGore, m.state.uwDamageDiv, (int)m.eResult);
+			printf("state %u %u %u %u %d\n", m.state.uwPlayers, m.state.uwCursor, m.state.uwMoved,
+				m.state.uwDamageDiv, (int)m.eResult);
 		} else {
 			static ms::game::Knight knights[5];
 			SceneKnights k;
@@ -160,7 +161,7 @@ def s16(v):
 
 class Asm:
     SECSTRT_4 = (3, 2, 1, 1)                       # words at SECSTRT_4
-    LAB_06DD = (0x55, 0x6E, 0x94, 0xA8)
+    LAB_06DD = (66, 86, 126, 146)                  # was (0x55, 0x6E, 0x94, 0xA8): Players, (Mode), Practice, Select Knight
     LAB_0702 = (0x0C, 0x58, 0xA4, 0xF0)
 
     def __init__(self, script, names=None, players=1, v=None):
@@ -172,7 +173,6 @@ class Asm:
         self.LAB_05C5 = players
         self.LAB_06DC = v.get('cursor', 0)
         self.LAB_06DB = v.get('moved', 0)
-        self.LAB_06DA = v.get('gore', 0)
         self.LAB_06DE = v.get('div', 0)
         self.names = names                         # list of 4 bytearrays: LAB_06B6, LAB_06B5, LAB_06B7, LAB_06B8 by portrait
         self.knights = [[99, 77] for _ in range(5)]   # (+54 long, +11 byte) of the records at LAB_0613 + n * $84
@@ -212,10 +212,6 @@ class Asm:
                 if self.LAB_06DC == 2:              # CMPI.W #2 ; BEQ LAB_00B8
                     self.t('fade')
                     return 2
-                d0 = self.LAB_00C2(0)               # MOVEQ #0,D0 ; BSR LAB_00C2
-                if d0 != 0:                         # TST.W D0 ; BNE LAB_00B7
-                    self.LAB_00C4()
-                    continue
             d0 = self.LAB_00BA()                    # LAB_00B6
             if d0 == 0:
                 continue
@@ -228,33 +224,31 @@ class Asm:
             return d0
         if d1 & 8:                                  # LAB_00BB
             self.LAB_06DC = (self.LAB_06DC - 1) & 0xFFFF
+            if self.LAB_06DC == 1:                  # the C++ skips the (absent) Mode row; the asm had the Gore row here
+                self.LAB_06DC = 0
             if s16(self.LAB_06DC) < 0:              # BGE.S LAB_00BC
                 self.LAB_06DC = 0
                 self.LAB_06DB = 1
             return 1
         if d1 & 4:                                  # LAB_00BD
             self.LAB_06DC = (self.LAB_06DC + 1) & 0xFFFF
+            if self.LAB_06DC == 1:
+                self.LAB_06DC = 2
             if not s16(self.LAB_06DC) <= 3:         # CMPI.W #3 ; BLE.S LAB_00BE
                 self.LAB_06DC = 3
                 self.LAB_06DB = 1
             return 1
         if d1 & 2:                                  # LAB_00BF
             if self.LAB_06DC != 0:
-                return self.LAB_00C2(d0)
+                return d0                           # LAB_00C2 (its Gore toggle is cut out)
             self.LAB_00C6(0xFFFF)
             return 1
         if d1 & 1:                                  # LAB_00C0
             if self.LAB_06DC != 0:
-                return self.LAB_00C2(d0)
+                return d0
             self.LAB_00C6(1)
             return 1
         return d0                                   # LAB_00C1
-
-    def LAB_00C2(self, d0):
-        if self.LAB_06DC == 1:
-            self.LAB_06DA ^= 1
-            d0 = 1
-        return d0
 
     def LAB_00C6(self, d0):
         self.LAB_05C5 = (self.LAB_05C5 + d0) & 0xFFFF       # ADD.W D0,LAB_05C5
@@ -274,10 +268,6 @@ class Asm:
         self.t('spr 1 0 50 %d' % y)                 # A0 = LAB_05C4, D0=0, D1=LAB_05D8=$32, D2=LAB_05D9
         self.t('tflag 0')
         self.t('num %d' % self.LAB_05C5)
-        gore_text = 1                               # MOVE.L #LAB_06BB,LAB_06B3
-        if self.LAB_06DA == 0:                      # TST.L LAB_06DA ; BNE.S LAB_00C5
-            gore_text = 0                           # MOVE.L #LAB_06BA,LAB_06B3
-        self.t('gore %d' % gore_text)
         self.t('text 0')                            # LEA LAB_06AE,A0 ; JSR LAB_0432
         self.t('flip')
         self.t('wait 10')
@@ -470,12 +460,12 @@ def split_trials(out):
     return trials
 
 
-def model_menu(script, players, cursor, moved, gore, div):
-    a = Asm(script, players=players, v=dict(cursor=cursor, moved=moved, gore=gore, div=div))
+def model_menu(script, players, cursor, moved, div):
+    a = Asm(script, players=players, v=dict(cursor=cursor, moved=moved, div=div))
     try:
         res = a.menu()
-        a.t('state %d %d %d %d %d %d' % (a.LAB_05C5, a.LAB_06DC, a.LAB_06DB, a.LAB_06DA, a.LAB_06DE,
-                                         {2: 2, 3: 3}[res]))
+        a.t('state %d %d %d %d %d' % (a.LAB_05C5, a.LAB_06DC, a.LAB_06DB, a.LAB_06DE,
+                                      {2: 2, 3: 3}[res]))
     except Exhausted:
         a.t('EOS')
     return a.out
@@ -504,11 +494,11 @@ class SceneMenu(unittest.TestCase):
         lines, cases = [str(self.N)], []
         for i in range(self.N):
             players = rng.randrange(0, 7)
-            cursor, moved, gore, div = rng.randrange(0, 4), rng.randrange(0, 2), rng.randrange(0, 3), rng.randrange(0, 4)
+            cursor, moved, div = rng.choice((0, 2, 3)), rng.randrange(0, 2), rng.randrange(0, 4)
             mode = rng.randrange(3)
             script = [(_rand_joy(rng, mode), 0) for _ in range(rng.randrange(1, 60))]
-            cases.append((script, players, cursor, moved, gore, div))
-            lines.append('menu %d %d %d %d %d' % (players, cursor, moved, gore, div))
+            cases.append((script, players, cursor, moved, div))
+            lines.append('menu %d %d %d %d' % (players, cursor, moved, div))
             lines += _script_text(script)
         trials = split_trials(run_driver(lines))
         self.assertEqual(len(trials), self.N)
@@ -520,13 +510,15 @@ class SceneMenu(unittest.TestCase):
         self.assertGreater(done, 20)                # enough scripts actually leave the menu
 
     def test_menu_known_sequence(self):
-        """Down, down, fire on Practice: the trace of the whole scene, written out (mog.asm 1669..1713)."""
-        script = [(4, 0), (4, 0), (16, 0)]
-        got = split_trials(run_driver(['1', 'menu 1 0 0 0 3'] + _script_text(script)))[0]
+        """Down (skipping the Mode line), fire on Practice: the trace of the whole scene, written out (mog.asm 1669..1713)."""
+        script = [(4, 0), (16, 0)]
+        got = split_trials(run_driver(['1', 'menu 1 0 0 3'] + _script_text(script)))[0]
         self.assertEqual(got[:4], ['irq', 'hits', 'flip', 'planes'])
-        self.assertEqual(got[-3:], ['wait 10', 'fade', 'state 1 2 0 0 3 2'])
-        self.assertEqual(got.count('wait 10'), 3)   # first draw + two cursor moves, no wait for the exit
-        self.assertEqual(got, model_menu(script, 1, 0, 0, 0, 3))
+        self.assertEqual(got[-3:], ['wait 10', 'fade', 'state 1 2 0 3 2'])
+        self.assertEqual(got.count('wait 10'), 2)   # first draw + one cursor move, no wait for the exit
+        self.assertNotIn('gore 0', got)             # the Gore text is not set any more
+        self.assertNotIn('gore 1', got)
+        self.assertEqual(got, model_menu(script, 1, 0, 0, 3))
 
     def test_knight_select_traces_match_the_asm_model(self):
         rng = random.Random(64)

@@ -22,16 +22,16 @@ MS_NO_LIBCALLS void fill(uint8_t *p, uint32_t n, uint8_t v) {
 }  // namespace
 
 void mogJobsReset(const MogJobEnv &env) {
-	fill(reinterpret_cast<uint8_t *>(env.pJobs), MOGJOB_POOL_BYTES, 0);       // MOVE.L #$1F3,D0 ... CLR byte loop
+	fill(reinterpret_cast<uint8_t *>(env.pJobs), sizeof(CombatJob) * combatJobs(), 0);       // MOVE.L #$1F3,D0 ... CLR byte loop
 	fill(env.pWork, MOGJOB_WORK_BYTES, 0);                                    // LAB_064B, 36 bytes: the first block only
-	fill(env.pDrawBuffer, MOGJOB_DRAW_BYTES, 0xFF);                           // JSR LAB_03A7
-	fill(env.pAttackLists, MOGJOB_LIST_BYTES * COMBAT_JOB_COUNT, 0);          // BSR LAB_03C7: LAB_064F, then LAB_0650
-	fill(env.pHurtLists, MOGJOB_LIST_BYTES * COMBAT_JOB_COUNT, 0);
-	for(uint32_t i = 0; i < COMBAT_JOB_COUNT; ++i) {                          // LAB_0308: A2 / A3 += $50 per job
+	fill(env.pDrawBuffer, g_combatLimits.ulDrawBytes, 0xFF);                         // JSR LAB_03A7
+	fill(env.pAttackLists, MOGJOB_LIST_BYTES * combatJobs(), 0);          // BSR LAB_03C7: LAB_064F, then LAB_0650
+	fill(env.pHurtLists, MOGJOB_LIST_BYTES * combatJobs(), 0);
+	for(uint32_t i = 0; i < combatJobs(); ++i) {                          // LAB_0308: A2 / A3 += $50 per job
 		env.pJobs[i].ulAttackList = jobAddr(env.pAttackLists + MOGJOB_LIST_BYTES * i);
 		env.pJobs[i].ulHurtList = jobAddr(env.pHurtLists + MOGJOB_LIST_BYTES * i);
 	}
-	for(uint32_t i = 0; i < COMBAT_JOB_COUNT; ++i) {                          // LAB_0309: A1 += $24 per job
+	for(uint32_t i = 0; i < combatJobs(); ++i) {                          // LAB_0309: A1 += $24 per job
 		env.pJobs[i].ulWork = jobAddr(env.pWork + MOGJOB_WORK_BYTES * i);
 	}
 	env.clearHitLinks();                                                      // JSR LAB_0161
@@ -40,7 +40,7 @@ void mogJobsReset(const MogJobEnv &env) {
 }
 
 CombatJob *mogJobFind(const MogJobEnv &env, uint32_t ulOwner) {
-	for(uint32_t i = 0; i < COMBAT_JOB_COUNT; ++i) {                          // CMP.L 24(A6),D0, stride $32, D7 = 9
+	for(uint32_t i = 0; i < combatJobs(); ++i) {                          // CMP.L 24(A6),D0, stride $32, D7 = 9
 		if(env.pJobs[i].ulOwner == ulOwner) {
 			return &env.pJobs[i];
 		}

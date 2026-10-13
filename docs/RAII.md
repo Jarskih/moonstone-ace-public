@@ -72,11 +72,13 @@ The pair spans calls, callbacks or a non-local exit, so no scope holds it.
 | `rt/game.cpp` rt_game_call / `rt_run_*` (asm) | overlay switches | the original's deliberate non-local exit: the overlay jumps back to `rt_game_leave`, which restores SP into `rtGameRun`'s frame, so the guards of `rtGameRun` itself (arenas, FileSession) survive and release at its end |
 | `rt/game.cpp` imageEnter | overlay DATA snapshot `memAllocFast` / the loop of `memFree` after the overlay loop | static `OverlayDef`, allocated at the first entry of an overlay and used by later entries |
 | `rt/crash.cpp` rt_crash_c | `systemUse`, log `Open` | the exception reporter never returns (loops in `Delay`) |
-| `rt/enhanced.cpp` enhancedEnable / enhancedDisable | 7-plane temp buffer (`memAllocChipClear` / `memFree`) | owned by the display lifetime (`displayAceActivate` / `displayAceRelease`), static |
+| `rt/enhanced.cpp` enhancedEnable / enhancedDisable (the seam is `rt/chipalloc.hpp`) | 7-plane temp buffer (`memAllocChipClear` / `memFree`) | owned by the display lifetime (`displayAceActivate` / `displayAceRelease`), static |
 | `rt/display_ace.cpp` displayAceActivate / Release | ACE view, vport, buffer, bitmaps | `s_ace` state with its own create / destroy pair, released by `displayAceRelease` on every failure path |
 | `rt/irq.cpp` irqInstall / irqRemove (`systemSetInt`) | interrupt vectors | installed at the overlay start, removed at the end, across the whole game; owner is the irq module state |
 | `rt/files.cpp` s_fh, s_logFh, tryOpen | the single file slot, `files.log`, the stub handle of the kn1.ob search | the file layer owns the handles that outlive a call; `rt::FileHandle` is the typed view of the slot, `rt_file_shutdown` (FileSession) closes it |
 | `rt/files.cpp`, `rt/files.hpp` | the C ABI `rt_file_open[_exact]` | what `FileHandle` wraps (the asm shims call it too) |
+| `rt/sdl/rt_files.cpp` | the PC definitions of `rt_file_open` / `rt_file_open_exact` | what `FileHandle` (`rt/file_handle.hpp`) wraps: the single file slot of the game over `rt/sdl/gamedata` (ROADMAP 11.10) |
+| `rt/engine_scenes.cpp` hostCall FnFileOpen | `rt_file_open` | the scene engine opens, reads and closes by three separate `SceneFn` ops (the same shape as `combat_load.cpp` opFileOpen), so no scope holds the slot |
 | `rt/adfdisks.cpp` s_aImg[].fh, adfShutdown | ADF image handles | open for the whole run, released by `DosHandle::release()` into the table, closed by adfShutdown |
 | `rt/irq.cpp` s_bpLog | the trace log (MS_IRQ_TRACE only) | open for the whole run |
 | `rt/combat_load.cpp` opFileOpen / opFileClose | file slot ops of the combat loader | the two ops are separate entries of the `Ops` table; the pairing is `OpenFile` in `game/combat_load.cpp` (and `packDone` closes the pack read) |

@@ -11,7 +11,12 @@ namespace {
 
 const Event kEvents[] = {Event::Done, Event::GameOver, Event::NewDay};
 
-Event run(Flow &f) { return mapTurnOver(*f.pMapOps) ? Event::GameOver : Event::Done; }
+Event run(Flow &f) {
+	if (mapTurnOver(*f.pMapOps)) return Event::GameOver;
+	turnBoundary();   // the map turn of a network game: a dropped player may come back here (docs/NETPLAY.md 4.5); one compare otherwise
+	return Event::Done;
+}
+
 
 }  // namespace
 

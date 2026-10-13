@@ -4,14 +4,13 @@
 // are mog's.  Every arithmetic step is the 16-bit word operation of the asm (casts to uint16_t), every branch the
 // condition the 68k evaluates (BMI / BPL = N only, BGE / BLT / BGT = N xor V, i.e. the true signed compare).
 #include "game/creatures.hpp"
+#include "engine/endian.hpp"
 
 namespace ms { namespace game {
 
 namespace {
 
 // Big-endian game bytes (cel tables, hit records, draw lists, the hit-set pairs).
-inline uint16_t rd16(const uint8_t *p) { return (uint16_t)((p[0] << 8) | p[1]); }
-inline uint32_t rd32(const uint8_t *p) { return ((uint32_t)rd16(p) << 16) | rd16(p + 2); }
 
 inline const uint8_t *at(uint32_t addr) { return jobPtr<const uint8_t>(addr); }
 
@@ -100,8 +99,8 @@ bool depthClose(uint16_t uwDepthA, uint16_t uwDepthB) {
 // LAB_03DD / LAB_03DE.
 uint32_t hitSetFind(const uint8_t *pPairs, uint32_t ulCount, uint32_t ulKey) {
 	for(uint32_t i = 0; i < ulCount; ++i) {
-		if(rd32(pPairs + 8 * i) == ulKey) {
-			return rd32(pPairs + 8 * i + 4);
+		if(be::ld32(pPairs + 8 * i) == ulKey) {
+			return be::ld32(pPairs + 8 * i + 4);
 		}
 	}
 	return 0;
@@ -127,7 +126,7 @@ bool contactTest(const uint8_t *pDefTab, uint16_t uwDefFrame, uint16_t uwDefX, u
 	const int16_t attOfs = (int16_t)(uint16_t)(uwAttFrame * 10u);
 	uint16_t uwMirror = 0;
 	if(!(pAttTab[18 + attOfs] & 1u)) {
-		uwMirror = rd16(pAttTab + 14 + attOfs);
+		uwMirror = be::ld16(pAttTab + 14 + attOfs);
 	}
 
 	const uint8_t *pRec = hitRecordAt(pHitSet, uwAttFrame);
@@ -138,8 +137,8 @@ bool contactTest(const uint8_t *pDefTab, uint16_t uwDefFrame, uint16_t uwDefX, u
 	// A2 = 10(A0, 10 * frame): the defender's cel entry.
 	const int16_t defOfs = (int16_t)(uint16_t)(uwDefFrame * 10u);
 	const uint8_t *pCel = pDefTab + 10 + defOfs;
-	const uint16_t uwCelW = rd16(pCel + 4);
-	const uint16_t uwCelH = rd16(pCel + 6);
+	const uint16_t uwCelW = be::ld16(pCel + 4);
+	const uint16_t uwCelH = be::ld16(pCel + 6);
 
 	// Coarse gates: x interval of the defender cel against the attacker's (mirrored) box, then y.
 	const uint8_t ubMaxDx = pRec[2];
@@ -158,14 +157,14 @@ bool contactTest(const uint8_t *pDefTab, uint16_t uwDefFrame, uint16_t uwDefX, u
 	}
 
 	// Plane data of the defender cel and the row geometry.
-	const uint8_t *pPlanes = at(rd32(pDefTab + 2)) + rd32(pCel);
+	const uint8_t *pPlanes = at(be::ld32(pDefTab + 2)) + be::ld32(pCel);
 	const uint16_t uwRowBytes = (uint16_t)(((uint16_t)(uwCelW + 15u) >> 4) << 1);   // ADDI.W #15 / LSR.W #4 / ADD.W
 	const uint16_t uwStride = (uint16_t)(uwRowBytes * uwCelH);                      // MULU, MOVE.W D7,LAB_0A56
 	// Planes in the mask: popcount table LAB_0A55 indexed by the low byte of the word at +8.  DEVIATION: the asm
 	// indexes up to byte 255 * 2 (the table has 16 words, then LAB_0A56 and the string "collide.hit") and loops 65536
 	// times for a zero count; no shipped cel has more than 4 planes in the mask. Masks up to 63 are counted so the
 	// 6-plane art of MS_ENHANCED (plane bits 4-5, ROADMAP 4.8a) still collides; above that, no contact.
-	const unsigned uPlaneMask = rd16(pCel + 8) & 0xFFu;
+	const unsigned uPlaneMask = be::ld16(pCel + 8) & 0xFFu;
 	if(uPlaneMask > 63) {
 		return false;
 	}
@@ -211,7 +210,7 @@ bool contactTest(const uint8_t *pDefTab, uint16_t uwDefFrame, uint16_t uwDefX, u
 
 		const uint8_t *pPlane = pPlanes;
 		for(unsigned p = 0; p < uPlanes; ++p) {
-			if(rd16(pPlane + (int16_t)uwOfs) & (1u << uBit)) {              // MOVE.W 0(A4,D0.W),D6 / BTST D5,D6
+			if(be::ld16(pPlane + (int16_t)uwOfs) & (1u << uBit)) {              // MOVE.W 0(A4,D0.W),D6 / BTST D5,D6
 				if(pPoint) {
 					pPoint->uwX = cx;
 					pPoint->uwY = cy;
@@ -243,15 +242,15 @@ void clearHitLinks(const ContactEnv &env) {
 void contactScan(const ContactEnv &env) {
 	clearHitLinks(env);                                                     // JSR LAB_0161
 
-	for(uint32_t j = 0; j < COMBAT_JOB_COUNT; ++j) {                        // A6, D7
+	for(uint32_t j = 0; j < combatJobs(); ++j) {                        // A6, D7
 		CombatJob *pAtk = &env.pJobs[j];
 		if(!pAtk->ubActive) {
 			continue;
 		}
 		const uint8_t *pA = at(pAtk->ulAttackList);                         // 40(A6)
 		bool bHit = false;
-		for(; !bHit && rd32(pA) != 0; pA += HIT_ENTRY_BYTES) {              // LAB_03C0: a zero cel table ends the slot
-			for(uint32_t k = 0; k < COMBAT_JOB_COUNT && !bHit; ++k) {       // A5, D6
+		for(; !bHit && be::ld32(pA) != 0; pA += HIT_ENTRY_BYTES) {              // LAB_03C0: a zero cel table ends the slot
+			for(uint32_t k = 0; k < combatJobs() && !bHit; ++k) {       // A5, D6
 				CombatJob *pHurt = &env.pJobs[k];
 				if(pHurt == pAtk || !pHurt->ubActive) {
 					continue;
@@ -259,16 +258,19 @@ void contactScan(const ContactEnv &env) {
 				if(!depthClose(pHurt->uwZ, pAtk->uwZ)) {                    // |10(A5) - 10(A6)| > 10
 					continue;
 				}
-				for(const uint8_t *pH = at(pHurt->ulHurtList); rd32(pH) != 0; pH += HIT_ENTRY_BYTES) {   // 44(A5)
-					const uint32_t ulAttTab = rd32(pA);
+				if(env.pRoster != 0 && rosterAllies(env.pRoster, *jobPtr<Knight>(pAtk->ulOwner), *jobPtr<Knight>(pHurt->ulOwner))) {
+					continue;                                               // Moonstone 2: friendly fire is off (ROADMAP 8.4b)
+				}
+				for(const uint8_t *pH = at(pHurt->ulHurtList); be::ld32(pH) != 0; pH += HIT_ENTRY_BYTES) {   // 44(A5)
+					const uint32_t ulAttTab = be::ld32(pA);
 					// DEVIATION: a cel table without a registered hit set finds nothing (the asm scans on).
-					const uint32_t ulSet = hitSetFind(env.pHitPairs, env.ulHitCount, ulAttTab);
+					const uint32_t ulSet = hitSetFind(env.pHitPairs, env.ulHitCount, rosterCelKey(env.pRoster, ulAttTab));   // Moonstone 2: a remapped cel has its original's hit set
 					if(!ulSet) {
 						continue;
 					}
 					ContactPoint pt;
-					if(contactTest(at(rd32(pH)), rd16(pH + 4), rd16(pH + 6), rd16(pH + 8), at(ulAttTab), at(ulSet),
-					               rd16(pA + 4), rd16(pA + 6), rd16(pA + 8), &pt)) {
+					if(contactTest(at(be::ld32(pH)), be::ld16(pH + 4), be::ld16(pH + 6), be::ld16(pH + 8), at(ulAttTab), at(ulSet),
+					               be::ld16(pA + 4), be::ld16(pA + 6), be::ld16(pA + 8), &pt)) {
 						Knight *pAtkRec = jobPtr<Knight>(pAtk->ulOwner);    // 24(A6)
 						Knight *pHurtRec = jobPtr<Knight>(pHurt->ulOwner);  // 24(A5)
 						pAtkRec->ulHitTarget = pHurt->ulOwner;              // 14(A0)
@@ -284,24 +286,27 @@ void contactScan(const ContactEnv &env) {
 	}
 
 	// LAB_03C7: both lists are cleared for the next frame.
-	for(uint32_t i = 0; i < HIT_LIST_BYTES; ++i) {
+	for(uint32_t i = 0; i < HIT_SLOT_BYTES * combatJobs(); ++i) {
 		env.pAttackLists[i] = 0;
 		env.pHurtLists[i] = 0;
 	}
 }
 
 // LAB_03A9 with LAB_03AC / LAB_03AF / LAB_03B1.
-uint16_t blockedMask(const CombatJob *pJobs, const Knight *pSelf, uint16_t uwStep, uint16_t uwFacing) {
+uint16_t blockedMask(const CombatJob *pJobs, const Knight *pSelf, uint16_t uwStep, uint16_t uwFacing, const FightRoster *pRoster) {
 	const uint16_t uwDir = uwFacing & 3u;                                   // ANDI.W #3,LAB_0636
 	uint16_t uwMask = 0x1F;                                                 // MOVE.W #$1F,LAB_03B6
 	const Knight &a = *pSelf;
-	for(uint32_t j = 0; j < COMBAT_JOB_COUNT; ++j) {
+	for(uint32_t j = 0; j < combatJobs(); ++j) {
 		const CombatJob &job = pJobs[j];
 		if(!job.ubActive) {
 			continue;
 		}
 		const Knight &b = *jobPtr<const Knight>(job.ulOwner);
 		if(&b == pSelf) {                                                   // CMPA.L A0,A1
+			continue;
+		}
+		if(pRoster != 0 && rosterAllies(pRoster, *pSelf, b)) {              // Moonstone 2: the party walks through itself
 			continue;
 		}
 		if(rec16(b, 58) == 0 || b.swHp <= 0) {                              // TST.W 58(A1); TST.W 80(A1) / BLE
@@ -525,7 +530,7 @@ int32_t daggerStep(DaggerSlot *aSlots, uint32_t ulOwner, uint16_t aOut[3], uint3
 // LAB_0310.
 uint32_t jobCreate(CombatJob *pJobs, uint32_t ulScript, uint32_t ulOwner, uint32_t ulFrames, uint16_t uwX,
                    uint16_t uwY, uint16_t uwZ, uint8_t ubFacing, uint8_t ubType) {
-	for(uint32_t i = 0; i < COMBAT_JOB_COUNT; ++i) {
+	for(uint32_t i = 0; i < combatJobs(); ++i) {
 		CombatJob &job = pJobs[i];
 		if(job.ubActive) {
 			continue;
@@ -583,18 +588,21 @@ SpawnResult creatureSpawn(CombatJob *pJobs, Knight *pCreatures, uint32_t ulScrip
 // LAB_02CA.
 SpawnResult daggerRelease(CombatJob *pJobs, Knight *pCreatures, Knight &thrower, uint32_t ulDaggerScript,
                       uint32_t ulDamageTable, uint32_t ulFrames, uint16_t uwX, uint16_t uwY, uint16_t uwZ,
-                      uint8_t ubFacing) {
+                      uint8_t ubFacing, const FightRoster *pRoster) {
 	thrower.ubDaggers = (uint8_t)(thrower.ubDaggers - 1u);                  // SUBI.B #1,76(A1)
 	SpawnResult r = creatureSpawn(pJobs, pCreatures, ulDaggerScript, ulFrames, uwX, uwY, uwZ, ubFacing, 0x34);
 	r.pRecord->ulDamageTable = ulDamageTable;                               // LAB_0302: the dagger damage table
 	r.pRecord->uwAction = raw(Action::Dagger);
 	r.pRecord->ubType = raw(ActorType::Dagger);
+	if(rosterOn(pRoster)) {
+		r.pRecord->ubTeam = rosterTeam(*pRoster, thrower);                  // Moonstone 2 (ROADMAP 8.4b)
+	}
 	return r;
 }
 
 // LAB_0322.
 void creatureDispatch(const DispatchEnv &env) {
-	for(uint32_t i = 0; i < COMBAT_JOB_COUNT; ++i) {
+	for(uint32_t i = 0; i < combatJobs(); ++i) {
 		CombatJob &job = env.pJobs[i];
 		if(!job.ubActive) {
 			continue;
@@ -603,7 +611,7 @@ void creatureDispatch(const DispatchEnv &env) {
 		if(pOwner->ulHitTarget == 0 && pOwner->ulAttacker == 0 && job.ubRunning) {
 			continue;                                                       // idle owner with a running script
 		}
-		const uint32_t ulHandler = rd32(env.pHandlerTable + job.ubType);    // 0(A1,D0.W): the type byte, unscaled
+		const uint32_t ulHandler = be::ld32(env.pHandlerTable + job.ubType);    // 0(A1,D0.W): the type byte, unscaled
 		HandlerResult res;
 		res.ulScript = 0;
 		res.uwX = res.uwY = res.uwZ = 0;

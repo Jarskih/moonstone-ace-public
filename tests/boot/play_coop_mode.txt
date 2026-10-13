@@ -1,0 +1,25 @@
+# ROADMAP 8.2a: explicit Mode selector (owner 2026-10-11: Players is the count only, Mode is Classic / Coop and keeps the count; Mode sits under
+# Players, then an empty line, then Practice and Select Knight).  The main menu (LOCAL / MULTIPLAYER / SETTINGS), LOCAL, Players 3, down to Mode,
+# right = Coop (the count stays 3), left = Classic (still 3), fire = Coop again, down x2 to Select Knight (the cursor skips the empty line), fire =
+# the knight screen with three knights.
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 60 shot play-mainmenu
+frame 100 joy1 fire pulse
+frame 160 shot play-local-classic
+frame 200 joy1 right pulse
+frame 230 joy1 right pulse
+frame 270 shot play-local-classic-3
+frame 310 joy1 down pulse
+frame 350 joy1 right pulse
+frame 390 shot play-local-coop
+frame 430 joy1 left pulse
+frame 470 shot play-local-restored
+frame 510 joy1 fire pulse
+frame 550 shot play-local-toggle
+frame 590 joy1 down pulse
+frame 620 joy1 down pulse
+frame 660 joy1 fire pulse
+wait input 10 max 3000
+frame 100 shot play-local-knights
+frame 140 quit

@@ -7,6 +7,41 @@
    "detail": "ulWalkScripts",
    "reason": "creatureApply is the one writer of a creature record's table pointers (it replaces the init* bodies); a World accessor would only wrap the same store",
    "task": "9.5e1"
+  },
+  {
+   "file": "src/game/net_hash.cpp",
+   "kind": "knight-pointer-field",
+   "detail": "ulInventory",
+   "reason": "the state hash reads the record's pointer fields only to NORMALISE them (array tag + offset, netNormalisePtr) so the hash does not depend on addresses; it never follows them",
+   "task": "12.8b"
+  },
+  {
+   "file": "src/game/net_hash.cpp",
+   "kind": "knight-pointer-field",
+   "detail": "ulEngagedWith",
+   "reason": "the state hash reads the record's pointer fields only to NORMALISE them (array tag + offset, netNormalisePtr) so the hash does not depend on addresses; it never follows them",
+   "task": "12.8b"
+  },
+  {
+   "file": "src/game/net_world.cpp",
+   "kind": "knight-pointer-field",
+   "detail": "ulInventory",
+   "reason": "the world image reads the record's pointer fields only to NORMALISE them (tag + offset, netWorldNormalise) on the way out and to rebuild them with this machine's addresses on the way in (the same walk as game/net_hash); it never follows them",
+   "task": "12.15a"
+  },
+  {
+   "file": "src/game/net_world.cpp",
+   "kind": "knight-pointer-field",
+   "detail": "ulEngagedWith",
+   "reason": "the world image reads the record's pointer fields only to NORMALISE them (tag + offset, netWorldNormalise) on the way out and to rebuild them with this machine's addresses on the way in (the same walk as game/net_hash); it never follows them",
+   "task": "12.15a"
+  },
+  {
+   "file": "src/game/net_world.cpp",
+   "kind": "knight-pointer-field",
+   "detail": "ulWalkScripts",
+   "reason": "the world image reads the record's pointer fields only to NORMALISE them (tag + offset, netWorldNormalise) on the way out and to rebuild them with this machine's addresses on the way in (the same walk as game/net_hash); it never follows them",
+   "task": "12.15a"
   }
  ]
 }

@@ -10,7 +10,7 @@ namespace game {
 
 enum { WAVE_SCALING_ORIGINAL = 0, WAVE_SCALING_NONE = 1, WAVE_SCALING_LIMITED = 2 };
 
-// tools/mod_schema/rules.yaml: [waves] [coop] [limits] of rules.ini.
+// tools/mod_schema/rules.yaml: [waves] [coop] [limits] [dexterity] of rules.ini.
 struct RulesDef {
 	uint16_t uwGoldCap;               // [limits] gold_cap: a knight's gold is cut to this (signed word compare)
 	uint8_t ubDaggerCap;              // [limits] dagger_cap: daggers a knight can carry
@@ -19,6 +19,9 @@ struct RulesDef {
 	uint8_t ubCoopTotalFactor;        // [coop] total_factor: monster total multiplier with two knights
 	uint8_t ubCoopWritebackDivisor;   // [coop] writeback_divisor: the lair count written back is divided by this, rounded up
 	uint8_t ubCoopEnabled;            // [coop] enabled: the co-op wave rules apply (no co-op mode yet: false)
+	uint8_t ubDexterityEnabled;       // [dexterity] enabled: fourth trainable stat and shorter recovery holds
+	uint8_t ubDexterityStart;         // [dexterity] starting: initial score, 1..5
+	uint8_t ubRecoveryFramesPerPoint; // [dexterity] recovery_frames_per_point: repeats removed per point above 1
 };
 
 // ---- items (tools/mod_schema/items.yaml, mods/items.ini; ROADMAP 9.5d) ----------------------------------------------------

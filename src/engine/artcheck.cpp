@@ -8,6 +8,7 @@ namespace ms {
 namespace {
 
 inline char fold(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c; }
+// Not shared with engine/endian.hpp: this wider-result form keeps the 68k code of the checker as it was.
 inline uint32_t be16(const uint8_t *p) { return ((uint32_t)p[0] << 8) | p[1]; }
 inline uint32_t be32(const uint8_t *p) { return (be16(p) << 16) | be16(p + 2); }
 

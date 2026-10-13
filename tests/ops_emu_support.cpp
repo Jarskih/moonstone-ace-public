@@ -43,6 +43,11 @@ void rtFightKillCurrent(void) { rec(4, 0, 0, 0); }
 uint32_t rtRngPercent(uint32_t *) { return emuRoll(); }
 void rtClSelect(void) { rec(21, 0, 0, 0); }
 void rtSceneMenuRun(void) { rec(25, mogMenuPopCell, 0, 0); }
+// the primitives of the title step (src/rt/prim.hpp): C++ calls since ROADMAP 11.1d, no register entries any more
+void rtMogFadeOutSilentC(void) { rec(20, 0, 0, 0); }
+void rtCreatureClear(void) { rec(22, 0, 0, 0); }
+uint32_t rtMogJoyReadC(void) { rec(23, 0, 0, 0); return 0; }
+void rtDrawBufClear(void) { rec(24, 0, 0, 0); }
 }
 
 namespace rt {
@@ -71,24 +76,9 @@ asm(R"(
 	.endm
 
 	EMU_STUB rt_mog_diw_shake_start, 6
-	EMU_STUB rt_mog_fade_out_silent, 20
-	EMU_STUB rt_mog_creature_clear, 22
-	EMU_STUB rt_mog_joy_read, 23
-	EMU_STUB rt_mog_draw_buf_clear, 24
 
 	.globl emu_rts
 emu_rts:
-	rts
-
-	| rtMainCall(fn, d0, a0): JSR fn with D0 / A0 loaded
-	.globl rtMainCall
-rtMainCall:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a5
-	move.l 52(%sp),%d0
-	move.l 56(%sp),%a0
-	jsr (%a5)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
 	rts
 
 	| the original's callees (image labels patched to these)

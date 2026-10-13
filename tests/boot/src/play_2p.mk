@@ -5,8 +5,10 @@
 # shotcmp-tol play-2p-map 1.0
 # shotcmp-tol play-2p-turn2 1.0
 # shotcmp-tol play-2p-walk2 1.0
-frame 300 key SPACE tap
+wait file mindscape max 900
+frame 20 key SPACE tap
 wait input 10 max 3000
++20 joy1 fire pulse
 +60 shot play-2p-menu
 +100 joy1 right pulse
 +40 shot play-2p-players

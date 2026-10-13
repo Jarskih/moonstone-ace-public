@@ -6,14 +6,25 @@
 
 #if defined(MS_AUTOPLAY) && MS_AUTOPLAY
 
+#include "game/combat_script.hpp"
+#include "game/party.hpp"
 #include "game/state_bind.hpp"
-#include "rt/serlog.hpp"
+#include "rt/combat_pool.hpp"
+#include "rt/fight_roster.hpp"
+#include "rt/net_box.hpp"
+#include "rt/net_session.hpp"
+#include "rt/net_stub.hpp"
+#include "rt/net_tick.hpp"
+#include "rt/party.hpp"
+#include "rt/amiga/serlog.hpp"
 
 extern "C" volatile uint16_t mogCursorX, mogCursorY;   // cursor of the shop screens (LAB_097F, LAB_0980)
 extern "C" uint32_t mogRecordTable;                          // the click-region pool of the screen loop (24 bytes each, ended by width 0) (SECSTRT_14)
 
 extern "C" uint16_t mogRectCount;   // LAB_0645: dirty rects counted this frame (the list takes 45)
 extern "C" uint32_t mogRectList, mogRectListA, mogRectListB;   // LAB_0641, LAB_063E, LAB_063F: dirty-rect lists (8 bytes: x y w h)
+extern "C" uint32_t mogRandomSeed;   // LAB_0973
+extern "C" volatile uint16_t mogKeyAny;   // SECSTRT_21: the "any key" word
 extern "C" uint16_t mogDragonActive;   // LAB_0667: the dragon is flying on the map
 
 namespace rt {
@@ -33,6 +44,7 @@ bool eqName(const char *a, const char *b) {
 	return *a == *b;
 }
 
+uint8_t s_ubWarpLair = 0xFF;   // the lair of the last `poke warp_lair`
 uint8_t s_ubWho;   // the knight the pokes act on (`poke who N`, 0..4): knight 0 is the human of a one-player game
 
 Knight *currentKnight() {
@@ -58,6 +70,7 @@ const Field s_fields[] = {
 	{"strength", offsetof(Knight, ubStrength), 1, false},
 	{"constitution", offsetof(Knight, ubConstitution), 1, false},
 	{"endurance", offsetof(Knight, ubEndurance), 1, false},
+	{"dexterity", offsetof(Knight, ubDexterity), 1, false},
 	{"daggers", offsetof(Knight, ubDaggers), 1, false},
 	{"frog", offsetof(Knight, ubFrogDays), 1, false},   // days the knight skips its turn (the black knights: poke 100 to park them)
 	{"keys", offsetof(ms::game::Inventory, ubKeys), 1, true},
@@ -88,8 +101,24 @@ void dump() {
 		static_cast<unsigned>(mogMoveSpent), static_cast<unsigned long>(mogSceneId));  // LAB_0655, LAB_068F
 	for(unsigned i = 0; i < 5; ++i) {
 		const Knight &k = mogKnights[i];
-		serLogf("AUTOPLAY dump: knight%u kind=%lu at %u,%u lives=%u hp=%d\n", i, static_cast<unsigned long>(k.ulKind),
-			static_cast<unsigned>(k.uwMapX), static_cast<unsigned>(k.uwMapY), static_cast<unsigned>(k.ubLives), static_cast<int>(k.swHp));
+		const ms::game::Inventory &inv = *reinterpret_cast<const ms::game::Inventory *>(static_cast<uintptr_t>(k.ulInventory));
+		serLogf("AUTOPLAY dump: knight%u kind=%lu at %u,%u lives=%u hp=%d gold=%u keys=%u stones=%u\n", i, static_cast<unsigned long>(k.ulKind),
+			static_cast<unsigned>(k.uwMapX), static_cast<unsigned>(k.uwMapY), static_cast<unsigned>(k.ubLives), static_cast<int>(k.swHp),
+			static_cast<unsigned>(k.uwGold), static_cast<unsigned>(inv.ubKeys), static_cast<unsigned>(inv.ubMoonstones));
+	}
+	if(partyCoop()) {   // Moonstone 2 (ROADMAP 8.3): the party, its leader , the black knights (records 2, 3 when the party is smaller) and the fight extras (records 5..)
+		ms::game::RecordSet rs = {mogKnights, mogInventories, reinterpret_cast<uint32_t>(mogKnights)};
+		partyRecords(rs);
+		const ms::game::PartyMap &pm = partyMap();
+		serLogf("AUTOPLAY dump: party size=%u leader=%u bk=%u port=%u pad=%u cur=%u\n", static_cast<unsigned>(pm.ubSize), static_cast<unsigned>(pm.ubLeader),
+			static_cast<unsigned>(pm.ubBk), static_cast<unsigned>(mogKnights[pm.ubLeader].ubInputPort),
+			static_cast<unsigned>(pm.ubLeader < ms::game::PARTY_MAX ? ms::game::g_party.aubPad[pm.ubLeader] : 0xFF),
+			static_cast<unsigned>((mogCurKnight - reinterpret_cast<uint32_t>(mogKnights)) / sizeof(Knight)));   // cur: whose turn the screens are (LAB_0633)
+		for(unsigned i = ms::game::REC_BK0; i < static_cast<unsigned>(rs.count()); ++i) {
+			const Knight &k = rs.rec(static_cast<int>(i));
+			serLogf("AUTOPLAY dump: knight%u kind=%lu at %u,%u lives=%u hp=%d\n", i, static_cast<unsigned long>(k.ulKind),
+				static_cast<unsigned>(k.uwMapX), static_cast<unsigned>(k.uwMapY), static_cast<unsigned>(k.ubLives), static_cast<int>(k.swHp));
+		}
 	}
 	for(unsigned i = 0; i < 9 && mogMapNodes[i].swId >= 0; ++i) {  // LAB_069F
 		serLogf("AUTOPLAY dump: node%u id=0x%x at %u,%u\n", i, static_cast<unsigned>(mogMapNodes[i].swId),
@@ -105,6 +134,18 @@ void dump() {
 }  // namespace
 
 bool autoplayPeek(const char *szName, ULONG &ulValue) {
+	if(eqName(szName, "netdet")) {   // ROADMAP 12.4: the deterministic mode is on
+		ulValue = netDeterministic() ? 1 : 0;
+		return true;
+	}
+	if(eqName(szName, "netclock")) {   // the logical frame counter (mogFrame in the mode)
+		ulValue = netClock();
+		return true;
+	}
+	if(eqName(szName, "nettick")) {   // ticks run since the mode went on
+		ulValue = netLatch().ulTick;
+		return true;
+	}
 	if(eqName(szName, "scene")) {   // LAB_068F: the screen state machine (2 = creature loot, 3 = wizard item, 5 smith, 6 market, 9 status / temple...)
 		ulValue = mogSceneId;
 		return true;
@@ -133,6 +174,10 @@ bool autoplayPeek(const char *szName, ULONG &ulValue) {
 		ulValue = s_ubWho;
 		return true;
 	}
+	if(eqName(szName, "leader")) {   // Moonstone 2: the party leader's record (0..3); 255 outside a co-op game
+		ulValue = partyCoop() ? partyMap().ubLeader : 255;
+		return true;
+	}
 	if(eqName(szName, "dragon")) {   // the dragon is flying (spawned on a map start from day 2)
 		ulValue = mogDragonActive;
 		return true;
@@ -157,6 +202,21 @@ bool autoplayPeek(const char *szName, ULONG &ulValue) {
 }
 
 bool autoplayPoke(const char *szName, ULONG ulValue) {
+	if(eqName(szName, "netdet")) {   // ROADMAP 12.4: `poke netdet 1` switches the deterministic mode (rt/net_tick) on, 0 off
+		netDeterministicSet(ulValue != 0);
+		serLogf("AUTOPLAY netdet %lu\n", static_cast<unsigned long>(ulValue));
+		return true;
+	}
+	if(eqName(szName, "netseed")) {   // the next seeding event (rtMogRngSeed) uses this value instead of the beam
+		netSeedProvide(ulValue);
+		return true;
+	}
+	if(eqName(szName, "netstate")) {   // log the tick counters and the RNG, for comparing runs
+		serLogf("AUTOPLAY netstate tick=%lu clock=%lu pace=%lu seed=%08lx keyany=%x joy=%x/%x scene=%u\n",static_cast<unsigned long>(netLatch().ulTick),
+			static_cast<unsigned long>(netClock()), static_cast<unsigned long>(netPaceFrame()), static_cast<unsigned long>(mogRandomSeed),
+			static_cast<unsigned>(mogKeyAny), static_cast<unsigned>(netLatch().sFrame.joy.uwPort0), static_cast<unsigned>(netLatch().sFrame.joy.uwPort1), static_cast<unsigned>(mogSceneId));
+		return true;
+	}
 	if(eqName(szName, "regions")) {   // the click regions of the current shop / loot screen
 		const uint8_t *p = reinterpret_cast<const uint8_t *>(mogRecordTable);
 		auto w = [](const uint8_t *q) { return static_cast<unsigned>((q[0] << 8) | q[1]); };
@@ -183,6 +243,31 @@ bool autoplayPoke(const char *szName, ULONG ulValue) {
 			return false;
 		}
 		(szName[6] == 'x' || szName[6] == 'X' ? mogCursorX : mogCursorY) = static_cast<uint16_t>(ulValue);
+		return true;
+	}
+	if(eqName(szName, "party")) {   // Moonstone 2 (ROADMAP 8.3): `poke party N` before the knight select starts a co-op game of N knights (0 = classic)
+		if(ulValue == 0) {
+			ms::game::partyReset(ms::game::g_party);
+		}
+		else {
+			ms::game::partyStart(ms::game::g_party, static_cast<uint8_t>(ulValue));   // default pads: knight 0 joystick 1, knight 1 joystick 2
+		}
+		serLogf("AUTOPLAY party %lu\n", static_cast<unsigned long>(ulValue));
+		return true;
+	}
+	if(eqName(szName, "menuact")) {   // the title menu opens Multiplayer (1), Options (2) or Select Knight (3) at once
+		return menuActionPoke(ulValue);
+	}
+	if(eqName(szName, "netsilent")) {   // the lockstep node sends nothing (the peer's WAITING FOR box, the drop check of tests/boot/net_pair_*.txt)
+		netSessionAutoplaySilence(ulValue != 0);
+		return true;
+	}
+	if(eqName(szName, "netstats")) {   // the ping / loss line of a network game on (1) or off (0), as net.ini `stats` and the F10 key do (ROADMAP M12, NETPLAY.md 4.7)
+		rt::netStatsLineEnable(ulValue != 0);
+		serLogf("AUTOPLAY netstats %lu\n", static_cast<unsigned long>(ulValue));
+		return true;
+	}
+	if(netFakePoke(szName, ulValue)) {   // the Multiplayer screen's fake network (ROADMAP 12.8a, rt/net_stub)
 		return true;
 	}
 	if(eqName(szName, "who")) {
@@ -216,6 +301,38 @@ bool autoplayPoke(const char *szName, ULONG ulValue) {
 		return true;
 	}
 	if(eqName(szName, "fightdump")) {   // the fight records (knight 0 and the dragon) and the dirty-rect list in use
+		const ms::game::FightRoster &ro = fightRoster();   // Moonstone 2 (ROADMAP 8.4b): the roster, every party fighter, the live creatures
+		serLogf("AUTOPLAY fight roster on=%u party=%u foes=%u defeat=%x\n", static_cast<unsigned>(ro.ubActive), static_cast<unsigned>(ro.ubParty),
+			static_cast<unsigned>(ro.ubFoes), static_cast<unsigned>(ro.ubDefeat));
+		for(unsigned i = 0; i < ro.ubParty; ++i) {
+			const Knight &k = *ro.apParty[i];
+			serLogf("AUTOPLAY fight party%u rec=%u x=%u y=%u face=%u act=%u in=%x port=%u hp=%d lives=%u\n", i,
+				static_cast<unsigned>(&k - mogKnights), static_cast<unsigned>(k.uwX), static_cast<unsigned>(k.uwY), static_cast<unsigned>(k.ubFacing),
+				static_cast<unsigned>(k.uwAction), static_cast<unsigned>(k.uwInput), static_cast<unsigned>(k.ubInputPort), static_cast<int>(k.swHp),
+				static_cast<unsigned>(k.ubLives));
+		}
+		for(unsigned i = 0; i < ro.ubFoes; ++i) {   // the black knights of an encounter
+			const Knight &k = *ro.apFoe[i];
+			serLogf("AUTOPLAY fight foe%u x=%u y=%u face=%u act=%u type=%x hp=%d lives=%u target=%u\n", i, static_cast<unsigned>(k.uwX), static_cast<unsigned>(k.uwY),
+				static_cast<unsigned>(k.ubFacing), static_cast<unsigned>(k.uwAction), static_cast<unsigned>(k.ubType), static_cast<int>(k.swHp),
+				static_cast<unsigned>(k.ubLives), static_cast<unsigned>(k.ubTargetSlot));
+		}
+		const ms::game::CombatJob *pJobs = rt::combatPool().pJobs;   // LAB_0649 (or the co-op pool)
+		serLogf("AUTOPLAY fight limits jobs=%u rects=%u\n", static_cast<unsigned>(ms::game::g_combatLimits.ulJobs), static_cast<unsigned>(ms::game::g_combatLimits.ulRects));
+		for(unsigned i = 0; i < ms::game::combatJobs(); ++i) {
+			serLogf("AUTOPLAY fight job%u act=%u run=%u paused=%u owner=%lx type=%x x=%u z=%u script=%lx\n", i, static_cast<unsigned>(pJobs[i].ubActive), static_cast<unsigned>(pJobs[i].ubRunning),
+				static_cast<unsigned>(pJobs[i].uwPaused), static_cast<unsigned long>(pJobs[i].ulOwner), static_cast<unsigned>(pJobs[i].ubType),
+				static_cast<unsigned>(pJobs[i].uwX), static_cast<unsigned>(pJobs[i].uwZ), static_cast<unsigned long>(pJobs[i].ulScript));
+		}
+		const Knight *pHeap = reinterpret_cast<const Knight *>(mogCreatureHeap);   // LAB_05C3
+		for(unsigned i = 0; pHeap && ro.ubActive && i < 20; ++i) {
+			const Knight &k = pHeap[i];
+			if(k.ulActive == 0) {
+				continue;
+			}
+			serLogf("AUTOPLAY fight creature%u type=%x x=%u y=%u hp=%d target=%u team=%u\n", i, static_cast<unsigned>(k.ubType), static_cast<unsigned>(k.uwX),
+				static_cast<unsigned>(k.uwY), static_cast<int>(k.swHp), static_cast<unsigned>(k.ubTargetSlot), static_cast<unsigned>(ms::game::rosterTeam(ro, k)));
+		}
 		for(unsigned i = 0; i < 5; i += 4) {
 			const Knight &k = mogKnights[i];
 			serLogf("AUTOPLAY fight rec%u use=%lx x=%u z=%u y=%u face=%u act=%u in=%x type=%x hp=%d idle=%lx\n", i, static_cast<unsigned long>(k.ulActive),
@@ -251,13 +368,25 @@ bool autoplayPoke(const char *szName, ULONG ulValue) {
 			return false;
 		}
 		warp(pLairs[ulValue].swMapX, pLairs[ulValue].swMapY);
+		s_ubWarpLair = static_cast<uint8_t>(ulValue);
+		return true;
+	}
+	if(eqName(szName, "lair_left")) {   // the creature count of the lair warped to (`warp_lair N` first): a short fight for the play scripts
+		Lair *pLairs = reinterpret_cast<Lair *>(mogHeapTable[17]);
+		if(!pLairs || s_ubWarpLair >= 24) {
+			return false;
+		}
+		pLairs[s_ubWarpLair].uwCreaturesLeft = static_cast<uint16_t>(ulValue);
 		return true;
 	}
 	if(eqName(szName, "warp_knight")) {   // on top of another knight: the proximity scan then offers the duel
-		if(ulValue >= 5) {
+		if(ulValue >= 5 && !(partyCoop() && ulValue < 9)) {   // 5..8: the fight extras of a co-op game (never on the map; the black knights are records 2, 3)
 			return false;
 		}
-		warp(static_cast<int16_t>(mogKnights[ulValue].uwMapX), static_cast<int16_t>(mogKnights[ulValue].uwMapY));
+		ms::game::RecordSet rs = {mogKnights, mogInventories, reinterpret_cast<uint32_t>(mogKnights)};
+		partyRecords(rs);
+		const Knight &kTarget = rs.rec(static_cast<int>(ulValue));
+		warp(static_cast<int16_t>(kTarget.uwMapX), static_cast<int16_t>(kTarget.uwMapY));
 		return true;
 	}
 	for(const Field &f : s_fields) {

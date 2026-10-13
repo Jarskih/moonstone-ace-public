@@ -1,5 +1,17 @@
 cmake_minimum_required(VERSION 3.14.0)
+# ROADMAP 11.4: MS_PLATFORM=SDL is the PC build (cmake/sdl.cmake, build-sdl/); the default is the Amiga cross build below.
+set(MS_PLATFORM "AMIGA" CACHE STRING "AMIGA (cross build for the A1200, default) or SDL (PC build, build-sdl/)")
+set_property(CACHE MS_PLATFORM PROPERTY STRINGS AMIGA SDL)
+if(MS_PLATFORM STREQUAL "SDL")
+	project(moonstone LANGUAGES C CXX)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ccache.cmake)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl.cmake)
+	return()
+elseif(NOT MS_PLATFORM STREQUAL "AMIGA")
+	message(FATAL_ERROR "MS_PLATFORM must be AMIGA or SDL, not '${MS_PLATFORM}'")
+endif()
 project(moonstone LANGUAGES C)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ccache.cmake)    # opt-in MS_CCACHE (BUILD.md)
 
 # The shared toolchain file selects gcc for CXX. Select its sibling g++
 # before enabling CXX (same recipe as ../moonshard). ACE stays compiled as C.
@@ -53,6 +65,14 @@ list(FILTER MS_SOURCES EXCLUDE REGEX "/src/lifted/nb/selftest_[^/]*$")
 list(FILTER MS_SOURCES EXCLUDE REGEX "/src/lifted/[^/]*/[^/]*[+][^/]*$")
 # the asm thunk runtime (retired, see above)
 list(FILTER MS_SOURCES EXCLUDE REGEX "/src/rt/(thunks[.]cpp|gen/hunk_tab[.]cpp)$")
+# the PC platform (ROADMAP 11.4, cmake/sdl.cmake) is not part of the Amiga image
+list(FILTER MS_SOURCES EXCLUDE REGEX "/src/rt/sdl/")
+# ROADMAP 11.8: the Paula model and the module player are the PC's replacement for the hardware and for ptplayer; they use 64-bit
+# integer division (libgcc, not linked here) and are not used by the Amiga image.  ROADMAP 11.9: engine/pcinput (host keys, mouse counters,
+# pad sticks) is the PC input backend's pure half; the Amiga reads the hardware directly.
+list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/(paula|modplay|pcinput)[.]cpp$")
+# ROADMAP 11.6b/c: the copper interpreter and the sprite DMA model are the PC display's replacement for the chips; unused on the Amiga
+list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/(copper|sprites|dispframe)[.]cpp$")
 # ROADMAP 10.2a: the synth tables are original data; the game fills them at start-up (src/rt/origload.cpp). The old tracked copy
 # src/engine/synth_data.cpp is never compiled; MS_DATA_COMPILED generates it into the build directory instead.
 list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/synth_data[.]cpp$")
@@ -64,7 +84,7 @@ list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/synth_data[.]cpp$")
 # the reference listing (tools/resource.py --verify proves them load-equivalent to the original) and for the one optional piece:
 #   MS_SYNTH_ASM  A/B listening: link mog's ORIGINAL synth (S_44, asm/synth.s, assembled by vasm) instead of the C++ synth.
 # ---------------------------------------------------------------------------
-# Moonstone 2 co-op (ROADMAP 8.2, docs/MOONSTONE2.md): ON offers "Players ... Coop 2" in the title menu; the game still starts
+# Moonstone 2 co-op (ROADMAP 8.2, docs/MOONSTONE2.md): ON offers "Players ... Coop 2 / 3 / 4" in the title menu; the game still starts
 # in classic mode (game/party.hpp g_party inactive) and classic stays bit-identical. OFF removes the menu step (g_party never on).
 option(MS_COOP "Moonstone 2 co-op mode selectable in the title menu (runtime default: classic)" ON)
 option(MS_ENHANCED "6-plane 64-colour display for the redrawn art (ROADMAP 4.8a, include/rt/enhanced.hpp)" OFF)

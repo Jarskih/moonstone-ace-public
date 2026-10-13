@@ -117,14 +117,26 @@ static_assert(offsetof(Job, uwPaused) == 48, "");
 // Scalar slots.  Several single globals are reserved as DS.L / DS.W but the code only ever touches the first
 // byte or word (big-endian: the label address is the HIGH half).  These wrappers keep the declared size equal to
 // the DS size so the layout test can check it.
+//
+// Byte order (ROADMAP 11.3, docs/PC_ENDIAN.md): the slots are struct members, not an overlay of the DS bytes, so the
+// first field is the part at the label address on every CPU ("the byte at the label" = ub, "the word at the label" = uw);
+// the spare part is the rest of the DS.  beWord() / beLong() are the value the 68k sees reading the whole DS.W / DS.L
+// (only a generic reader that works by address needs them).  A slot filled from the original's bytes goes through the
+// fill table of tools/gen_data.py with swap unit 1 (ByteSlot) / 2 (WordSlot), never as one long.
 struct WordSlot {              // DS.L 1, accessed only as .W at the label (LAB_0665)
 	uint16_t uw;
 	uint16_t uwSpare;
+	uint32_t beLong() const { return ((uint32_t)uw << 16) | uwSpare; }
+	void setBeLong(uint32_t ul) { uw = (uint16_t)(ul >> 16); uwSpare = (uint16_t)ul; }
 };
 struct ByteSlot {              // DS.W 1, accessed as .B at the label (LAB_05DC, LAB_05DF)
 	uint8_t ub;
 	uint8_t ubSpare;
+	uint16_t beWord() const { return (uint16_t)((ub << 8) | ubSpare); }
+	void setBeWord(uint16_t uw) { ub = (uint8_t)(uw >> 8); ubSpare = (uint8_t)uw; }
 };
+static_assert(offsetof(WordSlot, uw) == 0 && offsetof(WordSlot, uwSpare) == 2, "the word at the label is the first member");
+static_assert(offsetof(ByteSlot, ub) == 0 && offsetof(ByteSlot, ubSpare) == 1, "the byte at the label is the first member");
 static_assert(sizeof(WordSlot) == 4 && sizeof(ByteSlot) == 2, "");
 
 #pragma pack(pop)

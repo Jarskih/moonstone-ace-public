@@ -1,0 +1,28 @@
+# Run with py tools/modsboot.py dexterity: enable the fourth stat, then train it on the status sheet.
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 40 joy1 fire pulse
+frame 100 joy1 down pulse
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 230 joy1 fire pulse
+frame 730 joy1 fire pulse
+frame 1030 joy1 fire pulse
+frame 1630 poke progress 3
+wait var dexterity 1 max 100
+frame 10 key SPACE tap
+wait var scene 9 max 2000
+frame 200 shot reg-dexterity-sheet-before
+frame 210 poke regions 1
+frame 220 poke cursorx 120
+frame 220 poke cursory 59
+frame 245 joy1 fire pulse 8
+wait var dexterity 2 max 1000
+wait var progress 0 max 100
+frame 150 shot reg-dexterity-sheet-trained
+frame 160 log dexterity_trained
+frame 170 poke cursorx 236
+frame 170 poke cursory 150
+frame 195 joy1 fire pulse 8
+frame 495 shot reg-dexterity-map
+frame 505 quit

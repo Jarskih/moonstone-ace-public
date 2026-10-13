@@ -560,7 +560,7 @@ class EngineOpSounds(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix='monsterkit_ops_')
         cls.exe = compile_cpp(cls.tmp, 'ops', OPS_DRIVER, [SRC('game', 'fighters.cpp'), SRC('game', 'fight_ops.cpp'), SRC('game', 'fight_creatures.cpp'),
-                                                           SRC('game', 'creatures.cpp'), SRC('engine', 'util.cpp'), SRC('game', 'rules/damage.cpp')] + [SRC('game', 'rules/' + n + '.cpp') for n in ['ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight', 'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker']] + [GAMEDATA_SOURCE])
+                                                           SRC('game', 'creatures.cpp'), SRC('game', 'roster.cpp'), SRC('engine', 'util.cpp'), SRC('game', 'rules/damage.cpp')] + [SRC('game', 'rules/' + n + '.cpp') for n in ['ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight', 'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker']] + [GAMEDATA_SOURCE])
 
     @classmethod
     def tearDownClass(cls):

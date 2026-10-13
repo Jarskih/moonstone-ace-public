@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from fastrand import randint_bytes
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -162,18 +163,34 @@ class Mem:
         self.w16(a + 2, v)
 
     def put(self, a, data):
-        for i, b in enumerate(data):
-            self._set(a + i, b)
-        self.touch(a, len(data))
+        if not isinstance(data, (bytes, bytearray)):
+            data = bytes(b & 0xFF for b in data)
+        n, i = len(data), 0
+        while i < n:                                 # page-sized slices instead of a byte at a time
+            addr = a + i
+            off = addr % PAGE
+            take = min(n - i, PAGE - off)
+            self._page(addr)[off:off + take] = data[i:i + take]
+            i += take
+        self.touch(a, n)
 
     def zero(self, a, n):
         self.put(a, bytes(n))
 
     def get(self, a, n):
-        return bytes(self.r8(a + i) for i in range(n))
+        out = bytearray()
+        i = 0
+        while i < n:
+            addr = a + i
+            off = addr % PAGE
+            take = min(n - i, PAGE - off)
+            pg = self.pages.get(addr // PAGE)
+            out += pg[off:off + take] if pg is not None else bytes(take)
+            i += take
+        return bytes(out)
 
     def fill(self, a, n, rng, lo=0, hi=255):
-        self.put(a, bytes(rng.randint(lo, hi) for _ in range(n)))
+        self.put(a, randint_bytes(rng, n, lo, hi))
 
     def regions(self):
         spans = sorted(self.touched)

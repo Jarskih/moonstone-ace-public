@@ -18,7 +18,7 @@ EXAMPLES = os.path.join(ROOT, 'mods_examples')
 SCHEMA_FILES = sorted(f[:-5] + '.ini' for f in os.listdir(os.path.join(ROOT, 'tools', 'mod_schema')) if f.endswith('.yaml'))
 # what each example must show in the loader's dump (rules.ini topics only; the other topics have their own tests)
 DUMP_WANTS = {'no_scaling': '  [waves] scaling=none', 'limited_scaling': '  [waves] scaling=limited'}
-EXPECTED = ['no_scaling', 'limited_scaling', 'cheap_shops', 'tough_dragon', 'cave_troll']
+EXPECTED = ['no_scaling', 'limited_scaling', 'tough_dragon', 'dexterity']   # the first two and dexterity are settings of the Options screen now (hidden from its list)
 
 
 def folders():

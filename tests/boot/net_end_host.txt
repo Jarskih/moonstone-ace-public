@@ -1,0 +1,121 @@
+# ROADMAP 12.19 end-to-end run, HOST window: a normal two-player network game played to the ending (run with `py tools/netpair.py --ending`, never alone; generated
+# by tests/boot/src/mknetpair.py, edit that).  Companion: net_end_join.txt.  The host leads round 1.
+# Lobby and barriers as in net_pair_*.txt (state-hash barriers every 50 ticks).  Flow: lobby -> START -> map, round 1 the host walks and ends its turn, Next Day,
+# round 2 the join walks -> tick-pokes (all moonstones, the party on Stonehenge: the same tick on both windows, docs/AUTOPLAY.md) -> one more hash bar proves the
+# states equal -> the leader's fire enters Stonehenge, a second fire (any pad) ends its quest text -> the ending on both windows (outside the lockstep) -> the session closes -> the main menu -> quit.
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 60 poke menuact 1
+wait log screen_open max 1500
+frame 30 shot netend-h-multi
+# HOST GAME by poke (PUBLIC YES is the default): straight into the lobby (the knight screen); the bottom line is START, grey until the guest picked
+frame 1 poke netaction 1
+wait log lobby_open max 3000
+frame 400 shot netend-h-listed
+wait log peers_1 max 15000
+# `frame N` counts from the barrier above and the parser sorts a segment by N: the steps below are spaced out, not "N after the previous line".
+# The lobby loop redraws after every change (a draw and the 6-frame repeat wait take ~20 frames) and reads the stick only between redraws:
+# every step sits >= 60 frames after the previous one and a press lasts 30 frames (a direction 12: it must not be read twice).
+frame 60 shot netend-h-lobby
+# portrait 0 (the selector starts on it), fire; the name HOST is kept (fire), the Control line keeps Joystick 1 (fire)
+frame 70 joy1 fire pulse 30
+frame 150 shot netend-h-name
+frame 160 joy1 fire pulse 30
+frame 240 shot netend-h-control
+frame 250 joy1 fire pulse 30
+wait log lobby_seat_0_done max 3000
+wait log lobby_seat_1_done max 15000
+frame 60 shot netend-h-picked
+# START: the barrier above fires while the host redraws for the guest's last pick, so the stick waits a while; down from the portraits, fire.
+# `poke netaction 3` (START through the same code path as fire on it) is the test-only fallback should the stick still not land: it does nothing
+# once the lobby is left.  It sits right behind the fire, not 200 frames later: the lockstep runs a tick per frame from the moment of START, and
+# the host's first `sync` below must come before the second state-hash line (tick 100), else the host's barriers run one hash ahead of the join
+# window's for the rest of the script (pokes and shots land at different ticks: the "desync" at the first hash behind them, run 94/95).
+frame 100 joy1 down pulse 20
+frame 190 joy1 fire pulse 30
+frame 215 poke netaction 3
+wait log lockstep_begins max 12000
+wait log knight_1_kind max 6000
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 poke dump 1
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-h-map
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+frame 5 joy1 right
+frame 45 joy1 none
+frame 60 key E down
+frame 75 key E up
+frame 5 poke dump 1
+wait var turn 1 max 6000
+wait var turn 0 max 20000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 joy1 fire pulse 12
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-h-leader2
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+frame 5 joy1 right
+frame 45 joy1 none
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-h-walk2
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+tick hash+10 poke who 0
+tick hash+10 poke moonstones 15
+tick hash+10 poke who 1
+tick hash+10 poke moonstones 15
+tick hash+12 poke warp_node 7
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-h-stonehenge
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-h-quest
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+frame 5 joy1 fire pulse 20
+wait log enter_program max 3000
+frame 500 shot netend-h-ceremony
+frame 500 shot netend-h-orb
+frame 1000 shot netend-h-dancers
+frame 1500 shot netend-h-vortex
+frame 1500 shot netend-h-epilogue
+wait log enter_mog max 8000
+frame 300 shot netend-h-title
+frame 400 quit

@@ -136,7 +136,7 @@ Terms: **party** = 1..4 player knights (records 0..3, `ulKind` 0..3). **BK** = b
 
 ### 2.1 Title menu and knight select
 
-* New menu item "Mode: Classic / Co-op" next to Players/Gore (`include/game/scene_menu.hpp:53` `MenuItem`, `src/game/scene_menu.cpp`). In co-op mode the player count means
+* New menu item "Mode: Classic / Co-op" directly under Players (the Gore row is gone, owner 2026-10-11; Players keeps the count in both modes) (`include/game/scene_menu.hpp:53` `MenuItem`, `src/game/scene_menu.cpp`). In co-op mode the player count means
   "knights in the party" (1..4); in classic mode nothing changes. Practice stays as it is.
 * Knight select (`SceneKnights`, `scene_menu.cpp:154-300`): after choosing a portrait and name, a **controller** is chosen for each knight
   (joystick port 0/1, adapter port 3/4, keyboard set A/B; section 3). Today the pick writes `+11 = 2`; in co-op it writes the controller
@@ -173,12 +173,10 @@ Original: a duel starts when a knight stands on another knight's map box and pic
 
 Co-op:
 
-* **Black-knight pool.** Add up to four BK records (`mogKnights[5+i]`, inventories in a new array; do **not** widen or renumber `mogKnights[0..4]`: the dragon is index 4 in
+* **Fight-extra pool** (the first design's black-knight pool; the map's black knights are now the original records 2, 3, next bullet). Add up to four BK records (`mogKnights[5+i]`, inventories in a new array; do **not** widen or renumber `mogKnights[0..4]`: the dragon is index 4 in
   13 places, `src/rt/overworld.cpp:636,662,783`, `src/rt/arena.cpp:264`, `src/game/overworld.cpp:570,630`...). `ulKind = 4`, `ubType` `$10`, own gold/progress/shopping via the
   existing `aiShopWish/aiBuyStat/roamPick` code paths, which are record-indexed and 4-slot-bound (`overworld.cpp:229-262`, `RecordSet` is 5 records).
-* **How many fight.** On contact the fight is party size N vs. N black knights. Two readings of decision 4 [Q3]: (A) the map shows **one BK group token**
-  that spawns N fighters; (B) N individual BK tokens roam and the fight takes the ones adjacent. Recommended: **A** for the first version (one `AR_DUEL` row,
-  a single AI turn slot, no per-BK pathing; N BK records are brought into the fight, the others idle). It also cuts the AI turn work on the map.
+* **How many fight (owner decision 2026-10-09, replaces the one black-knight group token).** The map's black knights are the ORIGINAL AI knights: the knight records the party does not use (records 2, 3 of a two-knight party, `ulKind` 4, original lives / stats / names, at their normal `LAB_01AE` start spots, each its own token, own turn slot and the original AI; a party of four has none on the map).  On contact the fight is party size N vs. N black knights: the engaged map knight plus N - 1 FIGHT EXTRAS from the pool (records 5.., never on the map; `fight_seed.cpp`, the engaged record first), and after a won fight the extras hand their belongings to the engaged knight, whose pile the loot screen shows.
 * **Difficulty.** BK stats come from the BK pool (they level with `aiBuyStat`, cost `uwDamageDiv`, `scene_places.hpp:69`); N BK vs. N knights is
   already "fair" by construction. A balance knob (HP scaling by party size) lives in 8.7.
 * **Loot from a won BK fight.** `settleFight` moves **one item** (or everything if the loser has no lives) from a loser to the winner (`include/game/rules.hpp:52-67`,
@@ -193,6 +191,8 @@ Co-op:
 * Knights enter at the right edge staggered in depth (today all at `y = $64`, `placeAttacker`, `arena.cpp:345`): a new `placeParty()` spawns N knight jobs.
 * Fight end: win when the creature counters reach zero (`fightCreatureDied`, `combat.cpp:172-191`), lose when **all** party knights are down (new rule, replaces "first fighter negative HP", `combat.cpp:87`).
 * Creature cel set: one kind at a time (`LAB_05DF`, `include/game/combat_load.hpp:20-25`); unchanged.
+
+> **State 2026-10-09 (ROADMAP 8.5, branch wt-8_5):** loot copies, the shop queue, valley copies, the stone owner's ending and the N-generic lives rules are implemented for 2..4 knights; see ROADMAP 8.5 and `include/game/party_loot.hpp`.  The sections 2.5-2.8 below are the design they follow, with two differences: the copy is "replay the original take on a snapshot of the pile" (not a new `partyReplicate(slot, delta)`), and the ending is the stone owner's only (Q8 decided).
 
 ### 2.5 Valley of the Gods and the dragon
 
@@ -209,6 +209,17 @@ Co-op:
 * The ending code depends on the knight's kind: `stoneEnding(frame, kind)` sets one of four knight bits (`scene_places.hpp:155`, `src/game/placevisit.cpp` `PK_STONEHENGE`), then the overlay switch
   runs `program` (the ending) and **never returns** (`pfnRunProgram`). In co-op: the knight who steps on the stone (the leader) picks the ending; [Q8] the ending is
   per knight, so either play the leader's ending once, or chain the four endings (the re-entry mechanism from ROADMAP 2.12 would have to loop; not trivial).
+* **Colours of the ending (2026-10-11).** The original ending is already per knight: the kind bits of the ending code (3 red, 0 blue, 1 orange, 2 green) are the boot flags the program overlay reads, and its loader (`engine/scenes.cpp` `tweakPalette`) overwrites the class ramp (palette entries 8..11) of bg5 / bg5a / bg3 / bg2a with that knight's four colours (the cloak in li1.cel, co1 and da1 draw with those entries; bg7 / bg8 have no class colours: bg7 is the galaxy, bg8 the villager). The flags word (`rt_boot_flags`) is the cell that survives the mog -> program switch, so nothing new crosses. Moonstone 2 only chooses the kind: local game (classic or co-op) = the knight on the stone, unchanged (the classic ending stays byte-identical); network game = each machine its own knight (the stone owner when local, else the first record bound to this node), by `endingKnightRecord` / `endingFlagsForKind` (`game/ending_knight.hpp`, test `tests/test_ending_knight.py`), applied in `pvRunProgram` (`src/rt/overworld.cpp`) before the session closes. The ending code in the quest text is unchanged. A node playing on alone has no lockstep and keeps the stone owner's colours.
+* **Colours of the other non-fight scenes (2026-10-11).** Same rule, one pure choice (`game/local_knight.hpp` `localKnightRecord` / `localKnightKind`, test `tests/test_local_knight.py`; the ending's `endingKnightRecord` delegates to it): in a network game every machine runs the whole game, so a screen of another node's knight is also watched here; a screen that shows "the player's knight" draws THIS machine's knight (the shown one when local, else the first record bound to this node). Classic, local co-op and a node playing on alone: unchanged. Display only (a palette, never state, RNG, timing or the state hash; `mogUiPalette` is not hashed), so every machine runs the same ticks.
+
+  | scene | what it shows in a network game |
+  |---|---|
+  | ending (bg5 / bg5a / bg3 / bg2a, li1 / co1 / da1 cloaks) | this machine's knight (2.6 above, boot flags) |
+  | dice house, ritual (hen) screen, wizard (`colourRamp`, `src/rt/screens.cpp`: UI palette entries 6..10, five / four shades) | this machine's knight; unchanged elsewhere |
+  | ending lift (Klift1 on the bg7 galaxy palette `01CB`) | unchanged: that palette is the galaxy's own (entries 8..11 are galaxy colours of the picture too), there is no class ramp to swap without tinting the background |
+  | map tokens, the map menu (knight sprite + name), the party row, the corner box of whose turn it is | unchanged: they name a specific knight, and the other players must see who it is |
+  | status sheet, temple, mystic, healer, town / lair / Stonehenge text screens, Next Day | nothing in them depends on the knight's kind (no class ramp, no per-kind picture), so nothing to change |
+  | fights, duels, meeting / exchange screens (`screenPalette`) | unchanged: they show specific knights and their colours tell them apart |
 * Danu's offer (no matching stone): `danuBlessing` +1 life for the knight who offers an item (`scene_places.hpp:159`); in co-op the offering knight's life, or all knights'? Default: the offering knight (it is a trade).
 
 ### 2.7 Loot, gold, lives (decision 3)
@@ -229,6 +240,9 @@ Town screens work on one knight (`LAB_0633`/`mogUiKnight`): smith, market, heale
 (`cursorTick` already selects the pad by `Knight +11`, `:1043`). Time cost: the party's turn is spent once (`exitSpent`, `placevisit.cpp`), not per knight. The dice house is per knight. Healer/temple: per knight.
 The knight-to-knight **exchange** screens (`SCENE_EXCHANGE_8/11`) become "party exchange" between members and cost no turn.
 
+**Owner change 2026-10-10 (ROADMAP 8.5 / 8.5a): no turn queue, arrows instead.**  A town, the home village's temple sheet and the wizard run once, the leader first; the corner box carries a `<` and a `>` arrow (two or more living members) that switch the active knight to the previous / next living member, wrapping (`shopQueueStep`, `rt::shopSwitch`): the corner icon and name, the pad that moves the cursor, the gold / inventory / shops and the banner "SIR <NAME>'S TURN" follow the new knight.  One Exit ends the visit for the whole party.  The corner name is plain black text on the parchment box (small menu font), only the token is coloured; on the black sheets the name keeps the sheet's own white text.
+
+**Whose turn it is (ROADMAP 8.5a, owner-approved 2026-10-09, revised the same day; `include/game/party_turn.hpp`, `src/rt/party_turn.cpp`).** The place screens of the queue look the same for every knight, so two cues, co-op only (classic stays byte-identical; the mouse pointer keeps its NORMAL colours, the first version's class-coloured pointer was dropped by the owner): (1) the active knight's TOKEN (its bright map sprite, kind + 5, from the map's cel table) and its name (without `SIR `, 8 characters) in the UPPER-LEFT corner of the picture for the whole turn: on the town pictures in the big title font on a parchment-coloured box (the colour read from the menu), drawn into the clean background so every redraw keeps it; on the black shop / temple / wizard sheets in the small white font on a black box, drawn after every redraw of the sheet (`ScreenOps::turnCorner`); (2) a banner `SIR <NAME>'S TURN` (a name that already starts with `SIR ` is not prefixed; the name buffers keep a space as `_`) over the picture when a member's turn starts, in the big font on a parchment box on the town screens (small centred text on the sheets), removed at the first input of any pad (a press still held from the previous turn's click does not count) or after 75 frames (1.5 s), the picture restored from the clean background. Applied to town A / B, the home village's temple sheet and the wizard's temple sheet (screen 9, through `ScreenOps::turnBanner`) and to the smith / market screens of a town visit. Not covered: the creature loot screens (the map's cel table is not guaranteed there), the wizard's Math speech screen and the dice / healer / mystic screens.
 ---
 
 ## 3. Input plan
@@ -263,6 +277,17 @@ Introduce `struct Pad { uint16_t bits; }` and `Pad g_pads[4]` filled once per `j
   DDRB/DDRA of those registers across a disk read (re-set them after every OS give-back).
 * **Keyboard sets.** Amiga keyboards report multiple simultaneous keys, but the A1200 matrix can **ghost** when 3+ keys in a rectangle are pressed together: two players on one keyboard
   are fine for walking+fire, four-key chords (fire + up + back for the dagger throw, `kActionRight[10]`) may drop. Offer fire/dagger as separate keys in the keyboard sets (see 5.2) instead of chords.
+  **Ghosting check for two sets at once (owner 2026-10-09: arrows + Ctrl / RShift together with WASD + Alt, Coop 3 / 4 uses both):** an Amiga raw key code is the key's matrix
+  position (row = code >> 3, column = code & 7); a diode-less matrix shows the 4th corner of any L of three pressed keys. [unknown] whether the A1200 matrix has diodes and whether
+  the modifiers ($60-$67) are scanned inside it: it cannot be measured in an emulator (WinUAE ghosts like a PC keyboard, not like the Amiga one), so `tests/test_keyghost.py` models the
+  worst case (everything in the matrix at its raw code). Result of that model: (1) any two keys never ghost; (2) the direction keys sit in columns 4-7 (arrows, row 9) and columns 0-2
+  (W $11 row 2; A S D $20-$22 row 4), so no two keys of the two sets share a column; (3) the fire keys are the only link: Ctrl $63 / RShift $61 / Alt $64 share row 12 with the other
+  modifiers and Alt shares column 4 with Up, so some combinations show a phantom - always one of LShift $60, CapsLock $62, LAmiga $66, RAmiga $67, T $14, F $24, $49, $4B, none of which the game
+  reacts to; (4) **no phantom is E (end turn), Space (status sheet), Esc, Return or Backspace** for any combination a player can hold on purpose (no opposite directions of one set,
+  one fire key per set), so the chosen keys stay. One transient outside that rule: W + S + D (S pressed while W is still down) makes **E** (the end-turn key) in the model, and W + A + S makes Q
+  (no function). The pad layer already cancels W + S (they move nothing); if the owner's keyboard ends the turn by itself while walking diagonally on WASD, swap the up key
+  (candidates and procedure: kbdtest in `build/`, key table `kPadKeysWasd` in `include/engine/pad.hpp`). The real check is the owner's A1200 keyboard (ROADMAP 8.7): hold
+  W D Alt + Right Up Ctrl in `kbdtest` and see whether extra codes arrive.
 * **Joystick and mouse share port 0.** The map/menu mouse pointer reads `JOY0DAT` (`src/rt/input.cpp:110-129`); a joystick in port 0 is already what the original calls "player 2 of a duel".
 * **Fire detection for "any controller"**: menu "press fire" waits (`rtMogFireWait`) accept any pad.
 
@@ -277,6 +302,11 @@ Introduce `struct Pad { uint16_t bits; }` and `Pad g_pads[4]` filled once per `j
 > `inputFor` (fighters.cpp) is unchanged until 8.4b gives each fighter its own controller. Keyboard note: the game's key table merges
 > both Alt keys ($38), so the two sets cannot use LAlt / RAlt separately; there is no right Ctrl on an Amiga keyboard. Tests:
 > `tests/test_coop.py`, boot `tests/boot/play_coop.txt`.
+>
+> 2026-10-09 (Coop 2..4, ROADMAP 8.2): the title menu steps Players 4 -> "Coop 2" -> "Coop 3" -> "Coop 4" (`PARTY_COOP_MAX = 4`; left goes back down and then to 4 players).
+> The knight screen offers, per knight, the first free controller in the order Joystick 1, Joystick 2, Keys arrows, Keys WASD; left / right cycle only the controllers no earlier
+> knight uses (`partyNextPad`), so two knights can never share one and the fourth knight has exactly the one that is left. `tests/boot/play_coop4.txt` (Coop 4 from the menu,
+> four knights with the four controllers, the leader rotation, every knight steering the token with its own controller while the other three are held and ignored, four status sheets).
 
 Replace the port test with a lookup, keeping the old encoding for classic mode:
 
@@ -336,6 +366,8 @@ Knight identity is **colour only**: all knights share one cel set (`loadKnights`
 the second only in scene `$0C` (knights' duel) in `pal[9..11]` (`src/engine/display_fx.cpp:162-170,213-214`, class table at `:140-145`). In all creature scenes `pal[9..]` hold the creature colours. [fact] Consequence: **at most two simultaneous distinct knight colours**,
 and none in creature arenas for the second. For four knights: (a) the 6-plane **enhanced** mode (`MS_ENHANCED`, `CMakeLists.txt:59`, 64 colours) can hold four triplets; (b) in the 5-plane mode use two triplets and distinguish knights 3/4 with a tag/arrow in the HUD; (c) draw shield/helmet overlay cels in a distinguishing palette entry (needs art). Decide in 8.4 [Q9].
 Black knights share one triplet (kind 4 -> the last set, `fighterColors`, `display_fx.cpp:140-145`).
+
+**Map and status (ROADMAP 8.3, 2026-10-09, N = 2..4):** no colour budget problem outside the fights. The four map tokens are four distinct sprites (kind 0..3, own colours), the status sheet shows the knight's own portrait, and the knight screen has four distinct portraits, so nothing needs a new colour. What 3-4 players do miss is *who leads this round*: the one token on the map is tiny and takes the leader's colour, so `mapDrawRoster` (`src/game/overworld.cpp`, in `mapDrawOthers`) draws a row of the party's tokens at the top edge of the map (x $70 + $14 * member, y 8): every member in its own bright map sprite (kind + 5), the leader raised to y 2, a frog as the frog sprite, a knight without lives as the dead sprite (the plain kind sprite was tried first and is too dark against the terrain). It is a HUD tag made of the map's own sprites: no palette entry, no new art. The fight HUD tags for knights 3/4 (the two-triplet limit above) stay with 8.4.
 
 ### 4.6 Memory and CPU budget
 
@@ -494,6 +526,85 @@ New logic lives in new pure files (`src/game/party.cpp`, `src/game/weapons.cpp`,
 
 Dependencies: P0 -> P5 sizing; P1, P2 -> P3 -> P4 -> P5 -> P6/P7; P8 -> P9; P10 needs P4; P11 needs P5.
 
+### 6.1 State of P2 / P3 (ROADMAP 8.3a, 8.3; 2026-10-07)
+
+Done, behind the co-op switch (`g_party.active`; provisional `include/game/party_config.hpp` until 8.2's `PartyConfig` lands). The
+rules are pure (`include/game/rules/party.hpp`; turn rules in `src/game/rules/turns.cpp`, map rules in `rules/ai_map.cpp` and
+`src/game/overworld.cpp`, each as a co-op branch beside the untouched classic code); `src/rt/party.cpp` owns the state,
+`src/rt/party_start.cpp` sets up a new co-op game after LAB_01BE. Host test `tests/test_party.py`; boot `tests/boot/play_coop.txt`.
+
+* **Records**: 0..n-1 the party, n..3 out of play (lives 0, never scheduled or drawn), 4 the dragon (unmoved), 5..5+n-1 the black-knight
+  group (`RecordSet::aPool`, its own array and base address; `rec(i)` / `addr(i)` / `index()` cover both ranges, `aRec[i]` is still
+  the classic record). The BK records are AI knights made as LAB_01AE / LAB_01BE make them, named "BLACK KNIGHTS".
+* **Turn slots**: the turn word is a slot in co-op: 0 = the party (its leader's record), 1 = the BK group (record 5). A round = both
+  slots; the daily upkeep (records 0..4 plus the pool) runs at each round's end, a day is 4 rounds as before.
+* **Party token**: the leader's record walks; the members (and the BK records behind record 5) mirror the token after every step;
+  only the two tokens are drawn (the leader's own knight sprite). The leader rotates at each round's end to the next member with lives
+  left and steers with its own pad (every member is "port 1", the player stick, which in co-op is the current knight's `g_party.aubPad`); the budget is the party minimum. The party turn is
+  skipped only while every living member is a frog; game over when no member has a life.
+* **Encounters**: the scan lists the other group's token ("Battle with BLACK KNIGHTS"); the BK group's AI picks the party token;
+  the node menu, the places and the fights act with the leader as the current knight (the fights stay one knight vs one knight / the
+  wave until 8.4b; per-knight shopping waits for 8.5). The dragon engages the party (its target is the leader, re-pointed when the
+  leader changes; the touch list holds the token). Home villages: the leader's own village (the original rule applied to the token).
+* **Status** (Space): one sheet per member, the leader first.
+
+### 6.2 Party of 2..4 (ROADMAP 8.2 / 8.3 / 8.3a; 2026-10-09)
+
+The rules were written for N = 1..4 from the start (`PartyMap::ubSize / ubBk`, `REC_BK_POOL = 4`, leader rotation modulo `ubSize`); 2026-10-09 added the title menu
+(Coop 2 / 3 / 4), the host tests for N = 3, 4 (`tests/test_party.py` `n3_*`, `n4_*`: start, token, leader cycle 0..N-1 twice, BK upkeep, minimum budget, dead members skipped,
+frogs, mirrors of the N members and the N black knights, the scan row, the BK engagement follows the leader) and the boot run `tests/boot/play_coop4.txt`.
+
+Fixed-4 loops of the P2 row, audited for a party of 4 (only the record pool matters here; fights / loot are 8.4 / 8.5, not touched):
+
+| Loop | Co-op 3/4 |
+|---|---|
+| `knightsRecalcAll`, `dayTurnover` (`rules/stats.cpp:59`, `rules/clock.cpp:20`: records 0..3 + the dragon) | fine: the party is records 0..N-1; the black knights are covered by `partyPoolUpkeep` and `rtPartyKnights` (HP / endurance recalculated there) |
+| `advanceTurn` `& 3` | replaced in co-op by `partyAdvanceTurn` (slots: party, BK group) |
+| `scanMap` other knights / dragon touch list `aulTouch[4]` (`overworld.cpp:334-345`) | co-op branch `scanTokensParty`: two tokens, the dragon touches the leader only |
+| `aiPickOpponent` (4 rows) | co-op branch `partyAiPickOpponent`: one row, the party token |
+| `partyStart` (`rules/ai_map.cpp`) | members 0..N-1 on the player stick, slots N..3 out of play (none for N = 4) |
+| `clearKnightFlags` (`rt/arena.cpp:299`) | records 0..3 plus the pool in co-op |
+| `lootNextKnight` (`loot.cpp:43-52`, `& 3` over `mogKnights[0..3]`) | NOT changed: for N < 4 it would still visit the out-of-play slots; belongs to 8.5 (per-knight shop queue) |
+| `arena.cpp:272` (`mogKnights[4]` dragon) | untouched, the dragon stays record 4 |
+
+The status screen runs once per member, the leader first, each closed with its owner's fire (`statusParty`, `src/rt/overworld.cpp`); the map shows the roster strip (section 4.5).
+
+### 6.3 State of P4 / P5 (ROADMAP 8.4b, 8.4; 2026-10-09)
+
+Done for two knights (the code is N-generic up to four, only two are played and measured):
+
+* **Roster** (`include/game/roster.hpp`, `src/game/roster.cpp`, pure, `tests/test_roster.py`): `FightRoster` = party fighters (the living members, the leader first), foe knights (the black
+  knights of the encounter), a team per record (party / creatures / foe knights; a thrown dagger carries its thrower's team in `Knight::ubTeam`, +131), nearest-living sticky targeting
+  (`ubTargetSlot`, +87), settle bits. It lives for one fight: `RosterScope` (src/game/combat.cpp) in `fightCreature` and `fightMeet`, seeded by `rt/fight_seed.cpp`; inactive = classic.
+* **Pads**: nothing new was needed in the fighter: every member is port 1 and `rt/input.cpp` answers with the pad of the record the running handler works on (focus TURN, `mogCurKnight`).
+  Keyboard pads need held keys: in a party fight `opKeyReset` keeps the key-down flags (it cleared them every frame).
+* **Targeting** (4.2): the ten handler heads call `targetFor`; reads of "the first fighter" inside a handler are `firstOf`, script ops of a creature use `heldOf`; grabs (caster, snatcher, drake) keep their knight.
+* **Hit tests** (4.3): allies never hit (`contactScan`) and walk through each other (`blockedMask`); creatures keep hitting each other as before.
+* **End / settle**: the fight is lost when every party fighter is marked dead (`endAndPause`, the death scripts LAB_0005 / 0006 / 000D settle the OWNER: `fightOpPartyRun`), won when the creatures are
+  gone / the foe knights are down; each fighter down gets its hit points back and loses a life (`rosterSettle`), the party wins with a fallen member and that member still loses the life.
+* **Creatures released late**: the enter script of every knight ends with LAB_000A (toggle the creatures' pause); with two knights the second toggle froze the wave again. The creatures are
+  released when the LAST party knight has entered.
+* **Limits** (4.1 option a, as parameters): `game::g_combatLimits` = 10 jobs / 45 rects (classic, unchanged) or 16 / 64 in a party fight; `rt/combat_pool.cpp` switches the arrays (job table, work blocks, attack / hurt lists, the two rect lists) with the limits.
+* **Scaling**: `[coop]` numbers are for two knights; each further knight adds the same step (`coopAliveBonus`, `coopTotalFactor`, `coopWritebackDivisor`); the strongest of the party sizes the wave.
+* **Black knights**: N party knights against N BK records (5..), the BKs choose among the party (`rosterFoeTarget`), end and loss rules as above; a lost party is robbed by BK 0.
+* **A knight killed BY a creature's kill script (owner report 2026-10-11, fixed)**: the finishing sequences of the creatures (the ratmen's squeeze `LAB_0869`, the spear `081C`, the flyer `0849` / `084E`, the Be's carry `0895` / `0896`, the snatcher `08A1` / `08A2`,
+  the dragon part `0884`) run on the CREATURE's job and end with `LAB_000D` ("the current knight is dead") and `LAB_0006` ("the fight is over"), written for one fighter: `LAB_000D` marked the leader dead whoever had been struck and `LAB_0006` ended the fight, so
+  one dead knight took the survivor with it (the survivor's job followed it into its death script) and the fight ended with a knight still standing. Rule now (`rosterScriptVictim`, `rosterScriptEndsFight`, `fightOpPartyRun`): a creature's `LAB_000D` marks the knight
+  it holds (its sticky target); its `LAB_0006` ends the fight only when every party knight is down (a creature that is itself down, a boss's death script, still ends it: the party has won). The ratmen's squeeze (`casterSlam`) additionally lets go
+  of the dead knight while another knight stands (`casterDropVictim`: its job runs again from `LAB_07FA`, whose `ifdead` plays the fall `LAB_07F7` / `07F8`, i.e. the corpse is drawn by the knight's own job in its own colours), instead of holding the corpse
+  for ever. The other kill sequences (spear, flyer, snatcher, drake, dragon part) still remove the victim's job: the victim vanishes after the creature's animation (no corpse), the creature goes back to the fight. Not verified in the emulator: the drake / snatcher /
+  dragon-part sequences with a surviving knight (dragon and valley fights). The fallen knight loses its life at the end of the fight as for any fallen member (`rosterSettle`). Classic fights are untouched (`partyFight(e)` false: the original routines run).
+
+**Colours (4.5, measured)**: the arena pictures never use palette entries 23, 28..31 (bg1a, 1b, 2, 2a, 3, 5a; bg4 only 23, 24, 31), and nothing but KN5 / ki.cel draws with 29..31. The knight cels (KN1..3) use colour
+indices 0..8 (+15): 1..5 are shared (skin, steel), **6, 7, 8 are the class colours** (`pal[6..8]` = the first fighter's class, `fighterColors`); the creature cels use 9..14 (+16..28 for the troll, ratmen effects); the duel scene has the second class in 9..11 (HE1..3 cels). In a
+creature arena entries 0..15 and 16..28 are taken, so the second knight cannot share the 32-colour palette with a copy that still uses 6..8: `src/rt/knight_colours.cpp` finds three entries of 16..31 that the arena picture and the creature cels do not use, remaps the
+knight cels once into a chip copy (`engine/celremap.cpp`, 87 KB, planes 0..4, byte-wise logic) and writes the second knight's class triplet there; the draw event of that knight's jobs takes the copy (`rosterCelFor`), the hit sets are found through an alias. Cost: ~87 KB chip while the fight lasts
+(stock A1200 has ~258 KB spare, the owner machine ~1.4 MB) and one pass over the cels at the start of the fight; none per frame. Without three free entries (or in the duel / dragon scenes) the knights share the colour as before. Four knights would need three more entries each (not available in 5 planes: enhanced mode or HUD tags).
+
+**Update 2026-10-10 (hurt frames, branch kcol_hurt):** the second knight turned into the first knight's colour while some hurt animations played. The knight cels are not only KN1..KN3: a knight script can switch its job to the creature cel list (`$C0 $02`, `LAB_085E` / `085F` the ratmen's struck / cursed reactions, `LAB_084A` / `084B` the Be's grip) and then draws the knight figure out of the creature's set (`RATMEN2` frames 42..62, `be1`, `TROGGSpear1`, Balok, Mudmen, Demon, Dragon cels carry class-colour pixels 6, 7, 8), and the creature's own job draws the knight it holds the same way; KN4 (weapons) and KN5 were not copied either. Now every cel set of the arena's two lists (`engine/celremap.cpp celSkinCandidates`) that has class-colour pixels gets a copy (KN1..KN3 mandatory as before, the rest best effort: a failed chip allocation leaves that set in the shared colour), and `rosterDrawSkin` (`include/game/roster.hpp`) selects the copy for the skinned knight's jobs AND for the job of a creature whose sticky target is that knight (`ubTargetSlot`). Cost: +8 KB (KN4) and the carrying set(s) (RATMEN2 38 KB, Balok2/3 43 KB + KN5 36 KB, Mudmen 86 KB worst case) while the fight lasts. Host test `tests/test_skin_cover.py` (script control-flow walk over the original knight scripts vs the copied tables per arena).
+
+**Update 2026-10-09 (ROADMAP 8.4, branch wt-8_4h, emulator pass pending):** the duel (`$0C`) and dragon (`$14`) scenes now search free entries too. Measured from the exported originals: the duel's cels (HE1..3) only use low entries, so 31 / 30 / 29 are free like in the lairs; the dragon's cels (DRAGON1/2/5) and KN5 (the fifth knight set, loaded in the dragon, balok and troll arenas) draw with 29..31, so those count as used (KN5 is scanned in those three arenas, which also fixes the balok / troll lairs); the arena pictures leave 17 / 23 / 24 / 28 and so on free (bg1a, 1b, 1c, 3: enough), bg2 / bg5a leave only 23 / 28 (fallback: shared colour, logged). The valley guardian's cels use 15, 17..18, 21..23, 28..31 and the valley picture is unmeasured: it may fall back too. **Fight HUD:** the only per-fighter indicator in a fight is the low-hp palette pulse (`lowHpWarnings`: three ramp jobs on three palette entries); knight 2 pulses its own entries (kept in `FightRoster::aubSkinEntry`); the palette has six ramp slots, so in a party duel the black knights' own warning gives way; knights 3 / 4 share a colour and have no pulse (a HUD tag would be needed, 4.4). **Placement:** the N black knights enter on `rosterFoeSlot` (x alternating $14 / $44, depth evenly $4B..$80), one black knight keeps the original spot. **Valley / dragon:** see ROADMAP 8.4; the guardian's hit points are not scaled with the party size (8.7).
+
 ---
 
 ## 7. Open questions for the owner (short)
@@ -505,7 +616,7 @@ Dependencies: P0 -> P5 sizing; P1, P2 -> P3 -> P4 -> P5 -> P6/P7; P8 -> P9; P10 
 5. **Death**: a knight who is down when a fight ends loses a life even if the party won (matches the original), or only when the whole party loses?
 6. **Friendly fire**: off (recommended; allies pass through each other) or on (more chaos, needs team handling for blocks and daggers)?
 7. **Home villages**: does any party member use any village, or only a knight's own village (the original rule)?
-8. **Ending**: only the stone-owner/leader's ending, or all four endings in sequence?
+8. **Ending**: only the stone-owner/leader's ending, or all four endings in sequence?  **Decided 2026-10-09 (owner): the stone owner's ending only** (ROADMAP 8.5; `rt::partyStoneOwner`: the first member holding the stone of the moon phase, the leader first, is the visiting knight, so `stoneEnding` plays its ending; the original rule for the knight concerned).
 9. **Colours**: accept two knight colour triplets plus HUD tags in the 5-plane mode, or require the 6-plane enhanced art mode for four distinct knights?
 10. **Gold**: copied loot means 4x gold in the party. Keep (decision 3), or scale shop prices by party size?
 11. **Adapter**: which parallel-port 4-player adapter do you own (pinout/documentation), and is a 4-player test setup available for the P1 diagnostics?

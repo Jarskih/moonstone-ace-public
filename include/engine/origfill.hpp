@@ -9,13 +9,20 @@
 #pragma once
 #include <stdint.h>
 
+#include "engine/endian.hpp"
+
 namespace ms {
 
+// Byte order (ROADMAP 11.3, docs/PC_ENDIAN.md): the hunks hold the 68k's big-endian bytes.  A run copies them as they are; ubUnit
+// says what the destination is: 0 or 1 = bytes (scripts, text, tables read with engine/endian.hpp: the order is the file's),
+// 2 or 4 = an array of native C++ integers (u16 / u32 cells: palettes, flags, counters), whose elements are put into the CPU's
+// byte order after the copy.  On a big-endian CPU (the Amiga) nothing is done and the unit costs no code.
 struct OrigFillRun {
 	uint8_t *pDst;      // where the bytes go
 	uint32_t ulSrc;     // offset in the hunk
 	uint32_t ulSize;    // bytes
-	uint16_t uwHunk;    // hunk number
+	uint8_t ubHunk;     // hunk number (the original has fewer than 64)
+	uint8_t ubUnit;     // element size of a native-integer run: 2 or 4; 0 / 1 = bytes
 };
 
 // Reads up to ulCount bytes of the file into pDst, returns how many it read (0 = end of file / error).

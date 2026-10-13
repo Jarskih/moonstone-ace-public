@@ -24,7 +24,10 @@
 
 #include <stdint.h>
 
+#include "engine/guard.hpp"
 #include "engine/util.hpp"
+#include "game/ending_knight.hpp"
+#include "game/net_drop.hpp"
 #include "game/overworld.hpp"
 #include "rt/hunk9.hpp"
 #include "game/placevisit.hpp"
@@ -35,6 +38,15 @@
 #include "rt/abs.h"                                                 // rt_fight_run / meet / creature / dragon, rt_boot_flags, rt_run_program
 #include "rt/stubfn.h"
 #include "rt/flow.hpp"
+#include "rt/logwrite.hpp"
+#include "rt/net_session.hpp"
+#include "rt/net_tick.hpp"
+#include "rt/net_state.hpp"
+#include "rt/party.hpp"
+#include "rt/party_fight.hpp"
+#include "rt/party_loot.hpp"
+#include "rt/party_turn.hpp"
+#include "game/rules/party.hpp"
 
 extern "C" {
 // code / data labels the shims call or read
@@ -161,6 +173,7 @@ inline Inventory &invOf(const Knight &k) { return *reinterpret_cast<Inventory *>
 inline Lair *lairs() { return reinterpret_cast<Lair *>((uintptr_t)mogLairs); }
 inline RecordSet records() {
 	RecordSet rs = {mogKnights, mogInventories, addr(mogKnights)};  // LAB_0613, LAB_0618
+	rt::partyRecords(rs);                                             // + the co-op black-knight pool (ROADMAP 8.3a; classic: inactive)
 	return rs;
 }
 inline int curIndex() { return records().index(mogCurKnight); }
@@ -259,6 +272,26 @@ void speed() {
 	rtOwSpeedApply();
 }
 
+// Moonstone 2 (ROADMAP 8.3): the space key's sheet (LAB_04CF 9) for every party member in turn, the leader first.  The sheet shows
+// ActiveKnights +0's knight (LAB_058A), so that and LAB_0633 point at the member while its sheet runs.
+// RAII (owner rule, engine/guard.hpp ScopeExit): LAB_0633 and ActiveKnights +0 are borrowed for the sheets and given back when
+// the function leaves, on every path.
+void statusParty() {
+	const RecordSet rs = records();
+	const uint32_t ulCur = mogCurKnight, ulAct = mogActive.ulCurrent;
+	auto sGiveBack = ms::scopeExit([ulCur, ulAct] {
+		mogCurKnight = ulCur;
+		mogActive.ulCurrent = ulAct;
+	});
+	const int iL = partyLeader(rs);
+	for (int n = 0; n < rs.pParty->ubSize; ++n) {
+		const uint32_t ulMember = rs.addr((iL + n) % rs.pParty->ubSize);
+		mogCurKnight = ulMember;
+		mogActive.ulCurrent = ulMember;
+		owCall(RT_FN(rt_screen_run), 9);
+	}
+}
+
 void mlStep(void *, MapStep eStep) {
 	switch (eStep) {
 		case MS_KEY_RESET: owCall(RT_FN(rt_mog_key_reset)); break;
@@ -274,7 +307,12 @@ void mlStep(void *, MapStep eStep) {
 		case MS_FRAME_START: rtMogFrameStart(); break;
 		case MS_FRAME_WAIT: rtMogFrameWait(); break;
 		case MS_SETUP_TURN: rtOwSetupTurn(); break;
-		case MS_MOVE: rtOwMove(); rtOwTile(); rtOwScan(); break;       // LAB_0DA6: ow-move, LAB_0E22, LAB_0069
+		case MS_MOVE:                                                 // LAB_0DA6: ow-move, LAB_0E22, LAB_0069
+			rtOwMove();
+			rtOwTile();
+			if (rt::partyCoop() && curIndex() >= 0) partySyncMap(records(), curIndex());   // Moonstone 2: the group follows its token (8.3)
+			rtOwScan();
+			break;
 		case MS_DRAW_LAIRS: mapDrawLairs(lairs(), mogHeapTable[17], mogBackground, mogCurLair, kDrawOps); break;  // LAB_08C6
 		case MS_DRAW_OTHERS: mapDrawOthers(records(), mogCurKnight, kDrawOps); break;
 		case MS_DRAW_SELF: mapDrawSelf(curKnight(), mogMapForced != 0, mogMapAmbush != 0, &mogCurKnight, &mogMapSavedSelf, kDrawOps); break;
@@ -295,13 +333,18 @@ void mlStep(void *, MapStep eStep) {
 		case MS_MODE_CLEAR: rtOwModeClear(); break;
 		case MS_DRAGON_FIGHT: colourStop(); owCall((const void *)rt_fight_dragon); break;   // BSR LAB_0DC8 ; JSR LAB_0083
 		case MS_COLOUR_STOP: colourStop(); break;
-		case MS_STATUS_SCREEN: owCall(RT_FN(rt_screen_run), 9); break;
+		case MS_STATUS_SCREEN:
+			if (rt::partyCoop()) statusParty();                       // Moonstone 2: one sheet per party member (ROADMAP 8.3)
+			else owCall(RT_FN(rt_screen_run), 9);
+			break;
 	}
 }
 
 bool mlWish(void *) { return rtOwWish() != 0; }
 uint16_t mlAiWalk(void *) { return (uint16_t)rtOwAiWalk(); }
-uint16_t mlJoystick(void *) { return (uint16_t)owCall(RT_FN(rt_mog_joy_read)).rd1; }
+uint16_t mlJoystick(void *) {
+	return (uint16_t)owCall(RT_FN(rt_mog_joy_read)).rd1;               // D1 = port 1 = the player stick: in co-op the current knight's own pad (ROADMAP 8.2)
+}
 uint16_t mlReadKey(void *) { return (uint16_t)owCall(RT_FN(rt_mog_key_xlat), mogKeyAny).rd0; }   // MOVEQ #0,D0 ; MOVE.W SECSTRT_21,D0 ; JSR LAB_0D8D
 uint16_t mlMenu(void *) { return (uint16_t)rtOwMenu(); }
 bool mlDragonAttacks(void *) { return rtOwDragonAttack() != 0; }
@@ -379,7 +422,12 @@ PlaceRet pvCall(void *, PlaceCall eCall, uint32_t ulD0, uint32_t ulD1, uint32_t 
 }
 
 uint32_t pvButtonId(void *, uint32_t ulRecord) { return *reinterpret_cast<const uint32_t *>((uintptr_t)ulRecord + 16); }
-void pvCastle(void *) { rtTownCastleBlessing(&curKnight()); }
+void pvCastle(void *) {                                                           // co-op: every living member of the visit is blessed once
+	uint32_t aMember[ms::game::PARTY_MAX];
+	const unsigned n = rt::shopMembers(aMember);
+	if (n == 0) { rtTownCastleBlessing(&curKnight()); return; }
+	for (unsigned i = 0; i < n; ++i) rtTownCastleBlessing(knightAt(aMember[i]));
+}
 bool pvStoneMatches(void *) { return rtPlacesStoneCheck() != 0; }
 uint32_t pvStoneCode(void *) { return rtPlacesStoneCode(mogActive.uwMoonFrame, knightAt(mogActive.ulCurrent)->ulKind); }
 void pvDanu(void *) { rtPlacesDanu(); }
@@ -387,12 +435,32 @@ bool pvValleyKeys(void *) { return rtPlacesValleyKeys() == 0; }                 
 void pvValleyDefeat(void *) { rtPlacesValleyLoss(); }
 void pvValleyVictory(void *) { rtPlacesValleyWin(); }
 void pvValleyMoonstone(void *) { rtPlacesValleyStone(); }
-void pvRunProgram(void *) { rt::flowNested(ms::game::flow::Event::Ending, [](void *) { rt::flowAbandon(); rt_run_program(); }, nullptr); }   // never returns
+// Moonstone 2: in a network game each machine's ending wears its own knight's colours (game/ending_knight.hpp): the kind bits of the boot flags
+// the program overlay reads are rewritten.  The ending code shown on the quest-complete text was made before and is not touched.
+void endingKnightColours() {
+	const int iWinner = static_cast<int>(knightAt(mogCurKnight) - mogKnights);
+	if(iWinner < 0 || iWinner >= static_cast<int>(ms::NET_KNIGHTS_MAX)) {
+		return;
+	}
+	const int iRecord = rt::netSessionEndingKnight(static_cast<uint8_t>(iWinner));
+	if(iRecord < 0) {
+		return;   // no network game: the original flags
+	}
+	rt_boot_flags = ms::game::endingFlagsForKind(rt_boot_flags, mogKnights[iRecord].ulKind);
+}
+void pvRunProgram(void *) { endingKnightColours(); rt::netSessionQuestComplete(); rt::flowNested(ms::game::flow::Event::Ending, [](void *) { rt::flowAbandon(); rt_run_program(); }, nullptr); }   // never returns
 void pvSceneSetup(void *) { rtOwSceneSetup(); }
 void pvColourStop(void *) { colourStop(); }
+void pvTurnMark(void *, PlaceMark eMark, bool bTownA) {                           // ROADMAP 8.5a: inert outside a co-op shop queue
+	if (eMark == MARK_NAME) rt::turnCorner(bTownA);
+	else if (eMark == MARK_LEAVE) rt::turnArrowsOff();
+	else rt::turnBanner(bTownA);
+}
+void pvIdle(void *) { ms::tickIdle(); }   // the town cursor loop has no beam wait; advance deterministic input once per poll
 
 const PlaceOps kPlaceOps = {0, pvCall, pvButtonId, pvCastle, pvStoneMatches, pvStoneCode, pvDanu, pvValleyKeys, pvValleyDefeat,
-                            pvValleyVictory, pvValleyMoonstone, pvRunProgram, pvSceneSetup, pvColourStop, &ms::game::g_gameData};
+                            pvValleyVictory, pvValleyMoonstone, pvRunProgram, pvSceneSetup, pvColourStop, &ms::game::g_gameData, rt::shopSwitch, pvTurnMark,
+                            rt::partyFightOpen, rt::partyFightClose, rt::partyValleySettle, pvIdle};
 
 // ---- scheduler ports -------------------------------------------------------------------------------------------------------
 
@@ -404,7 +472,7 @@ TurnState loadTurn() {
 	ts.uwBudget = mogTurnBudget.uw;  // LAB_0665
 	ts.uwBudgetQ1 = mogBudgetQuarter;  // LAB_0659
 	ts.uwBudgetQ3 = mogBudgetThreeQuarters;  // LAB_065A
-	ts.uwPlayerCount = mogHumanPlayers.uw;  // LAB_05C5
+	ts.uwPlayerCount = ms::game::humanKnightCount(mogKnights, mogHumanPlayers.uw);  // LAB_05C5; a knight dropped from a network game is an AI knight (12.11) and no longer counts
 	ts.uwDay = mogDayCounter;  // LAB_06C0
 	ts.uwMoonIndex = mogLunarIndex;  // LAB_06C1
 	ts.uwStage3Latch = mogMoveStage3Latch;
@@ -783,6 +851,7 @@ void placeCells(PlaceCells &c) {
 extern "C" __attribute__((used, externally_visible)) uint32_t rtOwPlaceVisit(uint32_t ulId) {
 	PlaceCells c;
 	placeCells(c);
+	rt::ShopVisit sShoppers;                                          // co-op: each living member's turn in town (ROADMAP 8.5)
 	return placeVisit(ulId, c, kPlaceOps);
 }
 
@@ -791,6 +860,7 @@ extern "C" uint32_t rtOwPlaceFlow(uint32_t ulId) {
 	if (!rt::flowActive()) return rtOwPlaceVisit(ulId);
 	PlaceCells c;
 	placeCells(c);
+	rt::ShopVisit sShoppers;
 	return rt::flowPlace(ulId, c, kPlaceOps);
 }
 
@@ -835,11 +905,28 @@ void rtOwNewDayEnter() {
 	colourStop();                                                     // JSR LAB_0DC8 (the screen teardown)
 	rtClMoon();                                                       // JSR LAB_012B (C++, rt/combat_load.hpp, 7.1o)
 }
-void rtOwNewDayWait() { owCall(RT_FN(rt_mog_wait_fire)); }            // waits for fire
+// Waits for fire.  The log line tells the autoplay scripts (`wait log next_day_waits`) that the screen is up and polling: a fire pulse sent while the black
+// knights still move is lost (batch5 classic run: the screen stayed up, the next `wait var turn` timed out and the two windows drifted a hash bar apart).
+void rtOwNewDayWait() {
+	const rt::NetNextDayScope sNetNextDay;                                // a network game: any human knight's fire counts (the turn record is a black knight's here)
+	logWrite("next day waits for fire\n");
+	owCall(RT_FN(rt_mog_wait_fire));
+}
 void rtOwNewDayExit() { owCall(RT_FN(rt_mog_palette_clear)); }
 
 // LAB_0DC8 for the C++ callers outside this file (src/rt/combat.cpp).
 extern "C" __attribute__((used, externally_visible)) void rtOwColourStop(void) { colourStop(); }
+
+// LAB_0DC8 without its fade out (ROADMAP M12 rejoin, rt/net_world netWorldRestartMap): the map colour jobs are freed and marked off, so the next map screen starts
+// them again; nothing waits, nothing draws.
+extern "C" __attribute__((used, externally_visible)) void rtOwColourRelease(void) {
+	const MapColourCells c = colourCells();
+	if (*c.puwOn != 0) {
+		mcSlotFree(0, *c.pulRamp);
+		mcSlotFree(0, *c.pulCycle);
+		*c.puwOn = 0;
+	}
+}
 
 // SECSTRT_36 for src/rt/combat.cpp: the map scene's set-up, in the original's order.
 extern "C" __attribute__((used, externally_visible)) void rtOwSceneSetup(void) {
@@ -874,4 +961,3 @@ rt_ow_dragon_fly:
 	movem.l (%sp)+,%d0-%d7/%a0-%a6
 	rts
 )");
-

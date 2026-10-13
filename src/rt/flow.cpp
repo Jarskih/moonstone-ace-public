@@ -10,7 +10,7 @@
 #include "game/flow/scenes.hpp"
 
 #if defined(MS_AUTOPLAY) && MS_AUTOPLAY
-#include "rt/serlog.hpp"
+#include "rt/amiga/serlog.hpp"
 #endif
 
 namespace rt {

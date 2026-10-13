@@ -12,6 +12,7 @@
 #include "game/rules.hpp"
 #include "game/scene_town.hpp"
 #include "game/state_bind.hpp"
+#include "rt/party_loot.hpp"
 
 extern "C" {
 extern uint16_t mogInvChanged;              // "something changed" counter of the inventory screens (+1 per transaction) (LAB_0689)
@@ -33,6 +34,7 @@ void rtKnightRecalcHp(ms::game::Knight *pKnight);
 
 void rtTownRedraw(void);
 void rtTownSound(const uint8_t *pText);
+void rtScreenRedraw(void);                    // src/rt/combat.cpp: LAB_04D4
 }
 
 namespace {
@@ -79,14 +81,24 @@ extern "C" __attribute__((used, externally_visible)) void rtTownMarketClick(uint
 }
 
 extern "C" __attribute__((used, externally_visible)) void rtTownExchangeArmour(void) {
-	if (exchangeArmour(*knightAt(mogUiKnight), *knightAt(mogUiKnight2))) ++mogInvChanged;  // LAB_068D
+	rt::LootShare share;                                               // co-op: the other members copy the take (ROADMAP 8.5)
+	rt::lootShareBegin(share);
+	if (exchangeArmour(*knightAt(mogUiKnight), *knightAt(mogUiKnight2))) {  // LAB_068D
+		rt::lootShareArmour(share);
+		++mogInvChanged;
+	}
 }
 
 extern "C" __attribute__((used, externally_visible)) void rtTownExchangeSword(void) {
 	Knight &me = *knightAt(mogUiKnight);
 	Knight &other = *knightAt(mogUiKnight2);
+	rt::LootShare share;
+	rt::lootShareBegin(share);
 	// LAB_068C / LAB_068E are the inventories of the two records (LAB_058A); LAB_068E is only touched for a sharp sword.
-	if (exchangeSword(me, other, *invAt(mogUiInventory), *invAt(mogUiInventory2[0]), mogSceneId == SCENE_CREATURE)) ++mogInvChanged;  // LAB_068E, LAB_068F
+	if (exchangeSword(me, other, *invAt(mogUiInventory), *invAt(mogUiInventory2[0]), mogSceneId == SCENE_CREATURE)) {  // LAB_068E, LAB_068F
+		rt::lootShareSword(share);
+		++mogInvChanged;
+	}
 }
 
 extern "C" __attribute__((used, externally_visible)) void rtTownExchangeGold(void) {
@@ -94,7 +106,10 @@ extern "C" __attribute__((used, externally_visible)) void rtTownExchangeGold(voi
 	// Creature screen (state 2): the lair's gold word (Lair +8), else the other knight's gold.
 	uint16_t *pSrc = mogSceneId == SCENE_CREATURE ? reinterpret_cast<uint16_t *>((uintptr_t)mogCurLair + 8)  // LAB_08C6
 	                                   : &knightAt(mogUiKnight2)->uwGold;
+	rt::LootShare share;
+	rt::lootShareBegin(share);
 	const GoldTake res = exchangeGold(me, *pSrc, ms::game::g_gameData);
+	if (res.bCount) rt::lootShareGold(share);
 	if (res.bSound) rtTownSound(mogSoundTextGoldTake);
 	if (res.bCount) ++mogInvChanged;
 }
@@ -121,16 +136,10 @@ extern "C" __attribute__((used, externally_visible)) void rtTownCastleBlessing(K
 
 extern "C" __attribute__((used, externally_visible)) void rtTownSound(const uint8_t *) {}
 
-// rtTownRedraw: LAB_04D4 (rebuild and redraw the screen), a trampoline that preserves every register (the original sat inside MOVEM
-// D0-D7/A0-A6 pairs or was called where nothing is live), so the C++ above sees the normal calling convention.
+// rtTownRedraw: LAB_04D4 (rebuild and redraw the screen); the C++ above sees the normal calling convention (the register trampoline that
+// kept every register is not needed for C++ callers, ROADMAP 11.1d).
 // rtTownSound: LAB_0BB3 with A0 = message text.  The text / sound player was a bare RTS in the game: nothing to do (ROADMAP 7.1q).
-asm(R"(
-	.text
-	.globl rtTownRedraw
-rtTownRedraw:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rt_screen_redraw
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-)");
+extern "C" __attribute__((used, externally_visible)) void rtTownRedraw(void) {
+	rtScreenRedraw();
+}
 

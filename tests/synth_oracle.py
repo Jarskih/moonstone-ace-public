@@ -14,6 +14,7 @@ Script operations (one tuple each):
     ('P', ref, bytes)                        write bytes at S_44 offset ref (after 'Z'; vibrato rows, envelopes, sequences)
     ('Q', idx, ref)                          sequence table entry idx := S_44 offset ref
     ('D',)                                   dump the 131 instrument sample addresses (as 'dump' event)
+    ('R',)                                   (host driver only) back to the state of a fresh process: several scripts share one run
 Result: a list with one entry per operation: ('w', reg, value) tuples (word writes), or ('dump', [addresses]).
 """
 import json
@@ -27,6 +28,7 @@ sys.path.insert(0, os.path.join(ROOT, 'tools', 'diffharness'))
 
 try:
     import harness as H
+    from fastregs import FastRegs, add_mem_hook
     from unicorn import Uc, UcError, UC_ARCH_M68K, UC_MODE_BIG_ENDIAN
     from unicorn import UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
     from unicorn import m68k_const as M
@@ -35,6 +37,9 @@ except Exception:       # pragma: no cover
     HAVE_UC = False
 
 HW_BASE = 0xDFF000
+MARK_REG = 0xFFE            # a fake-Paula offset no routine writes: the end-of-pass marker of Rig.ticks
+_ZERO8 = [0] * 8
+_ZERO7 = [0] * 7
 INST_COUNT = 131
 
 
@@ -62,8 +67,11 @@ class Rig:
         self.pending = 0
         self.enar = 0
         self.insn_limit = insn_limit
-        self.uc.hook_add(UC_HOOK_MEM_WRITE, self._on_hw_write, begin=HW_BASE, end=HW_BASE + 0xFFF)
-        self.uc.hook_add(UC_HOOK_MEM_READ, self._on_hw_read, begin=HW_BASE, end=HW_BASE + 0xFFF)
+        self._fast_in = FastRegs.make(self.uc, [M.UC_M68K_REG_SR] + list(H.DREG) + list(H.AREG))
+        self.ticklogs = None        # while ticks() runs: the finished logs (a write to MARK_REG ends one)
+        self._tramp_entry = None
+        add_mem_hook(self.uc, UC_HOOK_MEM_WRITE, self._on_hw_write, begin=HW_BASE, end=HW_BASE + 0xFFF)
+        add_mem_hook(self.uc, UC_HOOK_MEM_READ, self._on_hw_read, begin=HW_BASE, end=HW_BASE + 0xFFF)
         self.reset()
 
     def reset(self):
@@ -76,11 +84,15 @@ class Rig:
         self.log = []
         self.pending = 0
         self.enar = 0
+        self._tramp_entry = None
 
     # -- fake Paula ---------------------------------------------------------------------------------------------
-    def _on_hw_write(self, uc, access, addr, size, value, _):
+    def _on_hw_write(self, access, addr, size, value):
         reg = addr - HW_BASE
-        if size == 4:
+        if reg == MARK_REG:                       # the end of one pass of ticks()
+            self.ticklogs.append(self.log)
+            self.log = []
+        elif size == 4:
             self.log.append(('w', reg, (value >> 16) & 0xFFFF))
             self.log.append(('w', reg + 2, value & 0xFFFF))
         elif size == 2:
@@ -90,24 +102,29 @@ class Rig:
         else:
             raise AssertionError('byte write to the chip set at $%X' % addr)
 
-    def _on_hw_read(self, uc, access, addr, size, value, _):
+    def _on_hw_read(self, access, addr, size, value):
         reg = addr & 0xFFE
         if reg == 0x1E:
-            uc.mem_write(HW_BASE + 0x1E, struct.pack('>H', self.pending))
+            self.uc.mem_write(HW_BASE + 0x1E, struct.pack('>H', self.pending))
         elif reg == 0x1C:
-            uc.mem_write(HW_BASE + 0x1C, struct.pack('>H', self.enar))
+            self.uc.mem_write(HW_BASE + 0x1C, struct.pack('>H', self.enar))
 
     # -- running ------------------------------------------------------------------------------------------------
-    def _go(self, entry, d, a):
+    def _go(self, entry, d, a, want_regs=False):
         uc = self.uc
-        uc.reg_write(M.UC_M68K_REG_SR, 0x2700)
-        for i in range(8):
-            uc.reg_write(H.DREG[i], d[i])
         sp = H.STACK_TOP - 4
         uc.mem_write(sp, struct.pack('>I', self.SENT))
-        for i in range(7):
-            uc.reg_write(H.AREG[i], a[i])
-        uc.reg_write(H.AREG[7], sp)
+        # one batched register write (FastRegs: the per-register python wrapper work, 17 times per call and ~1.7 M calls per
+        # module, was 60 % of this module's time)
+        if self._fast_in is not None:
+            self._fast_in.write([0x2700] + list(d) + list(a[:7]) + [sp])
+        else:
+            uc.reg_write(M.UC_M68K_REG_SR, 0x2700)
+            for i in range(8):
+                uc.reg_write(H.DREG[i], d[i])
+            for i in range(7):
+                uc.reg_write(H.AREG[i], a[i])
+            uc.reg_write(H.AREG[7], sp)
         try:
             uc.emu_start(entry, self.SENT, count=self.insn_limit)
         except UcError as e:
@@ -115,10 +132,64 @@ class Rig:
         pc = uc.reg_read(M.UC_M68K_REG_PC)
         if pc != self.SENT:
             raise RuntimeError('did not return: pc=$%X' % pc)
-        return [uc.reg_read(r) for r in H.DREG], [uc.reg_read(r) for r in H.AREG]
+        if want_regs:
+            return [uc.reg_read(r) for r in H.DREG], [uc.reg_read(r) for r in H.AREG]
+        return None
+
+    # -- n consecutive calls of one routine in ONE emulation run ------------------------------------------------
+    TRAMP = 0x100       # offset in the sentinel page of the loop below; its pass counter (a word) lives at TRAMP - 4
+
+    def _write_trampoline(self, entry):
+        """A 68k loop: every pass zeroes SR and D0-D7/A0-A6 like call() does, runs the routine, then writes MARK_REG (the hook
+        ends the pass's log there); the counter in the sentinel page counts the passes down.  One emu_start for n passes
+        instead of n: the python cost of a call (registers in, emu_start, pc check) was most of the oracle's time."""
+        base = self.SENT + self.TRAMP
+        code = bytearray()
+        code += struct.pack('>HH', 0x46FC, 0x2700)                        # MOVE #$2700,SR
+        for n in range(8):
+            code += struct.pack('>H', 0x7000 | (n << 9))                  # MOVEQ #0,Dn
+        for n in range(7):
+            code += struct.pack('>H', 0x91C8 | (n << 9) | n)              # SUBA.L An,An
+        code += struct.pack('>HI', 0x4EB9, entry)                         # JSR entry.L
+        code += struct.pack('>HI', 0x33C0, HW_BASE + MARK_REG)            # MOVE.W D0,MARK_REG.L
+        code += struct.pack('>HI', 0x5379, base - 4)                      # SUBQ.W #1,counter.L
+        code += struct.pack('>Hh', 0x6600, -(len(code) + 2))              # BNE.W to the start (pc = end of the opcode word)
+        code += struct.pack('>H', 0x4E75)                                 # RTS
+        self.uc.mem_write(base, bytes(code))
+        self.uc.ctl_flush_tb()
+        self._tramp_entry = entry
+
+    def ticks(self, entry, n):
+        """n calls of `entry` (no arguments, all registers 0), each with its own write log. -> list of n logs."""
+        if self._tramp_entry != entry:
+            self._write_trampoline(entry)
+        uc = self.uc
+        base = self.SENT + self.TRAMP
+        uc.mem_write(base - 4, struct.pack('>HH', n, 0))
+        sp = H.STACK_TOP - 4
+        uc.mem_write(sp, struct.pack('>I', self.SENT))
+        if self._fast_in is not None:
+            self._fast_in.write([0x2700] + [0] * 15 + [sp])
+        else:
+            uc.reg_write(M.UC_M68K_REG_SR, 0x2700)
+            for r in H.DREG + H.AREG[:7]:
+                uc.reg_write(r, 0)
+            uc.reg_write(H.AREG[7], sp)
+        self.ticklogs, self.log = [], []
+        try:
+            uc.emu_start(base, self.SENT, count=self.insn_limit * n)
+        except UcError as e:
+            raise RuntimeError('unicorn: %s at pc=$%X' % (e, uc.reg_read(M.UC_M68K_REG_PC)))
+        finally:
+            logs, self.ticklogs = self.ticklogs, None
+        pc = uc.reg_read(M.UC_M68K_REG_PC)
+        if pc != self.SENT:
+            raise RuntimeError('did not return: pc=$%X' % pc)
+        assert len(logs) == n and not self.log, (len(logs), n, self.log)
+        return logs
 
     def call(self, entry, d=None, a=None):
-        return self._go(entry, d or [0] * 8, a or [0] * 7)
+        return self._go(entry, d or _ZERO8, a or _ZERO7)
 
     def take_log(self):
         out, self.log = self.log, []
@@ -180,8 +251,24 @@ class Original:
             raise ValueError(op)
         return r.take_log()
 
+    def ticks(self, n):
+        """n VBL ticks (LAB_0F73), one log each."""
+        return self.rig.ticks(self.addr('LAB_0F73'), n)
+
     def run(self, script):
-        return [self.op(o) for o in script]
+        """The log of every operation.  Consecutive 'T' ops run as one emulation (Rig.ticks)."""
+        out, i, n = [], 0, len(script)
+        while i < n:
+            if script[i][0] == 'T':
+                j = i
+                while j < n and script[j][0] == 'T':
+                    j += 1
+                out.extend(self.ticks(j - i))
+                i = j
+            else:
+                out.append(self.op(script[i]))
+                i += 1
+        return out
 
 
 def script_text(script):
@@ -193,7 +280,7 @@ def script_text(script):
             out.append('Z %x %s' % (o[1], ' '.join('%x' % b for b in o[2])))
         elif k == 'S':
             out.append('S %d %d' % (o[1], o[2]))
-        elif k in ('T', 'D'):
+        elif k in ('T', 'D', 'R'):
             out.append(k)
         elif k == 'I':
             out.append('I %x %x' % (o[1], o[2]))
@@ -209,15 +296,20 @@ def script_text(script):
 def parse_driver_output(text, nops):
     """Driver output: a '.' line before each operation's events; 'w reg val' (hex) or 'D a0 a1 ...'."""
     res, cur = [], None
+    memo = {}        # the same 'w reg val' line comes back millions of times: parse each distinct line once
     for ln in text.split('\n'):
         if not ln:
             continue
-        if ln == '.':
+        e = memo.get(ln)
+        if e is not None:
+            cur.append(e)
+        elif ln == '.':
             cur = []
             res.append(cur)
         elif ln[0] == 'w':
             _, reg, val = ln.split()
-            cur.append(('w', int(reg, 16), int(val, 16)))
+            e = memo[ln] = ('w', int(reg, 16), int(val, 16))
+            cur.append(e)
         elif ln[0] == 'D':
             cur.append(('dump', [int(x, 16) for x in ln.split()[1:]]))
     assert len(res) == nops, (len(res), nops)
@@ -277,6 +369,9 @@ class Port(Original):
         if k in ('K', 'D'):
             raise ValueError('%s is a host-only operation' % k)
         return self._norm(Original.op(self, op))
+
+    def ticks(self, n):
+        return [self._norm(log) for log in Original.ticks(self, n)]
 
     def _norm(self, log):
         """AUDxLC pairs that point into the C++ waveform array are rewritten to the S_45 address the original uses."""

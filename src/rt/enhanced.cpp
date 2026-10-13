@@ -9,10 +9,9 @@
 // register beyond that set (documented per entry). Entered by JSR unless the comment says JMP.
 #include "rt/enhanced.hpp"
 
-#include <ace/managers/log.h>
-#include <ace/managers/memory.h>
-
 #include "engine/enhcarve.hpp"
+#include "rt/chipalloc.hpp"
+#include "rt/logwrite.hpp"
 
 
 // ---- cells ----------------------------------------------------------------------------------------------------------
@@ -21,42 +20,6 @@
 // cel temp buffer (chip). raw_*: the byte counts the game reads / copies raw for message.piv (program, mog) and ch.piv (mog),
 // 4326 / 3694 / 9718 originally, 24576 enhanced (the redrawn files are up to twice as large; the files are shorter than
 // the count and the read stops at the end of the file).
-asm(R"(
-	.section .data.rt_enh,"aw",@progbits
-	.balign 4
-	.globl rt_enh_planes
-rt_enh_planes:
-	.word 5
-	.balign 4
-	.globl rt_enh_scr
-rt_enh_scr:
-	.long 40000
-	.globl rt_enh_scr_longs
-rt_enh_scr_longs:
-	.long 10000
-	.globl rt_enh_clrcnt
-rt_enh_clrcnt:
-	.long 199
-	.globl rt_enh_temp
-rt_enh_temp:
-	.long 0
-	.globl rt_enh_raw_prg_msg
-rt_enh_raw_prg_msg:
-	.long 4326
-	.globl rt_enh_raw_mog_msg
-rt_enh_raw_mog_msg:
-	.long 3694
-	.globl rt_enh_raw_mog_ch
-rt_enh_raw_mog_ch:
-	.long 9718
-	.globl rt_enh_raw_mog_pack
-rt_enh_raw_mog_pack:
-	.long 198745
-	.globl rt_enh_pic_sz
-rt_enh_pic_sz:
-	.long 0x5957, 0x5148, 0x4657, 0x3a54, 0x6394, 0x51c3, 0x4c09, 0x51a4, 0x8a02
-	.text
-)");
 
 // Hang breadcrumbs (build with -DMS_ENH_TRACE): COLOR00 is written directly (12-bit, bank 0) at the steps of the picture
 // loaders and the pack walk; a frozen screen shows the last colour. Off by default.
@@ -80,25 +43,6 @@ rt_enh_pic_sz:
 // rt_mog_carve (JMP, replaces LAB_0004).
 // (The restore tail rt_{prg,mog}_tail5 and the arena compositor's plane counts rt_mog_0a60_init / rt_mog_0a64_init left this file with
 //  ROADMAP 7.1m: ms::runRestore and ms::bgCompose, src/rt/prims.cpp / src/rt/arena.cpp, read rt_enh_planes themselves.)
-asm(R"(
-	.text
-	.globl rt_mog_carve
-rt_mog_carve:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtEnhCarveMog
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_mog_pack_done
-rt_mog_pack_done:
-	jsr rt_mog_file_close
-	cmpi.w #6,rt_enh_planes
-	bne.s 1f
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtEnhPackDone
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-1:	rts
-)");
 
 // ---- picture loaders ---------------------------------------------------------------------------------------------------------
 // The picture loaders (program LAB_03FC / LAB_0402, mog LAB_0C21 / LAB_0C27) are C++ since ROADMAP 7.1f1 (src/rt/loaders.cpp,
@@ -110,26 +54,6 @@ rt_mog_pack_done:
 // (rt_mog_pal_clear and rt_*_pal_write went with their dead patches, 7.1 cleanup: the palette machine and the wipes are C++.
 //  rt_prg_pal_clear, the end of LAB_0258, went in 7.1q: rtPrgBlackout in src/rt/prg_ops.cpp calls rtEnhPalClear.)
 
-#define PALETTE_SITE_SHIMS(PFX, LIVECELL) \
-asm(".text\n" \
-	".globl rt_" #PFX "_pal_copy_live\n" \
-	"rt_" #PFX "_pal_copy_live:\n" \
-	"	movea.l " LIVECELL ",%a1\n" \
-	"	moveq #31,%d0\n" \
-	"2:	move.w (%a0)+,(%a1)+\n" \
-	"	dbf %d0,2b\n" \
-	"	cmpi.w #6,rt_enh_planes\n" \
-	"	bne.s 3f\n" \
-	"	movem.l %d0-%d1/%a0-%a1,-(%sp)\n" \
-	"	lea -64(%a0),%a0\n" \
-	"	move.l %a0,-(%sp)\n" \
-	"	jsr rtEnhPalSetLive\n" \
-	"	addq.l #4,%sp\n" \
-	"	movem.l (%sp)+,%d0-%d1/%a0-%a1\n" \
-	"3:	rts\n");
-
-PALETTE_SITE_SHIMS(prg, "prgLivePalette")
-PALETTE_SITE_SHIMS(mog, "mogLivePalette")
 
 // ---- C++ side ----------------------------------------------------------------------------------------------------------------
 extern "C" {
@@ -142,16 +66,18 @@ extern ULONG mogChipFree, mogFastFree, mogBufTable[10], mogHeapTable[24], mogBac
     mogBankRatmen, mogBankCreature, mogMapCelTable, mogForeground, mogBankCampaign, mogPicScreen, mogLairs, mogSetValue,  // LAB_05CB, LAB_05C8, LAB_0664, LAB_05C1, LAB_05C9, LAB_05C2, LAB_05C6, LAB_05BB
     mogRecordTable, mogTileScript, mogCreatureHeap;  // SECSTRT_14, LAB_0A83, LAB_05C3
 
-extern UWORD rt_enh_planes_cell asm("rt_enh_planes");
-extern ULONG rt_enh_scr_cell asm("rt_enh_scr");
-extern ULONG rt_enh_scr_longs_cell asm("rt_enh_scr_longs");
-extern ULONG rt_enh_clrcnt_cell asm("rt_enh_clrcnt");
-extern ULONG rt_enh_temp_cell asm("rt_enh_temp");
-extern ULONG rt_enh_raw_prg_msg_cell asm("rt_enh_raw_prg_msg");
-extern ULONG rt_enh_raw_mog_msg_cell asm("rt_enh_raw_mog_msg");
-extern ULONG rt_enh_raw_mog_ch_cell asm("rt_enh_raw_mog_ch");
-extern ULONG rt_enh_raw_mog_pack_cell asm("rt_enh_raw_mog_pack");
-extern ULONG rt_enh_pic_sz_cell[9] asm("rt_enh_pic_sz");
+// The mode cells.  Named for the assembler (asm("...")) because the register shims and the C++ readers of rt/enhanced_cells.hpp bind them by those names.
+#define RT_ENH_CELL __attribute__((used, externally_visible))
+RT_ENH_CELL UWORD rt_enh_planes_cell asm("rt_enh_planes") = 5;
+RT_ENH_CELL ULONG rt_enh_scr_cell asm("rt_enh_scr") = 40000;
+RT_ENH_CELL ULONG rt_enh_scr_longs_cell asm("rt_enh_scr_longs") = 10000;
+RT_ENH_CELL ULONG rt_enh_clrcnt_cell asm("rt_enh_clrcnt") = 199;
+RT_ENH_CELL ULONG rt_enh_temp_cell asm("rt_enh_temp") = 0;
+RT_ENH_CELL ULONG rt_enh_raw_prg_msg_cell asm("rt_enh_raw_prg_msg") = 4326;
+RT_ENH_CELL ULONG rt_enh_raw_mog_msg_cell asm("rt_enh_raw_mog_msg") = 3694;
+RT_ENH_CELL ULONG rt_enh_raw_mog_ch_cell asm("rt_enh_raw_mog_ch") = 9718;
+RT_ENH_CELL ULONG rt_enh_raw_mog_pack_cell asm("rt_enh_raw_mog_pack") = 198745;
+RT_ENH_CELL ULONG rt_enh_pic_sz_cell[9] asm("rt_enh_pic_sz") = {0x5957, 0x5148, 0x4657, 0x3a54, 0x6394, 0x51c3, 0x4c09, 0x51a4, 0x8a02};
 }
 
 namespace {
@@ -354,7 +280,7 @@ bool enhancedEnable() {
 		return true;
 	}
 	if(!s_pTemp) {
-		s_pTemp = memAllocChipClear(TEMP_PLANES * TEMP_STRIDE);
+		s_pTemp = rt::chipAllocClear(TEMP_PLANES * TEMP_STRIDE);
 	}
 	if(!s_pTemp) {
 		logWrite("ERR: enhancedEnable: no chip memory for the 7-plane cel temp buffer\n");
@@ -388,7 +314,7 @@ void enhancedDisable() {
 	}
 	s_isActive = false;
 	if(s_pTemp) {
-		memFree(s_pTemp, TEMP_PLANES * TEMP_STRIDE);
+		rt::chipFree(s_pTemp, TEMP_PLANES * TEMP_STRIDE);
 		s_pTemp = nullptr;
 	}
 	rt_enh_temp_cell = 0;

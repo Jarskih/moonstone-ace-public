@@ -12,6 +12,10 @@
 # region (and no string rule) covers stays a byte-run member named after its asm label.  gen_data checks every region:
 # row size == the yaml row_bytes, the region lies inside the hunk, regions do not overlap, a pointer field holds a relocation
 # or 0, a cstr[N] ends in NUL.
+#   bytes: true   (ROADMAP 11.3) nobody reads the region with the row type: its bytes are the original's big-endian bytes, the start-up
+#                 fill copies them as they are even on a little-endian CPU (the synth instrument records: engine/synthinst.cpp
+#                 decodes the raw hunk bytes, and only the MS_SYNTH_ASM A/B hunk reads them in place).  Without it the fill byte-swaps
+#                 the u16 / u32 fields of the rows, as the row struct says.
 
 # Row structs (TextItem, KnightName, CreatureTypeDef, Point16, EncounterBand) come from tools/tables.yaml; a `structs:` key here adds more.
 
@@ -54,9 +58,9 @@ regions:
   # part through ms::kSynthWave; the asm synth of the MS_SYNTH_ASM A/B build reads all of it)
   - {binary: mog, section: 45, name: synthWave, at: SECSTRT_45, element: u8, count: 168,
      notes: "single-cycle waveforms (LAB_109A..LAB_10A1 are the individual cycles inside); Paula reads them, hence CHIP."}
-  - {binary: mog, section: 45, name: synthInstWave, at: LAB_10A2, struct: SynthInstWave, count: 9,
+  - {binary: mog, section: 45, name: synthInstWave, at: LAB_10A2, struct: SynthInstWave, count: 9, bytes: true,
      notes: "instruments 0..8 play the on-hunk waveforms: the sample cell is a pointer into the wave part (14-byte records: loop word, loop offset, length in words, sample address, pitch table address)."}
-  - {binary: mog, section: 45, name: synthInst, at: LAB_10A3, struct: SynthInstRec, count: 122,
+  - {binary: mog, section: 45, name: synthInst, at: LAB_10A3, struct: SynthInstRec, count: 122, bytes: true,
      notes: "instruments 9..130 (sample banks): the sample cell holds the offset in the bank, a plain value; ms::kSynthInst is the C++ copy of the whole table. LAB_10AE (14 bytes) follows as the unparsed terminator."}
 
 structs:

@@ -15,8 +15,16 @@ void autoplayInit();
 // One level-3 VERTB service (interrupt context): advance the frame, run the events that are due.
 void autoplayTick();
 
+// The start of logical tick ulTick of a network game (rt::netTick, main thread, before the tick's input is latched): applies the `tick N poke ...` lines
+// due now, in script order, and logs `AUTOPLAY tick-poke <var> <value> at tick N`; one that came too late is an `AUTOPLAY ERROR` line (docs/AUTOPLAY.md).
+void autoplayTickPokes(ULONG ulTick);
+
 // Joystick override of rt/input's joyPoll: replaces uwPort0/uwPort1 for every port a `joyN` event has touched.
 void autoplayJoy(ms::JoyBits &sBits);
+// The two halves of it for the deterministic mode (ROADMAP 12.4): the override is applied when the tick latches the frame, the
+// "game polled" note (wait input barriers, pulse read counts) when the game polls the latched frame.
+void autoplayJoyOverride(ms::JoyBits &sBits);
+void autoplayNotePoll();
 
 // True while an autoplay joystick holds fire (port 0 or 1): the intro skip poll (rt/introskip) treats it as the fire button.
 bool autoplayFireHeld();
@@ -38,7 +46,10 @@ bool autoplayPeek(const char *szName, ULONG &ulValue);
 #else
 inline void autoplayInit() {}
 inline void autoplayTick() {}
+inline void autoplayTickPokes(ULONG) {}
 inline void autoplayJoy(ms::JoyBits &) {}
+inline void autoplayJoyOverride(ms::JoyBits &) {}
+inline void autoplayNotePoll() {}
 inline bool autoplayFireHeld() { return false; }
 inline bool autoplayQuit() { return false; }
 inline void autoplayNoteLine(const char *) {}

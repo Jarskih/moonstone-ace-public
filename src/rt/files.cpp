@@ -7,7 +7,7 @@
 #include <ace/managers/system.h>
 #include <exec/execbase.h>
 #include "rt/adfdisks.hpp"
-#include "rt/crash.hpp"
+#include "rt/amiga/crash.hpp"
 #include "engine/artcheck.hpp"
 #include "engine/enhpal.hpp"
 #include "rt/enhanced.hpp"
@@ -319,9 +319,12 @@ __attribute__((used, externally_visible)) LONG rt_file_write_exact(const char *s
 	return lPut == (LONG)ulCount;
 }
 
-// Calls pFn(name, user) for every file (not drawer) in szDir, in the order the filesystem gives. Returns -1 when szDir cannot
-// be locked (absent), else the number of files (pFn == nullptr: just 0 when it exists).
-__attribute__((used, externally_visible)) LONG rt_file_list(const char *szDir, void (*pFn)(const char *, void *), void *pUser) {
+}  // extern "C"
+
+namespace {
+
+// Calls pFn(name, user) for every file (bDrawers false) or every drawer (true) of szDir. -1 when szDir cannot be locked.
+LONG listDir(const char *szDir, void (*pFn)(const char *, void *), void *pUser, bool bDrawers) {
 	rt::OsAccess sOs;
 	rt::DosLock sDir(szDir, SHARED_LOCK, true);   // a missing drawer is a normal answer: no requester
 	if(!sDir) {
@@ -336,7 +339,7 @@ __attribute__((used, externally_visible)) LONG rt_file_list(const char *szDir, v
 		auto sFreeFib = ms::scopeExit([pFib] { FreeDosObject(DOS_FIB, pFib); });
 		if(Examine(sDir.get(), pFib)) {
 			while(ExNext(sDir.get(), pFib)) {
-				if(pFib->fib_DirEntryType < 0) {
+				if((pFib->fib_DirEntryType < 0) != bDrawers) {
 					++lCount;
 					pFn((const char *)pFib->fib_FileName, pUser);
 				}
@@ -344,6 +347,21 @@ __attribute__((used, externally_visible)) LONG rt_file_list(const char *szDir, v
 		}
 	}
 	return lCount;
+}
+
+}  // namespace
+
+extern "C" {
+
+// Calls pFn(name, user) for every file (not drawer) in szDir, in the order the filesystem gives. Returns -1 when szDir cannot
+// be locked (absent), else the number of files (pFn == nullptr: just 0 when it exists).
+__attribute__((used, externally_visible)) LONG rt_file_list(const char *szDir, void (*pFn)(const char *, void *), void *pUser) {
+	return listDir(szDir, pFn, pUser, false);
+}
+
+// Same for the drawers of szDir (ROADMAP 9.9: the mod packs are folders).
+__attribute__((used, externally_visible)) LONG rt_file_list_dirs(const char *szDir, void (*pFn)(const char *, void *), void *pUser) {
+	return listDir(szDir, pFn, pUser, true);
 }
 
 __attribute__((used, externally_visible)) void rt_file_read(void *pDst, ULONG ulCount) {

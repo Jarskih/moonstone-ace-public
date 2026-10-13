@@ -41,6 +41,8 @@
 #include "rt/asmcall.hpp"
 #include "rt/combat_load.hpp"
 #include "rt/hunk9.hpp"
+#include "rt/fight_roster.hpp"
+#include "rt/party.hpp"
 #include "rt/stubfn.h"
 
 extern "C" {
@@ -284,16 +286,26 @@ void clearHitLinksAll() {
 }
 
 // LAB_015F: the four knights' walk / animation counters and input words
+void clearKnightFlags1(Knight &k) {
+	k.ubAnimPhase = 0;
+	k.ubAnimTimer = 0;
+	k.ulHitTarget = 0;
+	k.ulAttacker = 0;
+	st16(ad(&k) + 104, 0);              // CLR.W 104(A1): the flag bytes +104 / +105
+	k.uwAction = raw(Action::Idle);
+	k.uwInput = 0;
+}
+
 void clearKnightFlags() {
 	for(uint32_t i = 0; i < 4; ++i) {
-		Knight &k = mogKnights[i];
-		k.ubAnimPhase = 0;
-		k.ubAnimTimer = 0;
-		k.ulHitTarget = 0;
-		k.ulAttacker = 0;
-		st16(ad(&k) + 104, 0);          // CLR.W 104(A1): the flag bytes +104 / +105
-		k.uwAction = raw(Action::Idle);
-		k.uwInput = 0;
+		clearKnightFlags1(mogKnights[i]);
+	}
+	if(rt::partyCoop()) {               // Moonstone 2: the black-knight pool fights too (the fight extras, records 5.., ROADMAP 8.3a)
+		RecordSet rs = {mogKnights, mogInventories, ad(mogKnights)};
+		rt::partyRecords(rs);
+		for(int i = REC_BK0; i < rs.count(); ++i) {
+			clearKnightFlags1(rs.rec(i));
+		}
 	}
 }
 
@@ -354,6 +366,14 @@ void spawnScript(uint32_t a1, uint32_t a0) {
 	rt::CallRegs r = {k.uwX, k.uwHeight, k.uwY, k.ubFacing, k.ubType, a0, a1, k.ulJobParam, 0, 0, 0, 0};
 	rtAsmCall(ad(RT_FN(rt_job_create)), &r);
 }
+// Moonstone 2 (ROADMAP 8.4): the same with the depth chosen by the caller (the black knights of a party fight are spread over the arena
+// instead of taking the next entry lane); the lane counter is left alone.
+void spawnScriptAt(uint32_t a1, uint32_t a0, uint16_t uwDepth) {
+	Knight &k = rec(a1);
+	k.uwY = uwDepth;
+	rt::CallRegs r = {k.uwX, k.uwHeight, k.uwY, k.ubFacing, k.ubType, a0, a1, k.ulJobParam, 0, 0, 0, 0};
+	rtAsmCall(ad(RT_FN(rt_job_create)), &r);
+}
 // LAB_01A8: the same with the record's own idle script (+22)
 void spawnRecord(uint32_t a1) { spawnScript(a1, rec(a1).ulIdleScript); }
 
@@ -371,6 +391,26 @@ void placeAttacker() {
 	spawnScript(a1, ad(mogKnightEnterScript));
 }
 
+// Moonstone 2 (ROADMAP 8.4b): the other fighters of a party enter behind the first one (same side, same facing, their own lane: the
+// entry counter of spawnScript hands out the next one).  Nothing happens outside a co-op party fight.
+void placePartyMates() {
+	const FightRoster &r = rt::fightRoster();
+	for(uint8_t i = 1; i < r.ubParty; ++i) {
+		const uint32_t a1 = ad(r.apParty[i]);
+		Knight &k = rec(a1);
+		k.uwX = static_cast<uint16_t>(0xFA + 0x14 * i);     // knights 2..4: a step further back each
+		k.uwHeight = 0;
+		k.uwY = 0x64;
+		k.ubFacing = 3;
+		k.ulHitTarget = 0;
+		k.ulAttacker = 0;
+		k.uwAction = raw(Action::Idle);
+		k.uwInput = 0;
+		rtKnightTables(a1);
+		spawnScript(a1, ad(mogKnightEnterScript));
+	}
+}
+
 // LAB_016F: what every arena starts with (the mode in D0 only reached the drive prompt LAB_0100, a bare RTS in the game)
 void commonSetup(uint32_t) {
 	rtClMessageNext();
@@ -380,6 +420,7 @@ void commonSetup(uint32_t) {
 	callAsm(RT_FN(rt_mog_dagger_clear));
 	mogSpawnToggle = 0;
 	placeAttacker();
+	placePartyMates();
 	mogSnatchFlags = 0;
 }
 
@@ -447,13 +488,21 @@ void scaleWave(uint8_t ubRow, bool bSingle, bool bCapTwo) {
 	WaveIn in;
 	in.sbStrength = (int8_t)k.ubStrength;
 	in.swHpMax = k.swHpMax;
+	const FightRoster &party = rt::fightRoster();
+	for(uint8_t i = 1; i < party.ubParty; ++i) {   // Moonstone 2: the strongest of the party sizes the wave (ROADMAP 8.4b)
+		if((int8_t)party.apParty[i]->ubStrength > in.sbStrength) in.sbStrength = (int8_t)party.apParty[i]->ubStrength;
+		if(party.apParty[i]->swHpMax > in.swHpMax) in.swHpMax = party.apParty[i]->swHpMax;
+	}
 	in.bLair = mogEncounterKind == raw(EncounterKind::Lair);
 	in.uwLairCount = in.bLair ? rd16(mogCurLair + 6) : 0;  // LAB_08C6
 	in.bSingleAlive = bSingle;
 	in.bAliveCapTwo = bCapTwo;
 	in.ubRow = ubRow;
 	const RulesDef &rules = g_gameData.rules;
-	in.bCoop = rules.ubCoopEnabled != 0;
+	in.bCoop = rules.ubCoopEnabled != 0 || (party.ubActive != 0 && party.ubParty >= 2);   // two knights: more at once, more in all
+	if(party.ubActive != 0 && party.ubParty >= 2) {
+		in.ubParty = party.ubParty;                       // 3 and 4 knights: the same step again per knight (rules/waves.hpp)
+	}
 	WaveState st;
 	st.uwMaxAlive = mogMaxAliveAtOnce;
 	st.uwTotal = mogFightTotal;
@@ -862,6 +911,7 @@ void arenaGuardian(const ArenaDef &d) {
 	callAsm(RT_FN(rt_mog_jobs_reset));
 	callAsm(RT_FN(rt_mog_arena_default));
 	placeAttacker();
+	placePartyMates();                                  // Moonstone 2: the rest of the party enters behind the first fighter (ROADMAP 8.4)
 	Knight &f = rec(mogCurKnight);
 	st32(f.ulHurtScripts + 32, ad(mogKnightHurtScriptC));
 	uint32_t a1 = allocCreature();
@@ -1313,6 +1363,7 @@ void arenaCommonSetup(uint32_t ulMode) { commonSetup(ulMode); }
 void arenaClearKnights() { clearKnightFlags(); }
 void arenaPlaceAttacker() { placeAttacker(); }
 void arenaSpawn(uint32_t ulRecord, uint32_t ulScript) { spawnScript(ulRecord, ulScript); }
+void arenaSpawnAt(uint32_t ulRecord, uint32_t ulScript, uint16_t uwDepth) { spawnScriptAt(ulRecord, ulScript, uwDepth); }
 uint32_t arenaAlloc() { return allocCreature(); }
 
 }  // namespace rt
@@ -1359,53 +1410,4 @@ __attribute__((used, externally_visible)) void rtArSwap019B(void) { spawnAlterna
 __attribute__((used, externally_visible)) void rtArSwap0197(void) { spawnOne(ad(kList0199)); }
 
 }  // extern "C"
-
-// The patch targets: all registers are kept (see the header comment); the _A1 shims pass the record in A1 as the argument.
-#define AR_SHIM(NAME, FN) \
-	asm(".text\n.globl " NAME "\n" NAME ":\n" \
-		"	movem.l %d0-%d7/%a0-%a6,-(%sp)\n" \
-		"	jsr " FN "\n" \
-		"	movem.l (%sp)+,%d0-%d7/%a0-%a6\n" \
-		"	rts\n");
-#define AR_SHIM_A1(NAME, FN) \
-	asm(".text\n.globl " NAME "\n" NAME ":\n" \
-		"	movem.l %d0-%d7/%a0-%a6,-(%sp)\n" \
-		"	move.l %a1,-(%sp)\n" \
-		"	jsr " FN "\n" \
-		"	addq.l #4,%sp\n" \
-		"	movem.l (%sp)+,%d0-%d7/%a0-%a6\n" \
-		"	rts\n");
-
-AR_SHIM("rt_ar_arena_0168", "rtArArena0168")
-AR_SHIM("rt_ar_arena_016a", "rtArArena016A")
-AR_SHIM("rt_ar_arena_0175", "rtArArena0175")
-AR_SHIM("rt_ar_arena_0188", "rtArArena0188")
-AR_SHIM("rt_ar_arena_018c", "rtArArena018C")
-AR_SHIM("rt_ar_arena_0196", "rtArArena0196")
-AR_SHIM("rt_ar_arena_019a", "rtArArena019A")
-AR_SHIM("rt_ar_arena_019e", "rtArArena019E")
-AR_SHIM("rt_ar_arena_01a0", "rtArArena01A0")
-AR_SHIM_A1("rt_ar_init_0169", "rtArInit0169")
-AR_SHIM_A1("rt_ar_init_0170", "rtArInit0170")
-AR_SHIM_A1("rt_ar_init_0176", "rtArInit0176")
-AR_SHIM_A1("rt_ar_init_018b", "rtArInit018B")
-AR_SHIM_A1("rt_ar_init_018f", "rtArInit018F")
-AR_SHIM_A1("rt_ar_init_0198", "rtArInit0198")
-AR_SHIM_A1("rt_ar_init_019d", "rtArInit019D")
-AR_SHIM_A1("rt_ar_init_019f", "rtArInit019F")
-AR_SHIM("rt_ar_arena_row9", "rtArArenaRow9")
-AR_SHIM("rt_ar_arena_row10", "rtArArenaRow10")
-AR_SHIM("rt_ar_arena_row11", "rtArArenaRow11")
-AR_SHIM("rt_ar_arena_row12", "rtArArenaRow12")
-AR_SHIM_A1("rt_ar_init_row10", "rtArInitRow10")
-AR_SHIM_A1("rt_ar_init_row11", "rtArInitRow11")
-AR_SHIM_A1("rt_ar_init_row12", "rtArInitRow12")
-AR_SHIM_A1("rt_ar_init_row13", "rtArInitRow13")
-AR_SHIM_A1("rt_ar_init_row14", "rtArInitRow14")
-AR_SHIM_A1("rt_ar_init_row15", "rtArInitRow15")
-AR_SHIM("rt_ar_swap_016b", "rtArSwap016B")
-AR_SHIM("rt_ar_swap_0189", "rtArSwap0189")
-AR_SHIM("rt_ar_swap_018d", "rtArSwap018D")
-AR_SHIM("rt_ar_swap_019b", "rtArSwap019B")
-AR_SHIM("rt_ar_swap_0197", "rtArSwap0197")
 

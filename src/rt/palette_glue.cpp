@@ -23,14 +23,16 @@
 #include "rt/enhanced.hpp"
 #include "rt/enhanced_cells.hpp"
 #include "rt/input.hpp"
+#include "rt/knight_colours.hpp"
 #include "rt/mog_display.hpp"
+#include "rt/platform/display.hpp"
+#include "rt/prim.hpp"
 #include "rt/sfx.hpp"
 #include "rt/stubfn.h"
 
 extern "C" {
-// engine_palette.cpp
-void rtPaletteSetTarget(ULONG ulMog, ULONG ulTarget, ULONG ulPeriod);
-ULONG rtPaletteRampAdd(ULONG ulMog, ULONG d0, ULONG d1, ULONG d2, ULONG d3);
+// engine_palette.cpp (rtPaletteSetTarget and rtPaletteRampAdd are declared in rt/prim.hpp)
+void rtEnhPalSetLive(const UWORD *puwTable);   // src/rt/enhanced.cpp: the 24-bit follower takes the live palette (enhanced mode)
 
 // mog cells (S_0 / S_39 data; the labels are the original's)
 extern UWORD mogPaletteBlack[32];      // fade-out target (black) (LAB_08D8)
@@ -52,7 +54,7 @@ namespace {
 
 constexpr ULONG FADE_FRAMES = 0x24;
 constexpr UWORD PERIOD = 2;
-volatile UWORD *const COLOR_REGS = reinterpret_cast<volatile UWORD *>(0xDFF180);  // COLOR00
+inline volatile UWORD *colorRegs() { return rt::platform::displayColorRegs(); }  // COLOR00
 
 void setTarget(const UWORD *puwTable) {
 	rtPaletteSetTarget(1, reinterpret_cast<ULONG>(puwTable), PERIOD);
@@ -96,6 +98,7 @@ void paletteScene(ULONG ulScene) {
 	fadeOutSilent();
 	rt::displayBlitBackgroundBoth();
 	ms::sceneTail(mogScenePalette, sTables, ulScene, mogArenaRegion, fighterClass(ulFirst));
+	rt::partyColoursApply(mogScenePalette, ulScene);     // Moonstone 2: the second party knight's own colours (ROADMAP 8.4b)
 	fadeTo(mogScenePalette);
 }
 
@@ -106,6 +109,7 @@ namespace rt {
 void paletteClear() {
 	// MOVE.W #0,(A1)+ / MOVE.W #0,(A2)+ / DBNE D0 with D0 = 32: 33 words (COLOR00..COLOR32 = $DFF180..$DFF1C0), live palette too
 	UWORD *puwLive = mogLivePalette;
+	volatile UWORD *const COLOR_REGS = colorRegs();
 	for(UBYTE i = 0; i < 33; ++i) {
 		COLOR_REGS[i] = 0;
 		puwLive[i] = 0;
@@ -127,6 +131,25 @@ void paletteHookAdd(const IrqCells &sCells, void *pfnTick) {
 // ---- C bodies --------------------------------------------------------------------------------------------------------------
 
 #define RT_USED extern "C" __attribute__((used, externally_visible))
+
+// LAB_025D / LAB_03EE: the 32 words at puwTable into the live palette; in the enhanced mode the 24-bit follower takes the colours too.
+// (The register entries rt_prg_pal_copy_live / rt_mog_pal_copy_live of src/rt/enhanced.cpp do the same for asm callers.)
+static void palCopyLive(UWORD *puwLive, const UWORD *puwTable) {
+	for(UBYTE i = 0; i < 32; ++i) {
+		puwLive[i] = puwTable[i];
+	}
+	if(rtEnhPlanes == 6) {
+		rtEnhPalSetLive(puwTable);
+	}
+}
+
+RT_USED void rtPalCopyLive_prg(const UWORD *puwTable) {
+	palCopyLive(prgLivePalette, puwTable);
+}
+
+RT_USED void rtPalCopyLive_mog(const UWORD *puwTable) {
+	palCopyLive(mogLivePalette, puwTable);
+}
 
 RT_USED void rtMogPaletteClearC(void) {
 	rt::paletteClear();
@@ -152,8 +175,7 @@ RT_USED void rtMogPaletteSceneC(ULONG ulScene) {
 // LAB_0412 minus the LAB_0BB3 call (that routine is a bare RTS in the original image)
 RT_USED void rtMogFightPaletteInitC(void) {
 	rt::displayWritePalette(mogScenePalette);
-	register const UWORD *pA0 asm("a0") = mogScenePalette;
-	asm volatile("jsr rt_mog_pal_copy_live" : "+a"(pA0) : : "d0", "d1", "a1", "cc", "memory");   // A0 = table -> live palette
+	rtPalCopyLive_mog(mogScenePalette);   // LAB_03EE: table -> live palette
 	ULONG ulSlot = rtPaletteRampAdd(1, 14, 0x100, 2, 0);
 	if(ulSlot == 0) {
 		ulSlot = 14;   // all slots busy: the original kept D0 = 14 (and LAB_0413 would then clear address 14)
@@ -178,59 +200,3 @@ RT_USED void rtMogPaletteHookAddC(ULONG ulLive) {
 RT_USED void rtPaletteSlotFreeC(ULONG ulSlot) {
 	*reinterpret_cast<volatile ULONG *>(ulSlot) = 0;
 }
-
-// ---- asm wrappers ---------------------------------------------------------------------------------------------------------
-asm(R"(
-	.text
-	.macro RT_PG_PLAIN cfn
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr \cfn
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-	.endm
-
-	.macro RT_PG_ARG cfn, reg
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	move.l \reg,-(%sp)
-	jsr \cfn
-	addq.l #4,%sp
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-	.endm
-
-	.globl rt_mog_palette_clear
-rt_mog_palette_clear:
-	movem.l %d1/%a0-%a1,-(%sp)
-	jsr rtMogPaletteClearC
-	movem.l (%sp)+,%d1/%a0-%a1
-	move.l #0xffff,%d0
-	rts
-	.globl rt_mog_fade_out
-rt_mog_fade_out:
-	RT_PG_PLAIN rtMogFadeOutC
-	.globl rt_mog_fade_out_silent
-rt_mog_fade_out_silent:
-	RT_PG_PLAIN rtMogFadeOutSilentC
-	.globl rt_mog_fade_to
-rt_mog_fade_to:
-	RT_PG_ARG rtMogFadeToC, %a0
-	.globl rt_mog_palette_scene
-rt_mog_palette_scene:
-	RT_PG_ARG rtMogPaletteSceneC, %d0
-	.globl rt_mog_fight_palette_init
-rt_mog_fight_palette_init:
-	RT_PG_PLAIN rtMogFightPaletteInitC
-	.globl rt_mog_fight_palette_done
-rt_mog_fight_palette_done:
-	RT_PG_PLAIN rtMogFightPaletteDoneC
-	.globl rt_prg_palette_hook_add
-rt_prg_palette_hook_add:
-	RT_PG_ARG rtPrgPaletteHookAddC, %a0
-	.globl rt_mog_palette_hook_add
-rt_mog_palette_hook_add:
-	RT_PG_ARG rtMogPaletteHookAddC, %a0
-	.globl rt_palette_slot_free
-rt_palette_slot_free:
-	RT_PG_ARG rtPaletteSlotFreeC, %d0
-)");
-

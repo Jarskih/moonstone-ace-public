@@ -4,7 +4,12 @@
 #include "game/api/party.hpp"
 #include "game/combat.hpp"
 
+#include "engine/guard.hpp"
+#include "engine/nettick.hpp"
 #include "game/rules.hpp"
+#include "game/roster.hpp"
+#include "game/roster_scope.hpp"
+#include "game/rules/stats.hpp"
 #include "game/rules/waves.hpp"
 
 namespace ms { namespace game {
@@ -19,6 +24,22 @@ enum { KEY_PAUSE = 0x20 };
 enum { LOW_HP = 10 };
 
 inline Knight &K(const FightEnv &e, uint32_t ulAddr) { return *e.m.pfnKnight(ulAddr); }
+
+// ---- Moonstone 2 co-op fights (ROADMAP 8.4b): the roster of one fight ------------------------------------------------------
+// RosterScope (game/roster_scope.hpp) opens the roster for the duration of a fight function: the runtime seeds the party (nothing in a
+// classic game, so the roster stays inactive and every test below takes the original branch), the destructor closes it on every way out.
+RosterHooks hooksOf(const FightEnv &e) {
+	RosterHooks h;
+	h.pRoster = e.pRoster;
+	h.pfnSeed = e.pfnSeedRoster;
+	h.pfnPool = e.pfnPool;
+	return h;
+}
+
+inline bool partyFight(const FightEnv &e) { return rosterOn(e.pRoster); }
+// Two or more knights fight on the party's side: the wave scaling of the [coop] rules (more at once, more in all, written back halved).
+inline bool partyScales(const FightEnv &e) { return partyFight(e) && e.pRoster->ubParty >= 2; }
+
 inline Inventory &I(const FightEnv &e, uint32_t ulAddr) { return *e.m.pfnInventory(ulAddr); }
 
 // LAB_001C with the pointer lookups of the asm (the winner A0, the loser A1, their inventories 96(A0) / 96(A1)).
@@ -44,6 +65,8 @@ void warningColours(const FightEnv &e, const Knight &k) {
 // gets them (job types 6, 7, 8), the second only on the arena kinds $0C and $10 (types 9, 10, 11).
 void lowHpWarnings(const FightEnv &e, const FightOps &o) {
 	const FightCells &c = e.c;
+	uint8_t aubOwn[3];
+	const bool bSecondOwn = partyFight(e) && rosterWarnEntries(*e.pRoster, 1, aubOwn);   // Moonstone 2: the second party knight has colours of its own
 	if (c.pWarn[0] == 0) {                                          // TST.L LAB_05A5 ; BNE LAB_003F
 		const Knight &k = K(e, c.pAct->ulCurrent);
 		if (!((int16_t)k.swHp > LOW_HP)) {                          // CMP.W #$0A,D0 ; BGT LAB_003F
@@ -52,6 +75,18 @@ void lowHpWarnings(const FightEnv &e, const FightOps &o) {
 			c.pWarn[1] = o.spawnWarning(7, c.pWarnColours[1]);      // LAB_05A3
 			c.pWarn[2] = o.spawnWarning(8, c.pWarnColours[2]);      // LAB_05A4
 		}
+	}
+	if (bSecondOwn) {                                               // the second party knight pulses its own three palette entries (the ramp slots hold
+		if (c.pWarn[3] == 0) {                                      // six: the opponent's warning of the duel scenes gives way to it)
+			const Knight &k = *e.pRoster->apParty[1];
+			if (!((int16_t)k.swHp > LOW_HP)) {
+				warningColours(e, k);
+				c.pWarn[3] = o.spawnWarning(aubOwn[0], c.pWarnColours[0]);
+				c.pWarn[4] = o.spawnWarning(aubOwn[1], c.pWarnColours[1]);
+				c.pWarn[5] = o.spawnWarning(aubOwn[2], c.pWarnColours[2]);
+			}
+		}
+		return;
 	}
 	if (*c.pArenaKind == 0x0C || *c.pArenaKind == 0x10) {           // LAB_003F
 		if (c.pWarn[3] == 0) {                                      // TST.L LAB_05A8 ; BNE LAB_0041
@@ -87,7 +122,9 @@ void endAndPause(const FightEnv &e, const FightOps &o) {
 	const FightCells &c = e.c;
 	ActiveKnights &act = *c.pAct;
 	if (act.ubFightActive != 0) {                                   // TST.B 8(A2) ; BEQ LAB_004C
-		if ((int16_t)K(e, act.ulCurrent).swHp < 0) {                // MOVE.W 80(A0),D0 ; BPL LAB_004C
+		// Moonstone 2: the fight is lost when EVERY party fighter is marked dead (classic: the first fighter)
+		const bool bDead = partyFight(e) ? rosterPartyDead(*e.pRoster) : (int16_t)K(e, act.ulCurrent).swHp < 0;   // (the foe knights end it through their death scripts, fight_ops)
+		if (bDead) {                                                // MOVE.W 80(A0),D0 ; BPL LAB_004C
 			act.ubEndTimer = END_DELAY_DEAD;
 			act.ubFightActive = 0;
 		}
@@ -96,6 +133,7 @@ void endAndPause(const FightEnv &e, const FightOps &o) {
 	if (uwKey == KEY_PAUSE) {
 		o.keyReset();                                               // LAB_0B82
 		while (*c.pKey == 0) {                                      // LAB_004D: TST.W SECSTRT_21 ; BEQ LAB_004D
+			ms::tickIdle();                                         // deterministic mode (ROADMAP 12.4): the key arrives with a tick
 		}
 	}
 	o.keyReset();                                                   // LAB_004E
@@ -150,7 +188,8 @@ void fightRun(const FightEnv &e, const FightOps &o) {
 
 	o.soundTick();
 	// LAB_000E: the defeat word is cleared, then one bit per fighter whose hp ran out.
-	const uint8_t ubBits = settleDefeats(K(e, act.ulCurrent), K(e, act.ulOpponent));
+	const uint8_t ubBits = partyFight(e) ? rosterSettle(*e.pRoster)   // Moonstone 2: each party fighter down loses its life (and gets its hit points back)
+	                                     : settleDefeats(K(e, act.ulCurrent), K(e, act.ulOpponent));
 	c.pDefeat->ub = ubBits;
 	c.pDefeat->ubSpare = 0;
 	if (c.pMode->ub == 4) o.afterFight();
@@ -159,7 +198,7 @@ void fightRun(const FightEnv &e, const FightOps &o) {
 	*c.pBadLuck = 0;
 	o.fadeIn();
 	o.clearJobs();
-	if (*c.pEncounterKind == raw(EncounterKind::Lair)) e.m.pfnLair(*c.pLair)->uwCreaturesLeft = c.pRules ? waveWriteback(*c.pRules, c.pRules->ubCoopEnabled != 0, *c.pFightTotal) : *c.pFightTotal;
+	if (*c.pEncounterKind == raw(EncounterKind::Lair)) e.m.pfnLair(*c.pLair)->uwCreaturesLeft = c.pRules ? waveWriteback(*c.pRules, c.pRules->ubCoopEnabled != 0 || partyScales(e), *c.pFightTotal, partyScales(e) ? e.pRoster->ubParty : (uint8_t)2) : *c.pFightTotal;
 }
 
 // LAB_0006 (mog.asm 307)
@@ -174,7 +213,9 @@ void fightEnd(const FightEnv &e) {
 // LAB_0005 (mog.asm 298)
 void fightCreatureDied(const FightEnv &e, const FightOps &o) {
 	const FightCells &c = e.c;
-	if ((int16_t)K(e, *c.pFighter).swHp <= 0) {                     // MOVE.W 80(A0),D0 ; BLE LAB_0006
+	// Moonstone 2: the party is out when every party fighter is down (classic: the first fighter)
+	const bool bOut = partyFight(e) ? rosterPartyDown(*e.pRoster) : (int16_t)K(e, *c.pFighter).swHp <= 0;
+	if (bOut) {                                                     // MOVE.W 80(A0),D0 ; BLE LAB_0006
 		fightEnd(e);
 		return;
 	}
@@ -234,10 +275,42 @@ static void arenaReset(const FightEnv &e, const FightOps &o) {
 	*e.c.pDragonActive = 0;
 }
 
+// Moonstone 2 (ROADMAP 8.4b): what follows a fight of the party against the black knights.  Every party knight down lost its life and
+// every black knight down lost one (rosterSettle).  The whole party down: the black knights take the loot of each fallen knight
+// (settleFight, LAB_001C) and a human leader sees the temple screen; the whole group down: the leader meets its first black knight
+// on the meeting screen (the loot per knight is ROADMAP 8.5); both sides down: the temple screen only.
+namespace {
+void partyMeetResult(const FightEnv &e, const FightOps &o) {
+	const FightRoster &r = *e.pRoster;
+	if (rosterPartyLost(r) && rosterFoesLost(r)) {
+		o.screen(SCENE_TEMPLE);
+		o.returnToMap();
+		return;
+	}
+	if (rosterPartyLost(r)) {
+		for (uint8_t i = 0; i < r.ubParty; ++i)
+			lootTransfer(e, *r.apFoe[0], *r.apParty[i]);
+		Knight &w = *r.apFoe[0];                                    // settleFight recalculates records 0..3 only: the black knight's own
+		knightRecalcHp(w, I(e, knightInventoryAddr(w)));
+		knightRecalcEndurance(w);
+		o.screen(SCENE_TEMPLE);
+		o.returnToMap();
+		return;
+	}
+	if (rosterFoesLost(r)) {
+		progressAward(*r.apParty[0], PROGRESS_CREATURE_FIGHT);
+		o.screen(SCENE_MEET);
+	}
+	o.returnToMap();
+}
+}  // namespace
+
 // LAB_004F (mog.asm 800)
 void fightMeet(const FightEnv &e, const FightOps &o, uint32_t ulFirst, uint32_t ulSecond) {
 	const FightCells &c = e.c;
 	ActiveKnights &act = *c.pAct;
+	if (e.pRoster != nullptr) e.pRoster->ulDuelFoe = K(e, ulFirst).ulKind == KIND_AI ? ulFirst : ulSecond;   // the map's black knight stands first among the foes
+	RosterScope party(hooksOf(e), true);                                     // Moonstone 2: N knights against N black knights (ROADMAP 8.4b)
 	uint32_t ulA0 = ulFirst, ulA1 = ulSecond;
 	o.resetScreen();                                                // A0/A1 are saved around LAB_0DC8
 	act.ulCurrent = ulA0;
@@ -270,6 +343,10 @@ void fightMeet(const FightEnv &e, const FightOps &o, uint32_t ulFirst, uint32_t 
 		arenaMeet(e, o);                                            // JSR LAB_0164
 		fightRun(e, o);                                             // JSR LAB_0036
 		*c.pSwapped = 0;
+		if (partyFight(e)) {                                        // Moonstone 2: the party against the black-knight group
+			partyMeetResult(e, o);
+			return;
+		}
 		ulA0 = act.ulCurrent;
 		ulA1 = act.ulOpponent;
 		if (c.pDefeat->ub == (FIGHT_LOST_FIRST | FIGHT_LOST_SECOND)) {   // CMPI.B #3,LAB_05DC ; BEQ LAB_0055
@@ -321,6 +398,7 @@ void lairTidy(const FightEnv &e) {
 // LAB_005B (mog.asm 917)
 void fightCreature(const FightEnv &e, const FightOps &o, uint32_t ulLair) {
 	const FightCells &c = e.c;
+	RosterScope party(hooksOf(e), false);                                    // Moonstone 2: the co-op party fights together (ROADMAP 8.4b)
 	*c.pLair = ulLair;                                              // MOVE.L A1,LAB_08C6
 	o.resetScreen();
 	if (*c.pTravel == 0) {                                          // TST.W LAB_065E ; BNE LAB_005D
@@ -328,13 +406,19 @@ void fightCreature(const FightEnv &e, const FightOps &o, uint32_t ulLair) {
 		arenaCreature(e, o);                                        // JSR LAB_01A3
 		fightRun(e, o);
 		*c.pCurrent = c.pAct->ulCurrent;                            // MOVE.L 0(A0),LAB_0633
-		if (c.pDefeat->ub & FIGHT_LOST_FIRST) {                     // BTST #0,LAB_05DC ; BEQ LAB_005C
+		const bool bLost = partyFight(e) ? rosterPartyLost(*e.pRoster) : (c.pDefeat->ub & FIGHT_LOST_FIRST) != 0;
+		if (bLost) {                                                // BTST #0,LAB_05DC ; BEQ LAB_005C
 			o.screen(SCENE_TEMPLE);
 			o.returnToMap();
 			return;
 		}
-		Knight &k = K(e, *c.pCurrent);                              // LAB_005C
-		progressAward(k, PROGRESS_CREATURE_FIGHT);
+		if (partyFight(e)) {                                        // the party won: progress for every knight still on his feet
+			for (uint8_t i = 0; i < e.pRoster->ubParty; ++i)
+				if (!(e.pRoster->ubDefeat & (1u << i))) progressAward(*e.pRoster->apParty[i], PROGRESS_CREATURE_FIGHT);
+		} else {
+			Knight &k = K(e, *c.pCurrent);                          // LAB_005C
+			progressAward(k, PROGRESS_CREATURE_FIGHT);
+		}
 	}
 	o.screen(SCENE_CREATURE);                                       // LAB_005D
 	lairTidy(e);
@@ -345,9 +429,11 @@ void fightCreature(const FightEnv &e, const FightOps &o, uint32_t ulLair) {
 // LAB_0083 (mog.asm 1267)
 void fightDragon(const FightEnv &e, const FightOps &o) {
 	const FightCells &c = e.c;
+	RosterScope party(hooksOf(e), false);                           // Moonstone 2: the co-op party fights the dragon together (ROADMAP 8.4)
 	*c.pFighter = *c.pCurrent;                                      // MOVE.L LAB_0633,LAB_05F2
 	Knight &me = K(e, *c.pFighter);
 	bool bLost;
+	bool bPartyFought = false;                                      // the roster fought (not the AI / frog / no-lives short cuts below)
 	if (me.ulKind == KIND_AI) {                                     // an AI knight loses a life and the dragon wins at once
 		me.ubLives = (uint8_t)(me.ubLives - 1);
 		bLost = true;
@@ -356,15 +442,26 @@ void fightDragon(const FightEnv &e, const FightOps &o) {
 	} else {
 		arenaDragon(e, o);                                          // JSR LAB_0192
 		fightRun(e, o);
-		bLost = (c.pDefeat->ub & FIGHT_LOST_FIRST) != 0;
+		bPartyFought = partyFight(e);
+		bLost = bPartyFought ? rosterPartyLost(*e.pRoster) : (c.pDefeat->ub & FIGHT_LOST_FIRST) != 0;
 	}
 	if (bLost) {                                                    // LAB_0085
-		lootTransfer(e, K(e, e.a.ulDragonRecord), K(e, *c.pFighter));
+		if (bPartyFought) {                                         // the whole party is down: the dragon takes from every one of them
+			for (uint8_t i = 0; i < e.pRoster->ubParty; ++i)
+				lootTransfer(e, K(e, e.a.ulDragonRecord), *e.pRoster->apParty[i]);
+		} else {
+			lootTransfer(e, K(e, e.a.ulDragonRecord), K(e, *c.pFighter));
+		}
 		c.pDefeat->ub |= FIGHT_LOST_FIRST;                          // ORI.B #1,LAB_05DC
 	} else {                                                        // LAB_0086
 		K(e, e.a.ulDragonRecord).ubLives = 0xFF;                    // the dragon is marked
-		Knight &k = K(e, *c.pFighter);
-		progressAward(k, PROGRESS_DRAGON_SLAIN);
+		if (bPartyFought) {                                         // progress for every knight still on his feet (the fallen one lost its life)
+			for (uint8_t i = 0; i < e.pRoster->ubParty; ++i)
+				if (!(e.pRoster->ubDefeat & (1u << i))) progressAward(*e.pRoster->apParty[i], PROGRESS_DRAGON_SLAIN);
+		} else {
+			Knight &k = K(e, *c.pFighter);
+			progressAward(k, PROGRESS_DRAGON_SLAIN);
+		}
 		o.screen(SCENE_DRAGON);
 	}
 	*c.pTurnSpent = *c.pTurnBudget;                                 // LAB_00B2
@@ -466,7 +563,27 @@ void arenaMeet(const FightEnv &e, const FightOps &o) {
 	k.ubFacing = 1;
 	arenaKnightTables(e, k);
 	k.ulJobParam = e.a.ulJobParamFight;                             // MOVE.L #LAB_05E0,38(A1)
-	o.spawn(ulRec, e.a.ulSpawnScript);                              // JSR LAB_01A9 with A0 = LAB_07FC
+	const bool bSpread = partyFight(e) && e.pRoster->ubFoes > 1 && o.spawnAtDepth != nullptr;
+	if (bSpread) {                                                  // Moonstone 2: the group is spread over the arena (rosterFoeSlot)
+		rosterFoeSlot(0, e.pRoster->ubFoes, k.uwX, k.uwY);
+		o.spawnAtDepth(ulRec, e.a.ulSpawnScript, k.uwY);
+	} else {
+		o.spawn(ulRec, e.a.ulSpawnScript);                          // JSR LAB_01A9 with A0 = LAB_07FC
+	}
+	for (uint8_t j = 1; partyFight(e) && j < e.pRoster->ubFoes; ++j) {   // Moonstone 2: the other black knights enter behind the first
+		Knight &b = *e.pRoster->apFoe[j];
+		rosterFoeSlot(j, e.pRoster->ubFoes, b.uwX, b.uwY);
+		b.uwHeight = 0;
+		b.ubFacing = 1;
+		b.ulHitTarget = 0;
+		b.ulAttacker = 0;
+		b.uwAction = raw(Action::Idle);
+		b.uwInput = 0;
+		arenaKnightTables(e, b);
+		b.ulJobParam = e.a.ulJobParamFight;
+		if (o.spawnAtDepth != nullptr) o.spawnAtDepth(e.pRoster->aulFoeAddr[j], e.a.ulSpawnScript, b.uwY);
+		else o.spawn(e.pRoster->aulFoeAddr[j], e.a.ulSpawnScript);
+	}
 	arenaCounters(e, false);
 	o.paletteMode(12);                                              // MOVEQ #12,D0 ; JMP LAB_03F3
 }
@@ -610,6 +727,7 @@ void screenRedraw(const ScreenEnv &e, const ScreenOps &o) {
 		break;
 	}
 	screenPalette(e);                                               // LAB_04E0
+	if (o.turnCorner) o.turnCorner();                               // co-op: whose turn (token + name in the corner)
 	o.flip();
 	o.blitScreen();
 	o.waitBlitter();
@@ -629,6 +747,7 @@ void screenRun(const ScreenEnv &e, const ScreenOps &o, uint32_t ulScene) {
 	o.op0575();
 	o.op0588();
 	screenRedraw(e, o);                                             // JSR LAB_04D4
+	if (o.turnBanner) o.turnBanner();                               // co-op: whose turn (the banner redraws the screen when it is gone)
 	for (;;) {                                                      // LAB_04D0
 		const uint32_t ulRegion = o.hitTest(*c.pCursorX, *c.pCursorY);
 		if (ulRegion != 0 && *c.pCursorLock == 0) {                 // TST.L D0 ; BEQ ; TST.W LAB_0981 ; BNE

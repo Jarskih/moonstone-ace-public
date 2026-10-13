@@ -58,16 +58,30 @@ void waveScale(WaveState &s, const WaveIn &in, const RulesDef &rules, WaveDamage
 		}
 	}
 	if(in.bCoop) {                                                   // two knights: more at once, more in all
-		s.uwMaxAlive = (uint16_t)(s.uwMaxAlive + rules.ubCoopAliveBonus);
-		s.uwTotal = (uint16_t)(s.uwTotal * rules.ubCoopTotalFactor);
+		s.uwMaxAlive = (uint16_t)(s.uwMaxAlive + coopAliveBonus(rules, in.ubParty));
+		s.uwTotal = (uint16_t)(s.uwTotal * coopTotalFactor(rules, in.ubParty));
 	}
 }
 
-uint16_t waveWriteback(const RulesDef &rules, bool bCoop, uint16_t uwLeft) {
+uint16_t coopAliveBonus(const RulesDef &rules, uint8_t ubParty) {
+	return (uint16_t)(rules.ubCoopAliveBonus * (ubParty > 2 ? ubParty - 1 : 1));
+}
+
+uint16_t coopTotalFactor(const RulesDef &rules, uint8_t ubParty) {
+	const uint16_t uwExtra = (uint16_t)(ubParty > 2 ? ubParty - 1 : 1);
+	return (uint16_t)(1 + (rules.ubCoopTotalFactor - 1) * uwExtra);
+}
+
+uint16_t coopWritebackDivisor(const RulesDef &rules, uint8_t ubParty) {
+	const uint16_t uwExtra = (uint16_t)(ubParty > 2 ? ubParty - 1 : 1);
+	return (uint16_t)(1 + (rules.ubCoopWritebackDivisor - 1) * uwExtra);
+}
+
+uint16_t waveWriteback(const RulesDef &rules, bool bCoop, uint16_t uwLeft, uint8_t ubParty) {
 	if(!bCoop || rules.ubCoopWritebackDivisor <= 1) {
 		return uwLeft;
 	}
-	const uint16_t d = rules.ubCoopWritebackDivisor;
+	const uint16_t d = coopWritebackDivisor(rules, ubParty);
 	return (uint16_t)((uwLeft + d - 1) / d);
 }
 

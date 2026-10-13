@@ -1,0 +1,77 @@
+# Deterministic mode with the co-op rules (ROADMAP 12.4 + 8.4b): play_coop_fight with `poke netdet 1` switched on at the title menu
+# right after the intro. Same shots and tolerances as play_coop_fight: the picture must be the classic co-op one, with both pads
+# read from the tick's latched frame (joy1 / joy0 are the autoplay override captured at the tick). `poke netstate` logs the counters.
+# shotcmp-tol play-coop-fight-map 3
+# shotcmp-tol play-coop-fight-arena 15
+# shotcmp-tol play-coop-fight-moved 15
+# shotcmp-tol play-coop-fight-mash 15
+# shotcmp-tol play-coop-fight-loot 5
+# shotcmp-tol play-coop-fight-end 5
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 30 joy1 fire pulse
+frame 20 poke netdet 1
+frame 150 poke party 2
+frame 190 joy1 right pulse
+frame 230 shot play-coop-fight-players
+frame 240 joy1 down pulse
+frame 270 joy1 down pulse
+frame 300 joy1 down pulse
+frame 350 joy1 fire pulse
+frame 800 joy1 fire pulse
+frame 1100 joy1 fire pulse
+frame 1170 joy1 fire pulse
+frame 1500 joy1 right pulse
+frame 1550 joy1 fire pulse
+frame 1900 joy1 fire pulse
+frame 1970 joy1 fire pulse
+frame 2500 poke who 0
+frame 2501 poke strength 9
+frame 2503 poke constitution 30
+frame 2506 poke endurance 9
+frame 2510 poke hpmax 310
+frame 2515 poke hp 310
+frame 2521 poke who 1
+frame 2528 poke strength 9
+frame 2536 poke constitution 30
+frame 2545 poke endurance 9
+frame 2555 poke hpmax 310
+frame 2566 poke hp 310
+frame 2578 poke who 0
+frame 2591 poke warp_lair 0
+frame 2605 poke lair_left 5
+frame 2605 poke netstate 0
+frame 2635 shot play-coop-fight-map
+frame 2645 poke dump 1
+frame 2655 joy1 fire pulse 8
+frame 3255 poke fightdump 1
+frame 3455 shot play-coop-fight-arena
+frame 3465 poke fightdump 1
+frame 3475 joy1 up
+frame 3500 joy1 none
+frame 3505 joy0 down
+frame 3530 joy0 none
+frame 3560 poke fightdump 1
+frame 3570 shot play-coop-fight-moved
+frame 3580 poke fightdump 1
+frame 3590 mash joy1 10
+frame 3590 mash joy0 13
+frame 3890 shot play-coop-fight-mash
+frame 3900 poke fightdump 1
+wait var scene 2 max 12000
+frame 0 mash joy1 off
+frame 0 mash joy0 off
+frame 1 joy1 none
+frame 2 joy0 none
+frame 2 poke netstate 0
+frame 152 shot play-coop-fight-loot
+frame 162 poke fightdump 1
+frame 172 poke dump 1
+frame 182 poke cursorx 308
+frame 182 poke cursory 140
+frame 207 joy1 fire pulse 8
+frame 607 shot play-coop-fight-end
+frame 617 poke dump 1
+frame 617 poke netstate 0
+frame 717 quit

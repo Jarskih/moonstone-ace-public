@@ -45,6 +45,8 @@ from unicorn import m68k_const as M
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'reference/moonshard/tools'))
 from moghunks import parse_hunk_file  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fastregs import FastRegs  # noqa: E402
 
 # Memory map ----------------------------------------------------------------
 IMAGE_BASE = 0x00100000
@@ -127,11 +129,13 @@ class Harness:
         for base, size in self.regions:
             self.uc.mem_map(base, size)
         self._fault = None
-        self._writes = []
+        self._writes = []               # (addr, size) of every write; cleared in place, the write hook holds the list
         self._img_written = set()       # image byte addresses written this run
+        self._live_img = False          # True: the write hook keeps _img_written up to date while running (the selfmod replay)
+        self._zeros = {}
         self.uc.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED |
                          UC_HOOK_MEM_FETCH_UNMAPPED, self._on_unmapped)
-        self.uc.hook_add(UC_HOOK_MEM_WRITE, self._on_write)
+        self._add_write_hook()
         # Hardware ranges are unmapped, but guard explicitly in case a region
         # is ever mapped over them.
         self.uc.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, self._on_hw,
@@ -139,6 +143,35 @@ class Harness:
         self.uc.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, self._on_hw,
                          begin=0xBF0000, end=0xBFFFFF)
         self.uc.hook_add(UC_HOOK_INTR, self._on_intr)
+        self._regs_in = FastRegs.make(self.uc, [M.UC_M68K_REG_SR] + DREG + AREG)
+        self._regs_out = FastRegs.make(self.uc, DREG + AREG)
+
+    def _add_write_hook(self):
+        """The memory write hook, millions of calls per test run: a ctypes callback straight onto a closure when this unicorn
+        allows it (it skips two python wrapper frames per call), `hook_add(_on_write)` otherwise.  Same bookkeeping as
+        _on_write, except that the image bytes written are collected after the run unless _live_img is set."""
+        uc = self.uc
+        try:
+            from unicorn.unicorn_py3.unicorn import HOOK_MEM_ACCESS_CFUNC
+            do_hook_add = uc._Uc__do_hook_add
+        except (ImportError, AttributeError):
+            uc.hook_add(UC_HOOK_MEM_WRITE, self._on_write)
+            return
+        append = self._writes.append
+        sent_lo, sent_hi = SENTINEL, SENTINEL + PAGE
+        img_lo, img_hi = IMAGE_BASE, IMAGE_BASE + len(self.image)
+        img_written = self._img_written
+        harness = self
+
+        def on_write(handle, access, addr, size, value, key):
+            if sent_lo <= addr < sent_hi:         # harness-internal CCR slot
+                return
+            append((addr & 0xFFFFFFFF, size))
+            if harness._live_img and img_lo <= addr < img_hi:
+                img_written.update(range(addr, addr + size))
+
+        cb = HOOK_MEM_ACCESS_CFUNC(on_write)
+        do_hook_add(UC_HOOK_MEM_WRITE, cb, 1, 0)      # begin > end = the whole address space; do_hook_add keeps cb alive
 
     # -- hooks ---------------------------------------------------------------
     def _fail(self, kind, detail):
@@ -189,20 +222,49 @@ class Harness:
             # The run wrote into the image: replay it once with a per-instruction fetch check
             # (selfmod).  Not armed by default: with a Python code hook installed, unicorn's
             # host 'integer overflow' on DIVS INT_MIN/-1 kills the process instead of raising.
-            hk = self.uc.hook_add(UC_HOOK_CODE, self._on_code,
-                                  begin=IMAGE_BASE, end=IMAGE_BASE + len(self.image) - 1)
+            # The replay writes the same bytes as the first run, and only an instruction that
+            # overlaps one of them can be selfmod, so the hook covers just the written spans
+            # (a python call per executed instruction of the whole image was most of this
+            # harness's time).
+            hooks = [self.uc.hook_add(UC_HOOK_CODE, self._on_code, begin=lo, end=hi)
+                     for lo, hi in self._selfmod_spans(self._img_written)]
+            self._live_img = True
             try:
                 res = self._run(label_or_addr, regs_in, mem_patches)
             finally:
-                self.uc.hook_del(hk)
+                self._live_img = False
+                for hk in hooks:
+                    self.uc.hook_del(hk)
         return res
+
+    # an instruction is at most 22 bytes long on the 68020; it overlaps a written byte b only if it starts in [b - 21, b]
+    _MAX_INSN = 22
+
+    def _selfmod_spans(self, written):
+        """Inclusive (begin, end) address ranges whose instructions can overlap a byte of `written`: clusters of nearby bytes,
+        each widened downwards by one maximum instruction; the whole image if the writes are scattered over very many clusters."""
+        lo_img, hi_img = IMAGE_BASE, IMAGE_BASE + len(self.image) - 1
+        addrs = sorted(written)
+        spans, start, prev = [], addrs[0], addrs[0]
+        for a in addrs[1:]:
+            if a - prev > 256:
+                spans.append((start, prev))
+                start = a
+            prev = a
+        spans.append((start, prev))
+        if len(spans) > 24:
+            return [(lo_img, hi_img)]
+        return [(max(lo_img, a - (self._MAX_INSN - 1)), min(hi_img, b)) for a, b in spans]
 
     def _run(self, label_or_addr, regs_in, mem_patches):
         entry = (self.address(label_or_addr) if isinstance(label_or_addr, str)
                  else label_or_addr)
         uc = self.uc
         for base, size in self.regions:
-            uc.mem_write(base, bytes(size))
+            z = self._zeros.get(size)
+            if z is None:
+                z = self._zeros[size] = bytes(size)
+            uc.mem_write(base, z)
         uc.mem_write(IMAGE_BASE, self.image)
         uc.mem_write(SENTINEL, STUB_CODE)
         for addr, data in mem_patches:
@@ -213,17 +275,22 @@ class Harness:
         uc.ctl_flush_tb()
         # SR first: switching privilege state swaps A7 with ISP/USP, so A7 must
         # be written after SR is already supervisor.
-        uc.reg_write(M.UC_M68K_REG_SR, 0x2700 | (regs_in.get("ccr", 0) & 0x1F))
+        sr = 0x2700 | (regs_in.get("ccr", 0) & 0x1F)
         d = regs_in["d"]
         a = list(regs_in["a"])
         sp = a[7]
         if not (STACK_BASE + 16 <= sp <= STACK_BASE + STACK_SIZE - 16):
             raise HarnessFault("setup", "a7=$%08X outside stack region" % sp)
-        for i in range(8):
-            uc.reg_write(DREG[i], d[i])
-            uc.reg_write(AREG[i], a[i] if i != 7 else sp - 4)
+        if self._regs_in is not None:
+            self._regs_in.write([sr] + list(d[:8]) + a[:7] + [sp - 4])
+        else:
+            uc.reg_write(M.UC_M68K_REG_SR, sr)
+            for i in range(8):
+                uc.reg_write(DREG[i], d[i])
+                uc.reg_write(AREG[i], a[i] if i != 7 else sp - 4)
         uc.mem_write(sp - 4, struct.pack(">I", SENTINEL))
-        self._fault, self._writes = None, []
+        self._fault = None
+        del self._writes[:]
         self._img_written.clear()
         err = None
         try:
@@ -238,16 +305,30 @@ class Harness:
         if pc != STUB_END:
             raise HarnessFault("limit", "stopped at pc=$%08X after %d instructions "
                                "without returning" % (pc, self.insn_limit))
-        regs = {"d": [uc.reg_read(r) for r in DREG],
-                "a": [uc.reg_read(r) for r in AREG]}
+        if self._regs_out is not None:
+            vals = self._regs_out.read()
+            regs = {"d": vals[:8], "a": vals[8:]}
+        else:
+            regs = {"d": [uc.reg_read(r) for r in DREG],
+                    "a": [uc.reg_read(r) for r in AREG]}
+        if not self._live_img:
+            self._collect_img_written()
         # unicorn quirk: reg_read(SR) does not flush the lazily-evaluated N/Z/C
         # flags (CMP/ADD/SUB report only X/V).  The stub at SENTINEL executes a
         # real MOVE SR,(slot) which does, so read the CCR from there.
         ccr = struct.unpack(">H", bytes(uc.mem_read(STUB_SLOT, 2)))[0] & 0x1F
         return Result(regs, ccr, self._coalesce())
 
+    def _collect_img_written(self):
+        """The image bytes this run wrote (the write hook does not track them unless _live_img)."""
+        lo, hi = IMAGE_BASE, IMAGE_BASE + len(self.image)
+        iw = self._img_written
+        for a, sz in set(self._writes):
+            if lo <= a < hi:
+                iw.update(range(a, a + sz))
+
     def _coalesce(self):
-        addrs = sorted({a + i for a, sz in self._writes for i in range(sz)})
+        addrs = sorted({a + i for a, sz in set(self._writes) for i in range(sz)})
         runs = []
         for x in addrs:
             if runs and runs[-1][1] == x:

@@ -23,6 +23,9 @@
 //                                       rt/autoplay_game.cpp autoplayPeek) equals VALUE (decimal or 0xHEX)
 //   sync                                barrier that never blocks: forget the hits seen so far (the next `wait` needs a fresh one)
 //   frame <N> poke <SYM> <VALUE>        MS_AUTOPLAY test hook: write VALUE (decimal or 0xHEX) to the named game variable, see rt/autoplay_game.cpp
+//   tick <N>|+<K>|hash+<K> poke <SYM> <VALUE>   tick-aligned poke (network games, engine/tickpoke.hpp): queued when the line is reached and applied at the
+//                                       start of logical tick N (+K: K ticks after the tick the game is on; hash+K: K ticks after the state-hash tick the
+//                                       last barrier consumed, the same tick on both windows).  An optional `frame <F>` prefix is accepted.  docs/AUTOPLAY.md.
 // `wait` / `sync` take an optional `frame <N>` prefix (minimum delay after the previous barrier, default 0) and an optional trailing
 // `max <F>` (give up after F frames and go on, logging "AUTOPLAY wait-timeout"). A barrier ends the segment of the lines before it:
 // events never move across it when the parser sorts by frame, and in the segment after a barrier `frame <N>` means N frames after
@@ -41,7 +44,7 @@ constexpr uint32_t kApTapFrames = 15;  // frames a typed / tapped key is held
 constexpr unsigned kApTextLen = 28;   // shot / log / wait text: at most 27 characters
 constexpr unsigned kApTypeLen = 20;   // `type` text: at most 19 characters
 
-enum ApKind : uint8_t { AP_KEY = 0, AP_JOY = 1, AP_SHOT = 2, AP_LOG = 3, AP_QUIT = 4, AP_WAIT_FILE = 5, AP_WAIT_LOG = 6, AP_WAIT_INPUT = 7, AP_SYNC = 8, AP_POKE = 9, AP_MASH = 10, AP_WAIT_VAR = 11 };
+enum ApKind : uint8_t { AP_KEY = 0, AP_JOY = 1, AP_SHOT = 2, AP_LOG = 3, AP_QUIT = 4, AP_WAIT_FILE = 5, AP_WAIT_LOG = 6, AP_WAIT_INPUT = 7, AP_SYNC = 8, AP_POKE = 9, AP_MASH = 10, AP_WAIT_VAR = 11, AP_TICK_POKE = 12 };
 
 // Barriers (see "wait" above): the script stops at them until their condition holds.
 inline bool apIsBarrier(uint8_t ubKind) {
@@ -56,7 +59,8 @@ struct ApEvent {
 	uint8_t ubBits;   // AP_JOY: the port's new state (ms::kJoy* bits); AP_WAIT_INPUT: G; AP_MASH: frames per pattern (0 = off)
 	char szText[kApTextLen];  // AP_SHOT / AP_LOG / AP_WAIT_* (the pattern) / AP_POKE (the symbol)
 	uint16_t uwMax;           // AP_WAIT_*: give up after this many frames (0 = never); AP_JOY pulse: its length in frames (0 = default)
-	uint32_t ulValue;         // AP_POKE: the value; AP_WAIT_INPUT: K; AP_WAIT_VAR: the value
+	uint32_t ulValue;         // AP_POKE: the value; AP_WAIT_INPUT: K; AP_WAIT_VAR: the value; AP_TICK_POKE: the value
+	uint32_t ulTick;          // AP_TICK_POKE: N or K (ubCode = the engine/tickpoke TickPokeMode)
 };
 
 struct ApParse {

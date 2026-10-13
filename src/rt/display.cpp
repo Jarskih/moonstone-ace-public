@@ -1,5 +1,5 @@
 #include "rt/display.hpp"
-#include "rt/display_ace.hpp"
+#include "rt/amiga/display_ace.hpp"
 
 #include <ace/managers/log.h>
 #include <ace/utils/custom.h>

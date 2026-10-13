@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #include "game/constants.hpp"
+#include "game/roster.hpp"
 #include "game/state.hpp"
 
 namespace ms { namespace game {
@@ -160,6 +161,7 @@ struct FightOps {
 	void (*paletteMode)(uint32_t ulMode);                     // LAB_03F3, D0
 	void (*poke32)(uint32_t ulAddr, uint32_t ulValue);        // MOVE.L #imm,d(A0) into a table of the image
 	void (*creatureArena)(int32_t slHandlerOffset);           // JSR (LAB_08C8 + offset)
+	void (*spawnAtDepth)(uint32_t ulRecord, uint32_t ulScript, uint16_t uwDepth) = nullptr;   // Moonstone 2: LAB_01A9 with the depth chosen (null: the entry lanes)
 };
 
 struct CreatureDef;   // game/api/data.hpp
@@ -170,6 +172,12 @@ struct FightEnv {
 	Knight *aKnights;               // the knight records LAB_0613.. (at least 5: the dragon is record 4)
 	Inventory *aInv;                // their inventories LAB_0618.. (5)
 	const CreatureDef *pDragonRow;   // creatures.ini row of the dragon (hp/reach/damage overrides, ROADMAP 9.7); null = the original numbers
+	// Moonstone 2 co-op fights (ROADMAP 8.4b, game/roster.hpp).  Null = a classic game.  pRoster is the runtime's roster cell; the fights
+	// of the party (fightCreature, fightMeet) open it for their duration (RosterScope, src/game/combat.cpp), after pfnSeedRoster has
+	// filled the members (the party in co-op, none in a classic game: then the roster stays inactive).
+	FightRoster *pRoster = nullptr;
+	void (*pfnSeedRoster)(FightRoster &r, bool bFoeKnights) = nullptr;
+	void (*pfnPool)(bool bCoop) = nullptr;   // switches the job table / dirty-rect pool and its limits: true for the party fight, false back (rt/combat_pool.hpp)
 };
 
 // ---------------------------------------------------------------------------------------------------------
@@ -308,6 +316,10 @@ struct ScreenOps {
 	void (*waitBlitter)();                                    // LAB_0D1B
 	void (*op0D8A)();                                         // LAB_0D8A with A0 = LAB_09F0
 	void (*op03EE)();                                         // LAB_03EE with A0 = LAB_09F0
+	// Moonstone 2 (ROADMAP 8.5a): after the screen's first draw, "SIR <NAME>'S TURN" once per shop turn and the pointer colour.  nullptr = classic.
+	void (*turnBanner)();
+	// Moonstone 2 (ROADMAP 8.5a): the knight's token and name in the upper-left corner, drawn after every redraw of the sheet.  nullptr = classic.
+	void (*turnCorner)() = nullptr;
 };
 
 struct ScreenEnv {

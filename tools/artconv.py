@@ -104,14 +104,16 @@ def lzss_encode(data, max_chain=400):
         maxlen = min(34, n - i)
         j = head.get(data[i:i + 3], -1)
         best_len, best_d, chain = 0, 0, 0
+        ahead = int.from_bytes(data[i:i + maxlen], 'big')
         while j >= 0 and i - j <= 2047 and chain < max_chain:
-            m = 0
-            while m < maxlen and data[j + m] == data[i + m]:
-                m += 1
-            if m > best_len:
-                best_len, best_d = m, i - j
-                if m == maxlen:
-                    break
+            # a candidate can only beat best_len if it also agrees at index best_len (the chain guarantees the first 3 bytes)
+            if best_len == 0 or data[j + best_len] == data[i + best_len]:
+                # common prefix length of data[j:] and data[i:] (at most maxlen): the XOR's leading zero bytes
+                m = maxlen - ((int.from_bytes(data[j:j + maxlen], 'big') ^ ahead).bit_length() + 7 >> 3)
+                if m > best_len:
+                    best_len, best_d = m, i - j
+                    if m == maxlen:
+                        break
             j = prev[j]
             chain += 1
         return (best_len, best_d) if best_len >= 3 else (0, 0)

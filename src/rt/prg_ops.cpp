@@ -11,10 +11,10 @@
 // more than its 32 entries. Reproduced as is.
 
 #include <ace/types.h>
-#include <ace/utils/custom.h>
 
 #include "rt/display_ops.hpp"
 #include "rt/enhanced_cells.hpp"
+#include "rt/platform/display.hpp"
 #include "rt/prgops.hpp"
 
 extern "C" {
@@ -34,10 +34,10 @@ constexpr ULONG kPlaneBytes = 0x1F40;  // one plane of a 320x200 screen
 extern "C" {
 
 __attribute__((used, externally_visible)) void rtPrgBlackout(void) {
-	volatile UWORD *pColor = &g_pCustom->color[0];
+	static const UWORD s_auwBlack[33] = {};
+	rt::platform::displayWritePalette12(s_auwBlack, 33);   // COLOR00..COLOR32 (the PC clamps to its 32 colours)
 	volatile UWORD *pLive = prgLivePalette;
 	for(UBYTE ubIdx = 0; ubIdx <= 32; ++ubIdx) {
-		pColor[ubIdx] = 0;
 		pLive[ubIdx] = 0;
 	}
 	if(rtEnhPlanes == 6) {

@@ -9,7 +9,7 @@
 #include <ace/types.h>
 
 #include "rt/abs.h"
-#include "rt/crash.hpp"
+#include "rt/amiga/crash.hpp"
 #include "engine/enhcarve.hpp"
 #include "rt/display.hpp"
 #include "rt/enhanced.hpp"

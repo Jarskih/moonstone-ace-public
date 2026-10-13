@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Play Moonstone online</title>
+<style>
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #10141d; color: #e9edf4; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1100px; margin: auto; padding: 32px 24px 52px; }
+.hero { display: block; width: 100%; aspect-ratio: 320 / 100; image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 14px; border: 1px solid #2b374a; margin-bottom: 28px; background: #000011; }
+.eyebrow { color: #c7ab6a; font-size: 12px; font-weight: 700; letter-spacing: .22em; }
+h1 { font-size: clamp(32px, 6vw, 52px); margin: 12px 0; letter-spacing: -.04em; }
+.intro, footer { color: #99a5b8; line-height: 1.6; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 32px 0; }
+.stat { background: #1a2230; border: 1px solid #2b374a; border-radius: 12px; padding: 20px; }
+.stat strong { display: block; font-size: 32px; margin-bottom: 6px; }
+.stat span { color: #a6b2c5; font-size: 14px; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+button, input { font: inherit; border-radius: 8px; padding: 10px 14px; border: 1px solid #3d4b62; background: #1a2230; color: #e9edf4; }
+button { cursor: pointer; }
+button:hover { border-color: #c7ab6a; }
+input { width: min(100%, 320px); }
+#health { font-size: 13px; color: #a6b2c5; }
+.table-wrap { overflow-x: auto; border: 1px solid #2b374a; border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
+th { background: #1a2230; color: #a6b2c5; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+th, td { padding: 16px; border-bottom: 1px solid #2b374a; }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; }
+.badge { font-size: 12px; padding: 5px 9px; border-radius: 6px; background: #253549; color: #b8d4f5; }
+.open { background: #173c33; color: #9fdbc0; }
+.full { background: #403720; color: #e5cd90; }
+.playing { background: #2b2a52; color: #c3bdf2; }
+.build { color: #99a5b8; font: 12px ui-monospace, monospace; }
+#empty { padding: 36px 20px; text-align: center; color: #a6b2c5; }
+.nav { display: flex; gap: 20px; margin-top: 8px; font-size: 14px; }
+a { color: #c7ab6a; }
+.guide { margin-top: 64px; }
+.guide h2 { font-size: 30px; letter-spacing: -.02em; margin: 8px 0 12px; }
+.guide h3 { font-size: 18px; margin: 32px 0 10px; color: #e9edf4; }
+.guide p, .guide li { color: #c3cbd8; line-height: 1.65; }
+.guide ol, .guide ul { padding-left: 22px; }
+.guide li { margin: 6px 0; }
+.note { background: #1a2230; border: 1px solid #2b374a; border-left: 3px solid #c7ab6a; border-radius: 8px; padding: 14px 18px; color: #c3cbd8; line-height: 1.6; }
+.soon { font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 3px 7px; border-radius: 5px; background: #253549; color: #b8d4f5; vertical-align: 2px; }
+code { font: 13px ui-monospace, monospace; background: #1a2230; border: 1px solid #2b374a; border-radius: 5px; padding: 1px 6px; color: #e9edf4; }
+pre { background: #1a2230; border: 1px solid #2b374a; border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+pre code { border: 0; padding: 0; background: none; }
+.guide table { white-space: normal; }
+.guide td:first-child { white-space: nowrap; }
+footer { font-size: 13px; margin-top: 22px; }
+@media(max-width: 560px) { .stats { gap: 8px; } .stat { padding: 12px; } .stat strong { font-size: 26px; } main { padding: 32px 16px; } }
+</style>
+</head>
+<body>
+<main>
+<canvas class="hero" id="hero" width="320" height="100" role="img" aria-label="Pixel art: a full moon rising over standing stones on a night hill, a moonstone glowing on the grass"></canvas>
+<div class="eyebrow">MOONSTONE: A HARD DAYS KNIGHT</div>
+<h1>Play Moonstone online</h1>
+<p class="intro">The meeting place for Moonstone on the Amiga 1200 and WinUAE: up to four knights, in the original rules or as a co-op party,
+over the network. Below are the public games open right now; the list updates every five seconds.</p>
+<nav class="nav" aria-label="Page sections"><a href="#games-list">Live games</a><a href="#play">How to play online</a></nav>
+<section class="stats" aria-label="Server statistics">
+<div class="stat"><strong id="games">—</strong><span>Listed games</span></div>
+<div class="stat"><strong id="players">—</strong><span>Players in lobbies</span></div>
+<div class="stat"><strong id="relays">—</strong><span>Active relay sessions</span></div>
+</section>
+<div class="toolbar" id="games-list">
+<input id="search" type="search" placeholder="Search games or builds" aria-label="Search games or builds">
+<span id="health" role="status">Connecting to lobby…</span>
+<button id="refresh" type="button">Refresh</button>
+</div>
+<div class="table-wrap">
+<table><thead><tr><th>Game</th><th>Mode</th><th>Players</th><th>Version / build</th><th>Connection</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table>
+<div id="empty" hidden>No public games are listed right now. Host a public game to appear here.</div>
+</div>
+<footer>Read-only lobby dashboard. Full lobbies and games in progress (status Playing) are included; a game leaves the list when its host
+unregisters, disconnects or stops reporting. Games in progress cannot be joined. Only matching game builds can play together.
+Source code, releases and bug reports: <a href="https://github.com/Jarskih/moonstone-ace-public" rel="noopener">github.com/Jarskih/moonstone-ace-public</a>.</footer>
+
+<section class="guide" id="play" aria-labelledby="play-title">
+<div class="eyebrow">GUIDE</div>
+<h2 id="play-title">How to install and play Moonstone online</h2>
+<p class="note">Network play is new and still being tested. Up to four knights can play together, in the original rules
+(<em>Classic</em>) or as a party (<em>Co-op</em>). Two players are tested first. Parts marked <span class="soon">COMING</span>
+are not in the game yet.</p>
+
+<h3>1. What you need</h3>
+<ul>
+<li><strong>Your own copy of Moonstone</strong> (Mindscape, 1991): the three original disks, or disk images (<code>.adf</code>) made from them.
+Moonstone ACE contains none of the original game data; it reads everything from your disks.</li>
+<li><strong>An Amiga 1200</strong> (68020, AGA, Kickstart 3.x). Fast RAM is recommended. Or the
+<strong>WinUAE</strong> emulator on a PC, set up as an A1200.</li>
+<li><strong>A TCP/IP stack</strong> that provides <code>bsdsocket.library</code>: Roadshow, AmiTCP, Genesis or Miami all work.
+In WinUAE you need no stack at all: tick <em>bsdsocket.library</em> under Settings → Hardware → Expansions.</li>
+<li><strong>A network connection</strong> for a real Amiga, for example a PCMCIA Ethernet or WiFi card, a Plipbox on the parallel port,
+or a serial (PPP) link to a PC.</li>
+<li><strong>A joystick or the keyboard.</strong> Each player plays on their own Amiga with a joystick or the keyboard:
+arrow keys + Ctrl (or right Shift) as fire, or WASD + Alt as fire. Choose it on the knight screen's <em>Control</em> line.</li>
+<li><strong>THEA1200:</strong> the game runs on it, but whether its built-in emulator lets games use the network is not known yet.</li>
+</ul>
+
+<h3>2. Install</h3>
+<p class="note">Online play needs the next release. The current download, v0.1.0, plays the full game on one Amiga (up to four
+knights taking turns) but has no network play yet. The steps below are the same for the coming release. <span class="soon">COMING</span></p>
+<ol>
+<li>Download the latest <code>moonstone-ace-…-amiga1200.zip</code> from the
+<a href="https://github.com/Jarskih/moonstone-ace-public/releases" rel="noopener">releases page on GitHub</a> and extract it.
+It is an Amiga program, not a Windows one, and contains none of the original game.</li>
+<li>Copy your three original Moonstone disk images (<code>.adf</code>) into the extracted <code>moonstone-ace</code> folder, beside
+the <code>moonstone</code> program, or into a <code>disks</code> folder inside it. The file names do not matter; the game recognises each disk.</li>
+<li>Copy the folder to your Amiga hard disk, for example <code>DH0:moonstone-ace</code>, and start it from a Shell with
+<code>DH0:moonstone-ace/moonstone</code>, or give <code>moonstone</code> a Tool icon and double-click it.
+In WinUAE, add the folder as a directory hard drive of an A1200 configuration. Full instructions are in the
+<a href="https://github.com/Jarskih/moonstone-ace-public#how-to-play" rel="noopener">README</a>.</li>
+<li>Start your TCP/IP stack (Roadshow and the others usually start it from the startup-sequence) and check that the Amiga is online.</li>
+<li>Start Moonstone. If the stack is not running the game still works, it just cannot play online; the Multiplayer screen then says
+<code>NO TCP IP STACK</code>.</li>
+</ol>
+<p>Every player needs the <strong>same game version</strong> and the same settings (gore, enhanced graphics, mods). A different version is
+refused, and the game says which version the host runs.</p>
+
+<h3>3. Host a game</h3>
+<ol>
+<li>On the title screen choose <strong>Multiplayer</strong>, then <strong>Name</strong> to set your name.</li>
+<li>Choose <strong>Host game</strong>. The screen shows <em>Waiting for players</em> and the names of everyone who joins (up to three).</li>
+<li>Tell the other players your address (see section 5), then press <strong>Start</strong> when everyone is in.</li>
+<li>Everyone returns to the title menu, which the host controls: choose <em>Players</em> (Classic) or <em>Coop 2</em>–<em>Coop 4</em>, then
+<em>Select Knight</em>. Each player steers their own knight with their own joystick or keyboard.</li>
+</ol>
+
+<h3>4. Join a game</h3>
+<ol>
+<li>On the title screen choose <strong>Multiplayer</strong>, set your <strong>Name</strong>, then <strong>Join game</strong>.</li>
+<li>Type the host's <strong>Address</strong> (numbers and dots, for example <code>192.168.1.20</code>, or a host name) and the
+<strong>Port</strong> (normally <code>6502</code>), then choose <strong>Connect</strong>.</li>
+<li>The status line shows <em>Connected, waiting for host</em>. The game starts when the host presses Start.</li>
+</ol>
+<p>From a Shell you can fill in the screen in advance:</p>
+<pre><code>moonstone HOST NAME Arthur
+moonstone JOIN 192.168.1.20 PORT 6502 NAME Lancelot</code></pre>
+<p>Your name, address and port are remembered in <code>net.ini</code> in the game's drawer.</p>
+
+<h3>5. Playing over the internet</h3>
+<ul>
+<li><strong>Same home network:</strong> join with the host's local address (for example <code>192.168.1.20</code>). Nothing else to set up.</li>
+<li><strong>Over the internet, direct:</strong> the host forwards <strong>TCP port 6502</strong> on their router to their Amiga (or to the PC
+running WinUAE) and gives the other players their public IP address.</li>
+<li><strong>Public games and the relay</strong> <span class="soon">COMING</span>: a <em>Find game</em> screen in the game will list public games
+(the same list as on this page) and join them with one button. Hosts that cannot forward a port will play through this server's relay,
+and no IP addresses are handed to strangers.</li>
+<li>All players' machines run the game in step, so a game plays at the pace of the slowest machine and connection.</li>
+</ul>
+
+<h3>6. If something goes wrong</h3>
+<div class="table-wrap">
+<table><thead><tr><th>Message</th><th>What to do</th></tr></thead><tbody>
+<tr><td>NO TCP IP STACK</td><td>Start your TCP/IP stack before the game (in WinUAE: enable <em>bsdsocket.library</em>).</td></tr>
+<tr><td>NO ANSWER</td><td>Check the address and port; the host must be on the Host game screen; over the internet the host must forward TCP port 6502.</td></tr>
+<tr><td>WRONG VERSION</td><td>Everyone needs the same Moonstone ACE version and the same settings (gore, enhanced graphics, mods).</td></tr>
+<tr><td>ENTER AN ADDRESS / BAD PORT</td><td>Type the host's address and a port number from 1 to 65535.</td></tr>
+</tbody></table>
+</div>
+<p>The address field accepts letters, numbers and dots only; the game's font has no <code>-</code> or <code>:</code>, which is why the port has its own field.</p>
+</section>
+</main>
+<script>
+'use strict';
+// Original pixel art (not from the game): 320x100, a small 12-bit Amiga-style palette, ordered dithering, scaled up crisply.
+(function () {
+  const cv = document.getElementById('hero');
+  if (!cv || !cv.getContext) return;
+  const g = cv.getContext('2d'), W = 320, H = 100;
+  const img = g.createImageData(W, H), px = img.data;
+  const hex = h => [parseInt(h[1], 16) * 17, parseInt(h[2], 16) * 17, parseInt(h[3], 16) * 17];
+  const P = {
+    sky0: hex('#001'), sky1: hex('#012'), sky2: hex('#113'), sky3: hex('#124'), sky4: hex('#235'),
+    glow1: hex('#346'), glow2: hex('#457'), star: hex('#eef'), dim: hex('#89b'),
+    moon0: hex('#ffe'), moon1: hex('#eed'), moon2: hex('#dcb'), crater: hex('#ba8'),
+    hill0: hex('#012'), hill1: hex('#001'), ground: hex('#000'), stone: hex('#001'), edge: hex('#234'), edge2: hex('#456'),
+    gem0: hex('#fff'), gem1: hex('#9df'), gem2: hex('#48b'), leaf: hex('#001'), leaf2: hex('#012')
+  };
+  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const dith = (x, y) => (bayer[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
+  const set = (x, y, c) => {
+    x |= 0; y |= 0;
+    if (x < 0 || y < 0 || x >= W || y >= H) return;
+    const k = (y * W + x) * 4; px[k] = c[0]; px[k + 1] = c[1]; px[k + 2] = c[2]; px[k + 3] = 255;
+  };
+  let seed = 1991;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const MX = 236, MY = 32, MR = 17;
+  // sky: five bands, dithered into each other, lighter towards the horizon
+  const bands = [P.sky0, P.sky1, P.sky2, P.sky3, P.sky4];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const t = Math.min(0.999, y / 78) * (bands.length - 1), i = Math.floor(t);
+    let c = (t - i) > dith(x, y) ? bands[Math.min(i + 1, bands.length - 1)] : bands[i];
+    const d = Math.hypot(x - MX, (y - MY) * 1.05);
+    if (d < MR + 26) { const gl = 1 - (d - MR) / 26; if (gl > dith(x + 1, y) * 1.4) c = gl > 0.55 + dith(x, y + 2) * 0.5 ? P.glow2 : P.glow1; }
+    set(x, y, c);
+  }
+  // stars, a few with a cross twinkle
+  for (let n = 0; n < 90; n++) {
+    const x = rnd() * W, y = rnd() * 62;
+    if (Math.hypot(x - MX, y - MY) < MR + 22) continue;
+    const big = rnd() < 0.12;
+    set(x, y, rnd() < 0.6 ? P.star : P.dim);
+    if (big) { set(x - 1, y, P.dim); set(x + 1, y, P.dim); set(x, y - 1, P.dim); set(x, y + 1, P.dim); }
+  }
+  // the moon: lit from the upper left, a dithered terminator, craters
+  for (let y = -MR; y <= MR; y++) for (let x = -MR; x <= MR; x++) {
+    const d = Math.hypot(x, y);
+    if (d > MR + 0.3) continue;
+    const l = (-x - y) / (MR * 2) + 0.5;
+    let c = l > 0.62 ? P.moon0 : l > 0.38 ? (l - 0.38) / 0.24 > dith(x, y) ? P.moon0 : P.moon1 : l > 0.2 ? P.moon1 : P.moon2;
+    if (d > MR - 1.2) c = P.moon2;
+    set(MX + x, MY + y, c);
+  }
+  [[-6, -4, 3], [5, 6, 4], [2, -9, 2], [-4, 9, 2], [9, -2, 1.5]].forEach(([cx, cy, r]) => {
+    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r) set(MX + cx + x, MY + cy + y, P.crater);
+  });
+  // hills: a far ridge, then the near hill the stones stand on
+  const far = x => 74 + Math.sin(x / 37) * 3 + Math.sin(x / 13 + 1) * 1.2;
+  const near = x => 82 - Math.exp(-((x - 160) ** 2) / 5200) * 7 + Math.sin(x / 23) * 1.1;
+  for (let x = 0; x < W; x++) {
+    for (let y = Math.floor(far(x)); y < H; y++) set(x, y, P.hill0);
+    for (let y = Math.floor(near(x)); y < H; y++) set(x, y, y > 94 ? P.ground : P.hill1);
+  }
+  // standing stones: uprights and lintels, rim-lit on the moon side
+  const stone = (x0, w, h) => {
+    const base = Math.floor(near(x0 + w / 2)) + 1;
+    for (let y = base - h; y < base; y++) for (let x = x0; x < x0 + w; x++) {
+      const notch = (y === base - h && (x === x0 || x === x0 + w - 1));
+      if (!notch) set(x, y, x === x0 + w - 1 ? (dith(x, y) < 0.5 ? P.edge2 : P.edge) : P.stone);
+    }
+    return base - h;
+  };
+  const lintel = (x0, w, y) => { for (let x = x0; x < x0 + w; x++) for (let yy = y - 4; yy < y; yy++) set(x, yy, yy === y - 4 ? P.edge : P.stone); };
+  [[104, 7, 20, 120, 7, 21], [134, 8, 27, 150, 8, 27], [166, 8, 29, 182, 8, 29], [198, 8, 26, 214, 7, 25]].forEach(([a, aw, ah, b, bw, bh]) => {
+    const ta = stone(a, aw, ah), tb = stone(b, bw, bh);
+    lintel(a - 1, b + bw - a + 2, Math.min(ta, tb) + 1);
+  });
+  stone(90, 6, 13); stone(232, 6, 15); stone(246, 5, 9);
+  // the moonstone glowing on the grass in front of the circle
+  const GX = 160, GY = 92;
+  for (let y = -5; y <= 5; y++) for (let x = -13; x <= 13; x++) {
+    const d = Math.hypot(x / 2.6, y);
+    if (d < 5 && (1 - d / 5) > dith(GX + x, GY + y)) set(GX + x, GY + y, d < 2.2 ? P.gem2 : P.edge);
+  }
+  [[0, -2, P.gem0], [-1, -1, P.gem1], [0, -1, P.gem0], [1, -1, P.gem1], [-1, 0, P.gem2], [0, 0, P.gem1], [1, 0, P.gem2], [0, 1, P.gem2]]
+    .forEach(([x, y, c]) => set(GX + x, GY + y, c));
+  // tree branches framing the corners, with leaf clusters
+  const branch = (pts, w) => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let s = 0; s <= n; s++) {
+        const x = x0 + (x1 - x0) * s / n, y = y0 + (y1 - y0) * s / n, ww = w * (1 - (i + s / n) / pts.length * 0.6);
+        for (let dy = -ww / 2; dy <= ww / 2; dy++) set(x, y + dy, P.leaf);
+      }
+    }
+  };
+  const leaves = (cx, cy, rx, ry) => {
+    for (let y = -ry; y <= ry; y++) for (let x = -rx; x <= rx; x++) {
+      const d = (x / rx) ** 2 + (y / ry) ** 2;
+      if (d < 1 && (d < 0.55 || dith(cx + x, cy + y) > d - 0.1)) set(cx + x, cy + y, d < 0.6 ? P.leaf : P.leaf2);
+    }
+  };
+  branch([[-2, 6], [20, 12], [40, 18], [58, 28], [70, 40]], 4);
+  branch([[30, 15], [36, 6], [46, 2]], 2);
+  branch([[322, 4], [302, 9], [286, 16], [274, 18]], 3);
+  [[8, 6, 10, 5], [27, 11, 8, 4], [44, 3, 7, 3], [52, 24, 6, 3], [68, 38, 5, 3], [312, 4, 9, 4], [292, 12, 7, 4], [276, 18, 5, 3]]
+    .forEach(([x, y, rx, ry]) => leaves(x, y, rx, ry));
+  g.putImageData(img, 0, 0);
+})();
+</script>
+<script>
+'use strict';
+let games = [], busy = false;
+const el = id => document.getElementById(id);
+function render() {
+  const query = el('search').value.toLowerCase();
+  const visible = games.filter(g => `${g.name} ${g.mode} ${g.version} ${g.build}`.toLowerCase().includes(query));
+  el('rows').replaceChildren();
+  for (const g of visible) {
+    const row = document.createElement('tr');
+    for (const value of [g.name, g.mode, `${g.players} / ${g.max_players}`, `${g.version} · ${g.build}`, g.connection, g.status]) {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      row.appendChild(cell);
+    }
+    row.children[3].className = 'build';
+    const badge = document.createElement('span');
+    badge.className = `badge ${g.status === 'Open' ? 'open' : g.status === 'Playing' ? 'playing' : 'full'}`;
+    badge.textContent = g.status;
+    row.children[5].replaceChildren(badge);
+    el('rows').appendChild(row);
+  }
+  el('empty').hidden = visible.length !== 0;
+  el('empty').textContent = games.length ? 'No games match your search.' : 'No public games are listed right now. Host a public game to appear here.';
+}
+async function refresh() {
+  if (busy) return;
+  busy = true;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch('/api/games', {cache: 'no-store', signal: controller.signal});
+    if (!response.ok) throw new Error('Lobby unavailable');
+    const data = await response.json();
+    games = data.games;
+    el('games').textContent = data.listed_games;
+    el('players').textContent = data.players_in_lobbies;
+    el('relays').textContent = data.active_relay_sessions;
+    el('health').textContent = `Live · updated ${new Date().toLocaleTimeString()}`;
+    render();
+  } catch (_) {
+    el('health').textContent = 'Connection lost · displayed data may be stale · retrying…';
+  } finally {
+    clearTimeout(timeout);
+    busy = false;
+  }
+}
+el('search').addEventListener('input', render);
+el('refresh').addEventListener('click', refresh);
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # The ending: Stonehenge with all four moonstones (the one of the current phase is enough): "You have completed the quest", the
 # ceremony, the cinematic (the knight with the orb, the stone circle, the dancers, the vortex, the stars, the epilogue) and the
-# title menu again. Only the page after "You have completed the quest" waits for fire; the rest runs on the game's timers.
+# main menu again (owner 2026-10-11: LOCAL / MULTIPLAYER / SETTINGS). Only the page after "You have completed the quest" waits for fire; the rest runs on the game's timers.
 # The animations run on the game's own timers: only the title and the first pages are compared tightly.
 # shotcmp-tol play-end-quest 1.0
 # shotcmp-tol play-end-ceremony 1.0

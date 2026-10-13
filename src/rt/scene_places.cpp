@@ -15,6 +15,7 @@
 #include "game/rules.hpp"
 #include "game/scene_places.hpp"
 #include "game/state_bind.hpp"
+#include "rt/party_loot.hpp"
 
 extern "C" {
 extern uint16_t mogMathKind;              // result kind of the Math roll (1 item, 2 gold, 3 stat, 4 curse) (LAB_090B)
@@ -81,6 +82,7 @@ void formatGoldText(uint32_t ulAmount) {
 
 // LAB_00A1 head: the knight of ActiveKnights +0 holds the stone of the moon phase ActiveKnights +18.
 extern "C" __attribute__((used, externally_visible)) uint32_t rtPlacesStoneCheck(void) {
+	rt::partyStoneOwner(mogActive.uwMoonFrame);                       // co-op: the stone owner of the party is the current knight (ROADMAP 8.5)
 	const Knight &k = *knightAt(mogActive.ulCurrent);  // LAB_05E4
 	return stoneMatches(mogActive.uwMoonFrame, invOf(k).ubMoonstones) ? 1 : 0;
 }
@@ -106,10 +108,12 @@ extern "C" __attribute__((used, externally_visible)) void rtPlacesValleyLoss(voi
 extern "C" __attribute__((used, externally_visible)) void rtPlacesValleyWin(void) {
 	Knight &k = *knightAt(mogCurKnight);
 	valleyVictory(k, invOf(k));
+	rt::partyValleyWin();                                             // co-op: the whole party (ROADMAP 8.5)
 }
 
 extern "C" __attribute__((used, externally_visible)) void rtPlacesValleyStone(void) {
-	valleyMoonstone(invOf(*knightAt(mogCurKnight)), mogRandomSeed);
+	const uint8_t ubBit = valleyMoonstone(invOf(*knightAt(mogCurKnight)), mogRandomSeed);
+	rt::partyValleyStone(ubBit);                                      // co-op: the same moonstone for everyone (ROADMAP 8.5)
 }
 
 extern "C" __attribute__((used, externally_visible)) void rtPlacesAiStat(void) {
@@ -193,40 +197,3 @@ extern "C" __attribute__((used, externally_visible)) uint32_t rtPlacesMystic(uin
 	const int iRow = iMsg >= MM_LOWER ? iMsg - MM_LOWER : iMsg - MM_RAISE;
 	return pTable[2 * iRow + 1];                                      // MOVEA.L 4(A0),A0
 }
-
-// Contracts of the patch shims (asm/patches/mog.scene_places.json).  All shims keep every register not named as an output.
-// (The shims of the place classifier, town buttons, stone check / code, Danu, the valley, the donation, the black knight's stat
-//  purchase and the mystic went with their dead patches, 7.1 cleanup: src/game/placevisit.cpp and the screens call the C functions.)
-//
-// rt_places_math_roll: JMP in LAB_045E after the three-instruction prologue; ends with RTS like the block it replaces.
-// rt_places_gift_gold / rt_places_gift_item: JMP at LAB_046C / LAB_0471. In D3 as the asm; D1-D7, A1-A6 kept (the callers
-//   chain several calls on one D3). Out D0 = gold amount / item slot.
-asm(R"(
-	.text
-	.globl rt_places_math_roll
-rt_places_math_roll:
-	movem.l %d1/%a1,-(%sp)
-	jsr rtPlacesMathRoll
-	movem.l (%sp)+,%d1/%a1
-	rts
-
-	.globl rt_places_gift_gold
-rt_places_gift_gold:
-	movem.l %d1/%a1,-(%sp)
-	move.l %d3,-(%sp)
-	jsr rtPlacesGiftGold
-	addq.l #4,%sp
-	movem.l (%sp)+,%d1/%a1
-	rts
-
-	.globl rt_places_gift_item
-rt_places_gift_item:
-	movem.l %d1/%a1,-(%sp)
-	move.l %d3,-(%sp)
-	jsr rtPlacesGiftItem
-	addq.l #4,%sp
-	movem.l (%sp)+,%d1/%a1
-	rts
-
-)");
-

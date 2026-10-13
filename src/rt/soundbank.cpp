@@ -17,7 +17,7 @@
 #include <ace/types.h>
 
 #include "rt/files.hpp"
-#include "rt/guards.hpp"
+#include "rt/file_handle.hpp"
 #include "rt/irq.hpp"
 #include "rt/sfx.hpp"
 

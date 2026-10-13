@@ -72,3 +72,37 @@ rt_display_copy_words:
 	movem.l (%sp)+,%d0-%d1/%a0-%a1
 	rts
 )");
+
+// ROADMAP 11.10 / 12.4: rt neighbours of display_ops.cpp that these rigs do not link (the irq install, the overlay's input cells, the
+// deterministic-mode hooks).  WEAK, so a rig that links the real file (tests/test_palette_glue.py links input.cpp, irq.cpp, net_tick.cpp)
+// gets the real function.  The deterministic mode is off here, as in the program overlay: netTick is a no-op and netDeterministic false;
+// the irq install is not under test (the tests patch the original's install to an RTS too).
+#include "rt/input.hpp"
+#include "rt/irq.hpp"
+#include "rt/net_tick.hpp"
+
+namespace rt {
+namespace {
+const IrqCells s_sNoCells = {};
+}
+__attribute__((weak)) bool netDeterministic() { return false; }
+__attribute__((weak)) void netStatsLineToggle() {}   // rt/input's F10 (net_box.cpp is not linked here)
+__attribute__((weak)) void netTick(ULONG, ULONG) {}
+__attribute__((weak)) void irqInstall(const IrqCells &) {}
+__attribute__((weak)) const IrqCells &inputProgramCells() { return s_sNoCells; }
+__attribute__((weak)) const IrqCells &inputMogCells() { return s_sNoCells; }
+}  // namespace rt
+
+// net_tick.cpp (linked by test_palette_glue) copies and clears structs at -Os: those compile to memcpy / memset calls
+// (-fno-tree-loop-distribution keeps these loops from turning back into calls).
+extern "C" __attribute__((weak)) void *memset(void *pDst, int iValue, unsigned long ulSize) {
+	unsigned char *pD = static_cast<unsigned char *>(pDst);
+	while(ulSize--) *pD++ = static_cast<unsigned char>(iValue);
+	return pDst;
+}
+extern "C" __attribute__((weak)) void *memcpy(void *pDst, const void *pSrc, unsigned long ulSize) {
+	unsigned char *pD = static_cast<unsigned char *>(pDst);
+	const unsigned char *pS = static_cast<const unsigned char *>(pSrc);
+	while(ulSize--) *pD++ = *pS++;
+	return pDst;
+}

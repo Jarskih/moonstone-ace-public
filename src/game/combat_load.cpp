@@ -424,10 +424,15 @@ void selectScreen(const Env &e) {
 	const Ctx c(e);
 	e.o.celLoad(N_SEL, c.l32(BUF_B));
 	c.activeFromSlots3();
+	restoreTitlePicture(e);
+	e.o.hunk9();
+}
+
+void restoreTitlePicture(const Env &e) {
+	const Ctx c(e);
 	screenFromChar(e);
 	e.o.copyScreen(c.l32(SCREEN_A), c.l32(SCREEN_B));
 	e.o.copyScreen(c.l32(SCREEN_A), c.l32(BUF_A));
-	e.o.hunk9();
 }
 
 namespace {

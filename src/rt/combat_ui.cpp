@@ -29,15 +29,21 @@
 #include "game/api/data.hpp"
 #include "engine/util.hpp"
 #include "game/creatures.hpp"
+#include "game/loot.hpp"
+#include "game/rules/stats.hpp"
 #include "game/state_bind.hpp"
 #include "rt/asmcall.hpp"
 #include "rt/combat_load.hpp"
 #include "rt/combat_ui.hpp"
+#include "rt/party_turn.hpp"
 #include "rt/sfx.hpp"
 #include "rt/display_ops.hpp"
+#include "rt/net_tick.hpp"
+#include "engine/nettick.hpp"
 #include "rt/stubfn.h"
 
 extern "C" {
+extern uint16_t mogDamageDiv; // current temple training cost (LAB_06DE)
 extern uint8_t mogCelSlotsCreature[];  // LAB_05E0
 extern uint8_t mogUiPalette[];  // LAB_05E5
 extern uint8_t mogPicturePalette[];  // LAB_05E6
@@ -168,6 +174,7 @@ extern uint32_t mogSmallFont[5];  // LAB_05E3
 extern uint16_t mogUiFrameBase, mogUiIconFrame, mogUiIconX, mogUiIconY, mogUiIconStep, mogUiRegionKind, mogUiRegionTextId,  // LAB_0680, LAB_0681, LAB_0682, LAB_0683, LAB_0684, LAB_0685, LAB_0687
 	mogUiXShift, mogTextFlag, mogHitX, mogHitY, mogCursorX, mogCursorY, mogCursorLock, mogMathKind,  // LAB_0985, LAB_0D05, LAB_097F, LAB_0980, LAB_0981, LAB_090B (LAB_08DA, LAB_08DB)
 	mogUiDone;  // LAB_0984
+extern uint16_t mogCursorOn;  // LAB_097C
 extern uint32_t mogUiButton, mogUiButtonTable, mogUiStatKnight, mogUiCelTable, mogDrawScreen, mogBackground, mogForeground,  // LAB_0686, LAB_0688, LAB_0632, LAB_0986, LAB_0D92, LAB_05C0, LAB_05C1
 	mogPicScreen, mogMathText, mogSpriteStart, mogSpritePartner, mogCursorData, mogCursorData2, mogCursorHook, mogRecordTable;  // LAB_05C2, LAB_0909, LAB_0E8D, LAB_0E8E, LAB_097D, LAB_097E, LAB_0982, SECSTRT_14
 }
@@ -429,6 +436,39 @@ void numberText(uint32_t ulValue, uint16_t uwX, uint16_t uwY) {
 
 void inventoryIcons();
 
+// Native text-only fourth stat: two cells because both knights may be shown at once.
+// These are TextRec-compatible ButtonCells, not additions to the original fixed 27-entry tables.
+ButtonCell s_dexterityButtons[2];
+const char s_dexterityLabel[] = "Dex";
+const char s_dexterityInfo[] = "Dexterity: shorter recovery";
+const char s_dexterityTrain[] = "Improve dexterity";
+
+void dexterityRow() {
+	if(!g_gameData.rules.ubDexterityEnabled) return;
+	const Knight &k = *reinterpret_cast<const Knight *>((uintptr_t)mogUiStatKnight);
+	if(k.ulKind >= KIND_DRAGON) return;
+	const bool primary = mogUiFrameBase == 0;
+	const bool train = primary && k.ubDexterity < 5 && progressCanAfford(k, mogDamageDiv);
+	ButtonCell &button = s_dexterityButtons[primary ? 0 : 1];
+	button.ulObject = ad(train ? s_dexterityTrain : s_dexterityInfo);
+	button.uw4 = 0;
+	button.uw6 = 3;
+	button.uwFlags = train ? 0x43 : 3;
+	button.ul10 = 0;
+	drawText(ad(s_dexterityLabel), (uint16_t)(0x29 + mogUiXShift), 0x38);
+	numberText(k.ubDexterity ? k.ubDexterity : 1, 0x3F, 0x38);
+	const uint32_t rec = ad(mogRecordTemplate);
+	st16(rec + 4, 0x28);
+	st16(rec + 6, 7);
+	st16(rec + 12, (uint16_t)(0x29 + mogUiXShift));
+	st16(rec + 14, 0x38);
+	st32(rec + 8, ad(&button));
+	st32(rec + 16, 0);
+	st16(rec + 20, 3);
+	st16(rec + 22, offsetof(Knight, ubDexterity));
+	addRecord();
+}
+
 // LAB_04F8: the knight in LAB_0632: name, the four stat icon rows, the progress / gold / three stat numbers, lives, hp, daggers,
 // sword, armour; then (falls into LAB_04FE) the inventory of the knight
 void statSheet() {
@@ -486,6 +526,7 @@ void statSheet() {
 		ofs = (uint16_t)(ofs + 1);
 		y = (uint16_t)(y + 7);
 	}
+	dexterityRow();
 	// lives (a byte of $80 and above, the dragon's mark, shows 5), +2 frames while the frog curse lasts
 	a0 = mogUiStatKnight;
 	uint16_t lives = rd8(a0 + 73);
@@ -493,7 +534,7 @@ void statSheet() {
 		lives = 5;
 	}
 	mogUiIconX = 0x29;
-	mogUiIconY = 0x3B;
+	mogUiIconY = g_gameData.rules.ubDexterityEnabled ? 0x40 : 0x3B;
 	mogUiIconStep = 0x13;
 	mogUiIconFrame = (uint16_t)(0x11 + mogUiFrameBase);
 	if(rd8(a0 + 82) != 0) {
@@ -970,6 +1011,7 @@ void poolClear() {
 // x / y (the cursor): the first record of the pool (24 bytes each, ended by the first with width 0) whose box contains it.  A hit
 // draws the record's text list (LAB_0432 with A0 = +8) and gives the record; a miss gives 0.
 uint32_t hitTest(uint32_t ulX, uint32_t ulY, uint32_t *pRegion) {
+	if(rt::turnArrowHit(ulX, ulY, pRegion)) return 1;              // co-op: the corner arrows (inert in the classic game)
 	mogHitX = (uint16_t)ulX;
 	mogHitY = (uint16_t)ulY;
 	uint32_t a0 = mogRecordTable;
@@ -1025,41 +1067,21 @@ void cursorSprite() {
 }
 
 // LAB_057D: the VBL hook: the cursor follows the joystick (the screen's knight decides the port: 1 = port 0), 2 pixels a tick,
-// clamped to 0..$13A x 0..$C3; LAB_0981 is 1 (locked) except while fire is down
-void cursorTick() {
+// clamped to 0..$13A x 0..$C3; LAB_0981 is 1 (locked) except while fire is down.  The arithmetic is ms::cursorStep (engine/nettick).
+// ulVbls = 1 in the interrupt; deterministic mode (ROADMAP 12.4) calls it from the main thread at each tick with the VBLs the tick
+// stands for, and the interrupt hook then does nothing (rtCuiCursorTick).
+void cursorTick(uint32_t ulVbls) {
 	mogCursorLock = 1;
 	const rt::CallRegs j = call(RT_FN(rt_mog_joy_read));
 	uint16_t d1 = (uint16_t)j.rd1;
 	if(rd8(mogUiKnight + 11) == 1) {  // LAB_068B
 		d1 = (uint16_t)j.rd0;
 	}
-	if(d1 & 1) {
-		mogCursorX = (uint16_t)(mogCursorX + 2);
-	}
-	if(d1 & 2) {
-		mogCursorX = (uint16_t)(mogCursorX - 2);
-	}
-	if(d1 & 4) {
-		mogCursorY = (uint16_t)(mogCursorY + 2);
-	}
-	if(d1 & 8) {
-		mogCursorY = (uint16_t)(mogCursorY - 2);
-	}
-	if(d1 & 0x10) {
-		mogCursorLock = 0;
-	}
-	if((int16_t)mogCursorX >= 0x13B) {
-		mogCursorX = 0x13A;
-	}
-	if((int16_t)mogCursorX < 0) {
-		mogCursorX = 0;
-	}
-	if((int16_t)mogCursorY >= 0xC4) {
-		mogCursorY = 0xC3;
-	}
-	if((int16_t)mogCursorY < 0) {
-		mogCursorY = 0;
-	}
+	ms::CursorState s = {mogCursorX, mogCursorY, 1};
+	ms::cursorStep(s, d1, ulVbls);
+	mogCursorX = s.uwX;
+	mogCursorY = s.uwY;
+	mogCursorLock = s.uwLock;
 	call(RT_FN(rt_mog_sprite_place), 0, mogCursorX, mogCursorY);
 }
 
@@ -1179,21 +1201,20 @@ __attribute__((used, externally_visible)) uint32_t rtCuiHitTest(uint32_t ulX, ui
 __attribute__((used, externally_visible)) void rtCuiPoolClear(void) { poolClear(); }
 __attribute__((used, externally_visible)) void rtCuiJingleBad(void) { jingleBad(); }
 __attribute__((used, externally_visible)) void rtCuiJingleGood(void) { jingleGood(); }
-__attribute__((used, externally_visible)) void rtCuiCursorTick(void) { cursorTick(); }
+__attribute__((used, externally_visible)) void rtCuiCursorTick(void) {
+	if(rt::netDeterministic()) {   // the cursor is stepped by netTick (rtCuiCursorStep), not in the interrupt
+		return;
+	}
+	cursorTick(1);
+}
+// rt/net_tick: one tick of the joystick cursor, from the main thread, only while the cursor screen's hook is installed.
+__attribute__((used, externally_visible)) void rtCuiCursorStep(uint32_t ulVbls) {
+	if(mogCursorOn) {
+		cursorTick(ulVbls);
+	}
+}
 __attribute__((used, externally_visible)) void rtCuiCursorSprite(void) { cursorSprite(); }
 __attribute__((used, externally_visible)) void rtCuiWizard(void) { wizardScreen(); }
 
 }  // extern "C"
-
-// The patch target: rt_cui_cursor_tick (the joystick cursor's hook address is in the VBL hook list of src/rt/input.cpp).  CUI_SHIM keeps
-// every register.  The other five (pool clear, hit test, jingles, cursor sprite, wizard) have no shim since 7.1o: the C++ callers use the
-// rtCui* entries of rt/combat_ui.hpp directly; the register shims live on in tests/combat_ui_emu_support.cpp.
-#define CUI_SHIM(NAME, FN) \
-	asm(".text\n.globl " NAME "\n" NAME ":\n" \
-		"	movem.l %d0-%d7/%a0-%a6,-(%sp)\n" \
-		"	jsr " FN "\n" \
-		"	movem.l (%sp)+,%d0-%d7/%a0-%a6\n" \
-		"	rts\n");
-
-CUI_SHIM("rt_cui_cursor_tick", "rtCuiCursorTick")
 

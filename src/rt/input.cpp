@@ -1,29 +1,29 @@
 // rt/input - keyboard, mouse and joystick of the original game (ROADMAP 2.3, 7.1d). See input.hpp and docs/IRQ.md.
 //
-// Keyboard: the level-2 interrupt is ACE's (it owns the CIA-A serial handshake); inputKeyIsr runs ACE's handler and then
-// feeds the game's tables through engine/input. Mouse: one sample per VBL from rt/irq. Joystick: mog LAB_00EE and its
-// callers, ported to C++ behind asm shims that keep the original register contracts (patches mog.irq2.json).
+// Keyboard: the key events come from the platform (rt/platform/input.hpp: on the Amiga the level-2 interrupt is ACE's, which owns the CIA-A
+// serial handshake, rt/amiga/platform_input.cpp; on the PC the SDL events), deliverKey feeds the game's tables through engine/input.
+// Mouse: one sample per VBL from rt/irq. Joystick: mog LAB_00EE and its callers, in C++ behind asm shims that keep the original register
+// contracts (patches mog.irq2.json; the shims are src/rt/amiga/input_entries.cpp).  Platform-neutral since ROADMAP 11.10: the two joystick
+// ports and the fire buttons are read through platform::inputReadPorts.
 
 #include "rt/input.hpp"
 
-#include <ace/managers/key.h>
-#include <ace/managers/system.h>
-#include <ace/utils/custom.h>
-#include <hardware/intbits.h>
-
 #include "engine/input.hpp"
+#include "engine/nettick.hpp"
 #include "engine/pad.hpp"
 #include "game/party.hpp"
 #include "game/state_bind.hpp"
 #include "rt/abs.h"
 #include "rt/autoplay.hpp"
 #include "rt/irq.hpp"
+#include "rt/net_box.hpp"
+#include "rt/net_tick.hpp"
+#include "rt/platform/input.hpp"
 #include "rt/sprites.hpp"
 #include "rt/stubfn.h"
 
 extern "C" {
-// ACE's keyboard CIA callback (ace/managers/key.c): reads SDR, does the handshake, updates g_sKeyManager.
-void onKeyInterrupt(volatile tCustom *pCustom, volatile void *pData);
+void rtCuiCursorTick(void);   // the joystick cursor's VBL hook (src/rt/combat_ui.cpp; rt_cui_cursor_tick)
 
 // Overlay cells (asm/program.s, asm/mog.s); the labels are the original's. Types are what the original keeps there.
 extern volatile UWORD prgKeyAny, prgFrameOn, prgBlitDone, prgIdleWord;  // SECSTRT_16, LAB_0363, LAB_0367, LAB_036A
@@ -66,8 +66,17 @@ const IrqCells *volatile s_pCells;
 volatile ULONG s_ulEvents;
 volatile ULONG s_ulSkipPresses;
 
-bool isFireDown(UBYTE ubBit) {
-	return !(g_pCia[CIA_A]->pra & ubBit);   // CIAA PRA bit 6 = port 0 fire / left mouse button, bit 7 = port 1 fire; active low
+constexpr UBYTE kRawSpace = 0x40;    // Amiga raw key codes (ACE's KEY_SPACE / KEY_RETURN / KEY_ESCAPE)
+constexpr UBYTE kRawReturn = 0x44;
+constexpr UBYTE kRawEscape = 0x45;
+constexpr UBYTE kRawF10 = 0x59;      // toggles the network link line (rt/net_box); the game does not use it, a network game swallows it
+
+// Both ports as the hardware shows them now: JOY0DAT / JOY1DAT and the fire buttons (CIA-A PRA bit 6 = port 0 fire / left mouse button,
+// bit 7 = port 1 fire; active low on the chip, true here).
+platform::PortState readPorts() {
+	platform::PortState sPorts;
+	platform::inputReadPorts(sPorts);
+	return sPorts;
 }
 
 // Co-op (ROADMAP 8.2): the record index of the current knight (LAB_0633) when it is a party member.
@@ -86,8 +95,13 @@ UBYTE currentMember() {
 // port 0 joystick (the second fighter of a duel). The parallel adapter is not read yet (engine/pad.hpp padAdapterDecode).
 UWORD coopStick(const ms::JoyBits &sBits, bool isAny) {
 	ms::PadFrame sFrame;
-	const ms::PadInputs sIn = {sBits, mogKeyDown, 0, 0};
-	ms::padsFill(sFrame, sIn);
+	if(netDeterministic()) {   // ROADMAP 12.4: the controllers of the tick (the network layer may have replaced them)
+		sFrame = netLatch().sPads;
+	}
+	else {
+		const ms::PadInputs sIn = {sBits, mogKeyDown, 0, 0};
+		ms::padsFill(sFrame, sIn);
+	}
 	if(isAny) {
 		return ms::padsAny(sFrame);
 	}
@@ -95,10 +109,16 @@ UWORD coopStick(const ms::JoyBits &sBits, bool isAny) {
 }
 
 ms::JoyBits joyPoll(bool isAny = false) {
-	const UWORD uwJoy1 = g_pCustom->joy1dat;
-	const UWORD uwJoy0 = g_pCustom->joy0dat;
-	ms::JoyBits sBits = ms::joyRead(uwJoy0, uwJoy1, isFireDown(0x40), isFireDown(0x80));
-	autoplayJoy(sBits);   // MS_AUTOPLAY: scripted joystick (rt/autoplay), a no-op otherwise
+	ms::JoyBits sBits;
+	if(netDeterministic()) {   // ROADMAP 12.4: every poll of a tick returns the frame netTick latched
+		autoplayNotePoll();
+		sBits = netLatch().sFrame.joy;
+	}
+	else {
+		const platform::PortState sPorts = readPorts();   // JOY1DAT first, then JOY0DAT, then the fire bits
+		sBits = ms::joyRead(sPorts.uwJoy0Dat, sPorts.uwJoy1Dat, sPorts.isFire0, sPorts.isFire1);
+		autoplayJoy(sBits);   // MS_AUTOPLAY: scripted joystick (rt/autoplay), a no-op otherwise
+	}
 	if(ms::game::g_party.active) {   // co-op only: classic reads stay exactly the two ports
 		sBits.uwPort1 = coopStick(sBits, isAny);
 	}
@@ -137,12 +157,17 @@ const IrqCells *inputCells() {
 }
 
 void inputPointerInit(const IrqCells &sCells) {
-	const UWORD uwJoy = g_pCustom->joy0dat;
+	const UWORD uwJoy = readPorts().uwJoy0Dat;
 	*sCells.pubPrevV = static_cast<UBYTE>(uwJoy >> 8);
 	*sCells.pubPrevH = static_cast<UBYTE>(uwJoy);
 }
 
 void inputPointerTick(const IrqCells &sCells) {
+	const platform::PortState sPorts = readPorts();
+	inputPointerStep(sCells, sPorts.uwJoy0Dat, sPorts.isFire0);
+}
+
+void inputPointerStep(const IrqCells &sCells, UWORD uwJoy0Dat, bool isLeftDown) {
 	ms::MouseState sMouse;
 	sMouse.ubPrevV = *sCells.pubPrevV;
 	sMouse.ubPrevH = *sCells.pubPrevH;
@@ -152,7 +177,7 @@ void inputPointerTick(const IrqCells &sCells) {
 	sMouse.wButton2 = *sCells.pwButton2;
 	sMouse.uwIdleWord = *sCells.puwIdleWord;
 	sMouse.ulIdleLong = 0;
-	const bool isActive = ms::mouseStep(sMouse, g_pCustom->joy0dat, isFireDown(0x40));
+	const bool isActive = ms::mouseStep(sMouse, uwJoy0Dat, isLeftDown);
 	*sCells.pwMouseY = sMouse.wY;
 	*sCells.pwMouseX = sMouse.wX;
 	if(isActive) {
@@ -169,10 +194,14 @@ void inputPointerTick(const IrqCells &sCells) {
 static void deliverKey(UBYTE ubAceCode) {
 	++s_ulEvents;
 	const UBYTE ubKey = ubAceCode >> 1;
-	if(!(ubAceCode & 1) && (ubKey == KEY_SPACE || ubKey == KEY_RETURN)) {
+	if(!(ubAceCode & 1) && (ubKey == kRawSpace || ubKey == kRawReturn)) {
 		++s_ulSkipPresses;
 	}
 	const IrqCells *pCells = s_pCells;
+	if(netDeterministic()) {   // ROADMAP 12.4: queued, applied to the game's tables at the next netTick
+		ms::keyQueuePush(netKeyQueue(), ubAceCode);
+		return;
+	}
 	if(pCells) {
 		feedGame(*pCells, ubAceCode);
 #ifdef MS_IRQ_TRACE
@@ -182,10 +211,17 @@ static void deliverKey(UBYTE ubAceCode) {
 	}
 }
 
-void inputKeyIsr(volatile void *pCustom, volatile void *pData) {
-	const UBYTE ubAceCode = static_cast<UBYTE>(~g_pCia[CIA_A]->sdr);  // (key << 1) | released
-	onKeyInterrupt(static_cast<volatile tCustom *>(pCustom), pData);
-	deliverKey(ubAceCode);
+// The platform's key event (rt::platform::inputSetKeyHandler): ubRawCode = the Amiga raw key, the keyboard ISR's (key << 1) | released encoding follows.
+static void onKeyEvent(UBYTE ubRawCode, bool isDown) {
+	if(ubRawCode == kRawF10 && netDeterministic()) {   // a network game: F10 shows / hides the ping and loss line on THIS machine; it is not an input of the lockstep
+		static bool s_isF10Down;   // a held key (repeat events) toggles once
+		if(isDown && !s_isF10Down) {
+			netStatsLineToggle();
+		}
+		s_isF10Down = isDown;
+		return;
+	}
+	deliverKey(static_cast<UBYTE>((ubRawCode << 1) | (isDown ? 0 : 1)));
 }
 
 void inputInjectKey(UBYTE ubKey, bool isDown) {
@@ -193,13 +229,37 @@ void inputInjectKey(UBYTE ubKey, bool isDown) {
 }
 
 void inputInstall() {
-	systemSetCiaInt(
-		CIA_A, CIAICRB_SERIAL, reinterpret_cast<tAceIntHandler>(inputKeyIsr), &g_sKeyManager
-	);
+	platform::inputSetKeyHandler(onKeyEvent);
 }
 
 void inputRemove() {
-	systemSetCiaInt(CIA_A, CIAICRB_SERIAL, nullptr, nullptr);
+	platform::inputSetKeyHandler(nullptr);
+}
+
+void inputCaptureLocal(ms::LocalFrame &sFrame) {
+	ms::localFrameClear(sFrame);
+	const platform::PortState sPorts = readPorts();
+	sFrame.uwMouseDat = sPorts.uwJoy0Dat;
+	sFrame.ubMouseButton = sPorts.isFire0 ? 1 : 0;
+	sFrame.joy = ms::joyRead(sPorts.uwJoy0Dat, sPorts.uwJoy1Dat, sPorts.isFire0, sPorts.isFire1);
+	autoplayJoyOverride(sFrame.joy);   // MS_AUTOPLAY: scripted joystick, a no-op otherwise
+	ms::localFrameTakeKeys(sFrame, netKeyQueue());
+}
+
+bool inputConfirmDown() {
+	const platform::PortState sPorts = readPorts();
+	return sPorts.isFire0 || sPorts.isFire1 || platform::inputKeyHeld(kRawEscape) || autoplayFireHeld();   // MS_AUTOPLAY: a scripted fire counts (WinUAE cannot press the hardware button)
+}
+
+void inputApplyLocal(const ms::LocalFrame &sFrame) {
+	const IrqCells *pCells = s_pCells;
+	if(!pCells) {
+		return;
+	}
+	inputPointerStep(*pCells, sFrame.uwMouseDat, sFrame.ubMouseButton != 0);
+	for(UBYTE i = 0; i < sFrame.ubKeys; ++i) {
+		feedGame(*pCells, sFrame.aubKey[i]);
+	}
 }
 
 ULONG inputEventCount() {
@@ -234,6 +294,7 @@ __attribute__((used, externally_visible)) void rtMogKeyWaitC(void) {
 	volatile UWORD *pAny = rt::inputMogCells().puwKeyAny;
 	*pAny = 0;
 	while(*pAny == 0) {
+		ms::tickIdle();   // deterministic mode: a frame wait + tick, else the key never arrives (NETPLAY 1.2)
 	}
 }
 
@@ -246,9 +307,11 @@ __attribute__((used, externally_visible)) ULONG rtMogJoyReadC(void) {
 __attribute__((used, externally_visible)) ULONG rtMogWaitFireC(void) {
 	ms::JoyBits sBits;
 	do {
+		ms::tickIdle();   // deterministic mode: the poll returns the latched frame, so a frame boundary per poll
 		sBits = rt::joyPoll(true);
 	} while(!(sBits.uwPort1 & ms::kJoyFire));
 	do {
+		ms::tickIdle();
 		sBits = rt::joyPoll(true);
 	} while(sBits.uwPort1 & ms::kJoyFire);
 	return rt::packJoy(sBits);
@@ -270,7 +333,7 @@ __attribute__((used, externally_visible)) void rtMogCursorOnC(void) {
 	while(*pSlot++ != 0) {                                   // LAB_0579: first free slot of the hook list
 	}
 	--pSlot;
-	*pSlot = reinterpret_cast<ULONG>(RT_FN(rt_cui_cursor_tick));
+	*pSlot = reinterpret_cast<ULONG>(RT_HOOK(rt_cui_cursor_tick, rtCuiCursorTick));
 	mogCursorHook = reinterpret_cast<ULONG>(pSlot);
 }
 
@@ -285,53 +348,3 @@ __attribute__((used, externally_visible)) void rtMogCursorOffC(void) {
 }
 
 }  // extern "C"
-
-// ---- asm: register-contract wrappers --------------------------------------------------------------------------------
-// The C++ ABI clobbers D0/D1/A0/A1 only; the original routines kept even those, so every wrapper saves them.
-//   rt_prg_key_reset / rt_mog_key_reset / rt_mog_key_wait / rt_mog_cursor_on / rt_mog_cursor_off: no register changes.
-//   rt_mog_joy_read  (LAB_00EE): D0.w = port 0 bits, D1.w = port 1 bits (the upper words are the caller's), nothing else.
-//   rt_mog_wait_fire (LAB_00EC): as LAB_00EE with the last reading.
-asm(R"(
-	.text
-	.macro RT_INPUT_PLAIN cfn
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr \cfn
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-	.endm
-
-	.macro RT_INPUT_JOY cfn, tail
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr \cfn
-	swap %d0
-	move.w %d0,2(%sp)
-	swap %d0
-	move.w %d0,6(%sp)
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	\tail
-	rts
-	.endm
-
-	.globl rt_prg_key_reset
-rt_prg_key_reset:
-	RT_INPUT_PLAIN rtPrgKeyResetC
-	.globl rt_mog_key_reset
-rt_mog_key_reset:
-	RT_INPUT_PLAIN rtMogKeyResetC
-	.globl rt_mog_key_wait
-rt_mog_key_wait:
-	RT_INPUT_PLAIN rtMogKeyWaitC
-	.globl rt_mog_cursor_on
-rt_mog_cursor_on:
-	RT_INPUT_PLAIN rtMogCursorOnC
-	.globl rt_mog_cursor_off
-rt_mog_cursor_off:
-	RT_INPUT_PLAIN rtMogCursorOffC
-	.globl rt_mog_joy_read
-rt_mog_joy_read:
-	RT_INPUT_JOY rtMogJoyReadC, "tst.w %d1"
-	.globl rt_mog_wait_fire
-rt_mog_wait_fire:
-	RT_INPUT_JOY rtMogWaitFireC, "btst #4,%d1"
-)");
-

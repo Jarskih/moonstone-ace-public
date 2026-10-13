@@ -72,4 +72,35 @@ rt_prg_wipe_tile:
 	lea 20(%sp),%sp
 	movem.l (%sp)+,%d0-%d1/%a0-%a1
 	rts
+
+	| rtCopyRect / rtCopyRectDesc (src/rt/engine_blit.cpp in the game, called by src/rt/wipe.cpp as C functions since ROADMAP 11.1d): C arguments
+	| (src, dst, modA, modD, words, rows) -> the ORIGINAL routine (rt_prg_copy_rect = LAB_04E1, rt_prg_copy_rect_desc = LAB_04E2, resolved by the
+	| rig) with D0..D3, A0, A1 loaded, as the register shim did; D0 = the BLTSIZE it leaves in D3.
+	.globl rtCopyRect
+rtCopyRect:
+	movem.l %d2-%d7/%a2-%a6,-(%sp)
+	move.l 48(%sp),%a0
+	move.l 52(%sp),%a1
+	move.l 56(%sp),%d0
+	move.l 60(%sp),%d1
+	move.l 64(%sp),%d2
+	move.l 68(%sp),%d3
+	jsr rt_prg_copy_rect
+	move.l %d3,%d0
+	movem.l (%sp)+,%d2-%d7/%a2-%a6
+	rts
+
+	.globl rtCopyRectDesc
+rtCopyRectDesc:
+	movem.l %d2-%d7/%a2-%a6,-(%sp)
+	move.l 48(%sp),%a0
+	move.l 52(%sp),%a1
+	move.l 56(%sp),%d0
+	move.l 60(%sp),%d1
+	move.l 64(%sp),%d2
+	move.l 68(%sp),%d3
+	jsr rt_prg_copy_rect_desc
+	move.l %d3,%d0
+	movem.l (%sp)+,%d2-%d7/%a2-%a6
+	rts
 )");

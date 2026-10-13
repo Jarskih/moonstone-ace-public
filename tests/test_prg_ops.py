@@ -28,7 +28,7 @@ HAVE_EMU = TD.HAVE_EMU
 if HAVE_EMU:
     TI, be16, be32 = TD.TI, TD.be16, TD.be32
 
-SOURCES = ('src/rt/prg_ops.cpp', 'src/rt/prg_copy.cpp')
+SOURCES = ('src/rt/prg_ops.cpp', 'src/rt/prg_copy.cpp', 'src/rt/amiga/blit.cpp', 'src/rt/amiga/platform_display.cpp')
 BIG = (0x200000, 0x100000)
 SRC, DST = 0x200000, 0x230000
 LIVE = 0x260000

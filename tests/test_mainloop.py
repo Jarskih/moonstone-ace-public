@@ -621,6 +621,7 @@ class MainLoopTest(unittest.TestCase):
     def test_loop_entry(self):
         self.check('loop')
 
+    @unittest.skip('ROADMAP 11.10: the steps are typed calls (a switch in opStep), the g_steps table of register rows is gone; the unicorn tests test_mainloop_emu / test_boot_map_emu prove the calls')
     def test_shim_step_table_matches_the_oracle(self):
         """Every row of g_steps (src/rt/mainloop.cpp) calls the routine of its MainStep with the registers the original
         loaded: D0 / A0 as the lifted code had them at each call that takes an argument."""
@@ -705,7 +706,7 @@ class PatchFileTest(unittest.TestCase):
         self.assertEqual(sorted(re.match(r'\tJMP\t(rt_\w+)$', p['new'][0]).group(1) for p in self.mine), sorted(live))
 
     def test_every_rt_name_is_defined_in_the_shim(self):
-        text = open(RT_SRC, encoding='utf-8').read()
+        text = open(RT_SRC, encoding='utf-8').read() + open(os.path.join(ROOT, 'src', 'rt', 'amiga', 'mainloop_entries.cpp'), encoding='utf-8').read()   # 11.10: the asm moved
         for n in RT_NAMES:
             self.assertRegex(text, r'\.globl %s\n%s:' % (n, n))
         support = open(SUPPORT_SRC, encoding='utf-8').read()
@@ -765,7 +766,7 @@ class ShimCompileTest(unittest.TestCase):
     def test_modules_compile_for_the_target(self):
         env = dict(os.environ, PATH=os.path.dirname(GXX) + os.pathsep + os.environ.get('PATH', ''))
         flags = ['-m68020', '-msoft-float', '-fomit-frame-pointer', '-nostdlib', '-fno-exceptions', '-fno-rtti',
-                 '-fno-threadsafe-statics', '-std=c++17', '-O2', '-DNDEBUG', '-DAMIGA', '-DMS_LINK_GAME_ASM=1', '-Wall',
+                 '-fno-threadsafe-statics', '-std=c++17', '-O2', '-DNDEBUG', '-DAMIGA', '-DBARTMAN_GCC', '-DMS_LINK_GAME_ASM=1', '-Wall',
                  '-Wextra', '-I', os.path.join(ROOT, 'include'), '-I', os.path.join(ROOT, 'src'),
                  '-I', os.path.join(ACE, 'mini_std'), '-I', ACE, '-I', GCC_SUPPORT]
         tmp = tempfile.mkdtemp(prefix='mainloop_m68k_')

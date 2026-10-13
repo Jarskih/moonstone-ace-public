@@ -3,6 +3,7 @@
 // LAB_0F8C (S_44, D0 = sequence, D1 = channel) stays asm behind rtSfxSynth until 7.1g.
 // Patches: asm/patches/mog.sfx.json. C++ callers (combat_script, fighters, loot, combat) call rt::sfx* directly.
 
+#include "rt/prim.hpp"
 #include "rt/sfx.hpp"
 
 #include "engine/sfx.hpp"
@@ -11,7 +12,7 @@ namespace {
 ms::SfxState s_state;  // zero at start == a fresh mog image
 }
 
-// The one trampoline into the synth. LAB_0F8C saves and restores D0-D7/A0-A6 itself, so any C caller may use it.
+// The one way into the synth. LAB_0F8C saves and restores D0-D7/A0-A6 itself, so any C caller may use it.
 extern "C" void rtSfxSynth(ULONG ulSeq, ULONG ulChannel);
 
 namespace rt {
@@ -54,7 +55,9 @@ __attribute__((used, externally_visible)) void rtSfxEntryC(void) { rt::sfxEntry(
 
 // (ROADMAP 7.1s: the register-contract entries rt_sfx_release0/1 (LAB_0A9E / 0A9F) and rt_sfx_reset went to tests/sfx_emu_support.cpp
 //  with their release2/3 siblings; the C++ callers use rt::sfxRelease / rt::sfxReset directly.)
-// rtSfxSynth(seq, channel) is the C-callable trampoline into LAB_0F8C.
+// rtSfxSynth(seq, channel): the synth start (LAB_0F8C) for C++ callers: the body behind rt_synth_start (src/rt/synth.cpp).
+#if defined(MS_SYNTH_ASM) && MS_SYNTH_ASM
+// A/B build with mog's ORIGINAL synth: it is entered through its register entry, D0 = sequence, D1 = channel.
 asm(R"(
 	.text
 	.globl rtSfxSynth
@@ -63,4 +66,9 @@ rtSfxSynth:
 	move.l 8(%sp),%d1
 	jmp rt_synth_start
 )");
+#else
+extern "C" __attribute__((used, externally_visible)) void rtSfxSynth(ULONG ulSeq, ULONG ulChannel) {
+	rtSynthStartC(ulSeq, ulChannel);
+}
+#endif
 

@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import integrate as I  # noqa: E402
 
 LINKS = ['private', 'build/disks', 'build/reasm', 'build/inventory', 'build/art', 'reference', 'tests/diff',
-         'tools/toolchain', 'tools/AmigaCMakeCrossToolchains', 'tools/bartman_gcc_support']
+         'tools/toolchain', 'tools/AmigaCMakeCrossToolchains', 'tools/bartman_gcc_support', 'tools/sdl3']
 
 
 def git_top():
@@ -95,6 +95,8 @@ def main():
         return 1
     for l in LINKS:
         print(link(os.path.join(main_proj, l), os.path.join(proj, l)))
+    # ACE lives NEXT TO the project (../ace); without it the unicorn emu rigs skip silently instead of failing
+    print(link(os.path.join(os.path.dirname(main_proj), 'ace'), os.path.join(os.path.dirname(proj), 'ace')))
     private = os.path.join(proj, 'private')
     if os.path.isdir(private) and not os.path.isfile(os.path.join(proj, 'asm', 'patches', 'abs_symbols.json')):
         # public repository (tools/dev_setup.py): the git-ignored asm/, src/lifted, reference are materialised from private/

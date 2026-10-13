@@ -1,8 +1,11 @@
-# Co-op for two (ROADMAP 8.2): Players right x4 = "Coop 2", Select Knight twice; after each name the controller line: knight 1
+# Co-op for two (ROADMAP 8.2): main menu LOCAL, Players 2 and Mode = Coop (down, right), Select Knight twice; after each name the controller line: knight 1
 # keeps Joystick 1 (joy1 fire), knight 2 steps from Joystick 2 to Keys arrows with the cursor-right key and takes it with Ctrl
 # (the keyboard set's fire; the knight screen listens to every controller). The map: knight 1 walks with joy1 and ends its turn
 # (E); on knight 2's turn joy1 must NOT move it (dump), the cursor-right key must (dump). The log has the party lines
-# ("party: co-op, 2 knights", "party: knight N kind K controller C <name>").
+# ("party: co-op, 2 knights", "party: knight N kind K controller C <name>"). The party is ONE token at knight 1's home, the
+# black knights another (ROADMAP 8.3): after knight 1's turn (E) the BK group moves, the round ends ("Next Day", fire), the leader is
+# now knight 2: joy1 must not move it, the cursor-right key does; Space shows one status sheet per party member (two): the leader's (knight 2, closed with its own fire key Ctrl) and knight 1's (closed with joy1 fire).
+# The dumps log the party line (size, leader, port, pad) and every knight's position.
 # shotcmp-tol play-coop-menu 0.5
 # shotcmp-tol play-coop-players 0.5
 # shotcmp-tol play-coop-knight1 1.8
@@ -10,50 +13,76 @@
 # shotcmp-tol play-coop-pad2 1.8
 # shotcmp-tol play-coop-pad2-keys 1.8
 # shotcmp-tol play-coop-map 1.0
-# shotcmp-tol play-coop-turn2 1.0
-# shotcmp-tol play-coop-walk2 1.0
+# shotcmp-tol play-coop-walk1 1.0
+# shotcmp-tol play-coop-bk 3
+# shotcmp-tol play-coop-next-day 3
+# shotcmp-tol play-coop-leader2 3
+# shotcmp-tol play-coop-joy1-ignored 3
+# shotcmp-tol play-coop-walk2 3
+# shotcmp-tol play-coop-status1 3
+# shotcmp-tol play-coop-status2 3
+# shotcmp-tol play-coop-end 3
 # shotdiff play-coop-pad2 play-coop-pad2-keys 0.05
-# shotdiff play-coop-turn2 play-coop-walk2 0.05
-frame 300 key SPACE tap
+# shotdiff play-coop-leader2 play-coop-joy1-ignored 0.05
+wait file mindscape max 900
+frame 20 key SPACE tap
 wait input 10 max 3000
-frame 60 shot play-coop-menu
-frame 160 joy1 right pulse
-frame 190 joy1 right pulse
+frame 20 joy1 fire pulse
+frame 80 shot play-coop-menu
+frame 180 joy1 right pulse
+frame 190 joy1 down pulse
 frame 220 joy1 right pulse
-frame 250 joy1 right pulse
-frame 290 shot play-coop-players
+frame 260 shot play-coop-players
+frame 270 joy1 down pulse
 frame 300 joy1 down pulse
-frame 330 joy1 down pulse
-frame 360 joy1 down pulse
-frame 400 joy1 fire pulse
-frame 850 shot play-coop-knight1
-frame 860 joy1 fire pulse
-frame 1150 joy1 fire pulse
-frame 1210 shot play-coop-pad1
-frame 1220 joy1 fire pulse
-frame 1610 joy1 fire pulse
-frame 1900 joy1 fire pulse
-frame 2000 shot play-coop-pad2
-frame 2010 key RIGHT down
-frame 2013 key RIGHT up
-frame 2073 shot play-coop-pad2-keys
-frame 2083 key CTRL down
-frame 2086 key CTRL up
+frame 340 joy1 fire pulse
+frame 790 shot play-coop-knight1
+frame 800 joy1 fire pulse
+frame 1090 joy1 fire pulse
+frame 1150 shot play-coop-pad1
+frame 1160 joy1 fire pulse
+frame 1550 joy1 fire pulse
+frame 1840 joy1 fire pulse
+frame 1940 shot play-coop-pad2
+frame 1950 key RIGHT down
+frame 1953 key RIGHT up
+frame 2013 shot play-coop-pad2-keys
+frame 2023 key CTRL down
+frame 2026 key CTRL up
 wait log knight_1_kind max 1500
 frame 600 shot play-coop-map
 frame 610 poke dump 1
 frame 640 joy1 right
 frame 680 joy1 none
-frame 710 key E tap
+frame 700 shot play-coop-walk1
+frame 710 poke dump 1
+frame 720 key E tap
 wait var turn 1 max 3000
-frame 100 shot play-coop-turn2
-frame 110 poke who 1
-frame 121 poke dump 1
-frame 151 joy1 right
-frame 191 joy1 none
-frame 211 poke dump 1
-frame 241 key RIGHT down
-frame 281 key RIGHT up
-frame 321 shot play-coop-walk2
-frame 331 poke dump 1
-frame 431 quit
+frame 100 shot play-coop-bk
+frame 110 poke dump 1
+wait var turn 0 max 20000
+frame 100 shot play-coop-next-day
+frame 110 joy1 fire pulse 8
+frame 410 shot play-coop-leader2
+frame 420 poke dump 1
+frame 450 joy1 right
+frame 490 joy1 none
+frame 510 shot play-coop-joy1-ignored
+frame 520 poke dump 1
+frame 550 key RIGHT down
+frame 590 key RIGHT up
+frame 610 shot play-coop-walk2
+frame 620 poke dump 1
+frame 630 key SPACE tap
+frame 930 shot play-coop-status1
+frame 940 poke cursorx 236
+frame 941 poke cursory 150
+frame 966 key CTRL down
+frame 974 key CTRL up
+frame 1274 shot play-coop-status2
+frame 1284 poke cursorx 236
+frame 1284 poke cursory 150
+frame 1309 joy1 fire pulse 8
+frame 1609 shot play-coop-end
+frame 1619 poke dump 1
+frame 1719 quit

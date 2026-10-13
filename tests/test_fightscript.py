@@ -621,5 +621,68 @@ class OriginalScripts(unittest.TestCase):
             self.assertEqual(eng, c['engine_ops'], c['name'])
 
 
+class LoopRandomScan(unittest.TestCase):
+    """ROADMAP 12.4 / NETPLAY 1.1a T3: the scan for `loop random` ($88 $00, a count drawn from the frame counter)."""
+
+    CAT = type('Cat', (), {'doc': {'creatures': []}})()
+
+    def mem(self, data, names):
+        return F.MemImage(bytes(data), names=names)
+
+    def test_mog_scan_finds_a_loop_random_and_ignores_fixed_counts(self):
+        # label A: draw, loop 3, end, done          label B: loop random, end, done (the one the scan must find)
+        a = [0x00, 0x00, 0, 0, 0, 0, 0x88, 3, 0xFF, 0xFE, 0xFF, 0xFF]
+        b = [0x88, 0x00, 0xFF, 0xFE, 0xFF, 0xFF]
+        img = self.mem(a + b, {'scriptA': 0, 'scriptB': len(a)})
+        r = F.scan_loop_random_mog(img, self.CAT, hunk=0)
+        self.assertEqual(r['decoded'], 2)
+        self.assertEqual([x[:2] for x in r['other']], [(0, len(a))])
+        self.assertEqual(r['other'][0][2], 'scriptB')
+        self.assertEqual(r['creatures'], {})
+        # without it nothing is reported
+        img = self.mem(a, {'scriptA': 0})
+        r = F.scan_loop_random_mog(img, self.CAT, hunk=0)
+        self.assertEqual((r['other'], r['decoded']), ([], 1))
+
+    def test_program_scan(self):
+        good = [0x88, 0x00, 0xA4, 0x01, 0x00, 0x02, 0xFF, 0xFF]          # loop random, sound (4 bytes in the program overlay), done
+        fixed = [0x88, 0x05, 0xFF, 0xFF]
+        junk = [0x88, 0x00, 0x01]                                        # runs off the end of the data without ending: not a script
+        img = self.mem(good + fixed + junk, {'g': 0, 'f': len(good), 'j': len(good) + len(fixed)})
+        r = F.scan_loop_random_program(img)
+        self.assertEqual([x[:2] for x in r['sites']], [(0, 0)])
+        self.assertEqual(r['scripts_with_loop'], 1)
+
+    def test_report_text(self):
+        t = F.format_loop_report({'creatures': {'troll': [(4, 8, 'LAB_1+$2')]}, 'other': [], 'decoded': 3, 'instructions': 9},
+                                 {'sites': [], 'scripts_with_loop': 0})
+        self.assertIn('troll', t)
+        self.assertIn('LAB_1+$2', t)
+        self.assertIn('none', t)
+
+    @unittest.skipUnless(HAVE_ORIG, 'needs reference/ (original mog) and build/reasm/mog.symbols.json')
+    def test_original_scripts_have_no_loop_random(self):
+        """Every decodable script of the mog script hunk (knight, effect, map, the creature kits) and a heuristic walk of the
+        program overlay: no `loop random`.  The scan must see loops at all (fixed counts exist), so a decoder that stopped
+        recognising $88 would not pass silently."""
+        img = F.Image()
+        cat = F.Catalog()
+        r = F.scan_loop_random_mog(img, cat)
+        self.assertGreater(r['decoded'], 250)
+        self.assertEqual((r['creatures'], r['other']), ({}, []), F.format_loop_report(r, None))
+        prog = F.Program(img)
+        for a in sorted(a for a in img.by_addr if a[0] == F.SCRIPT_HUNK):
+            p = F.Program(img)
+            try:
+                p.add_root(a)
+            except F.ScriptError:
+                continue
+            prog.insns.update(p.insns)
+        fixed = [i for i in prog.insns.values() if i.text.startswith('loop ') and not i.text.startswith('loop2')]
+        self.assertGreater(len(fixed), 5)
+        if os.path.exists(os.path.join(F.ASM_DIR, 'program')) and os.path.exists(os.path.join(F.REASM_DIR, 'program.symbols.json')):
+            self.assertEqual(F.scan_loop_random_program(F.Image('program'))['sites'], [])
+
+
 if __name__ == '__main__':
     unittest.main()

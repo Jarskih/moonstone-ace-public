@@ -25,6 +25,14 @@ UBYTE sfxRequest(UWORD uwSeq) {
 	return 0;
 }
 
+bool netDeterministic() {   // src/rt/net_tick.cpp (ROADMAP 12.4): the deterministic mode is off in this blob
+	return false;
+}
+
+bool turnArrowHit(uint32_t, uint32_t, uint32_t *) {   // src/rt/party_turn.cpp (Moonstone 2): the corner arrows are inert in the classic game, never a hit here
+	return false;
+}
+
 }  // namespace rt
 
 extern "C" {

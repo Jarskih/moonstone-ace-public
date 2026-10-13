@@ -15,6 +15,8 @@
 #include <ace/types.h>
 
 #include "engine/palette.hpp"
+#include "rt/platform/display.hpp"
+#include "rt/prim.hpp"
 #include "rt/audio.hpp"
 #include "rt/enhanced.hpp"
 #if MS_ENHANCED
@@ -40,7 +42,8 @@ extern ms::PaletteRamp mogPaletteRamps[] __attribute__((weak));  // LAB_0E95
 }
 
 
-static volatile UWORD *const s_pColorRegs = (volatile UWORD *)0xDFF180;  // COLOR00
+// COLOR00..: the colour registers of the platform (rt/platform/display.hpp; $DFF180 on the Amiga)
+static volatile UWORD *colorRegs() { return rt::platform::displayColorRegs(); }
 #if MS_ENHANCED
 // Enhanced mode: the 12-bit machine below keeps all the game's palette state (live palette, targets, cycles, ramps) but
 // its colour-register writes land here; the 24-bit follower (src/rt/palette_enh.cpp) owns the real registers.
@@ -112,7 +115,11 @@ static void programFadeHook(void *) {
 
 // mog: LAB_0FC2 (self-modifying, patches the INT4 audio handler's code) runs on every fade step
 static void mogFadeHook(void *) {
-	asm volatile("jsr rt_synth_fade" : : : "d0", "d1", "a0", "a1", "cc", "memory");
+#if defined(MS_SYNTH_ASM) && MS_SYNTH_ASM
+	asm volatile("jsr rt_synth_fade" : : : "d0", "d1", "a0", "a1", "cc", "memory");   // A/B build: mog's original synth, register entry
+#else
+	rtSynthFadeC();   // the body behind rt_synth_fade (src/rt/synth.cpp)
+#endif
 }
 
 // One tick of the 12-bit machine. Enhanced mode: it still decides what moves when (and runs the fade hooks), but the
@@ -127,7 +134,7 @@ static void paletteTickBoth(bool isMog, ms::PaletteFadeHook pfnHook) {
 		return;
 	}
 #endif
-	ms::paletteTick(v, s_pColorRegs, pfnHook, nullptr);
+	ms::paletteTick(v, colorRegs(), pfnHook, nullptr);
 }
 
 MS_USED void rt_palette_tick_prg(void) {
@@ -137,57 +144,3 @@ MS_USED void rt_palette_tick_prg(void) {
 MS_USED void rt_palette_tick_mog(void) {
 	paletteTickBoth(true, mogFadeHook);
 }
-
-#define PALETTE_SHIMS(SFX, MOG) \
-asm(".text\n" \
-	".globl rt_palette_set_target_" #SFX "\n" \
-	"rt_palette_set_target_" #SFX ":\n" \
-	"	movem.l %d0-%d1/%a0-%a1,-(%sp)\n" \
-	"	move.l %d0,-(%sp)\n" \
-	"	move.l %a0,-(%sp)\n" \
-	"	move.l #" #MOG ",-(%sp)\n" \
-	"	jsr rtPaletteSetTarget\n" \
-	"	lea 12(%sp),%sp\n" \
-	"	movem.l (%sp)+,%d0-%d1/%a0-%a1\n" \
-	"	rts\n" \
-	".globl rt_palette_ramp_add_" #SFX "\n" \
-	"rt_palette_ramp_add_" #SFX ":\n" \
-	"	move.l %d0,-(%sp)\n" \
-	"	movem.l %d1/%a0-%a1,-(%sp)\n" \
-	"	move.l %d3,-(%sp)\n" \
-	"	move.l %d2,-(%sp)\n" \
-	"	move.l %d1,-(%sp)\n" \
-	"	move.l %d0,-(%sp)\n" \
-	"	move.l #" #MOG ",-(%sp)\n" \
-	"	jsr rtPaletteRampAdd\n" \
-	"	lea 20(%sp),%sp\n" \
-	"	movem.l (%sp)+,%d1/%a0-%a1\n" \
-	"	tst.l %d0\n" \
-	"	bne 1f\n" \
-	"	move.l (%sp),%d0\n" \
-	"1:	addq.l #4,%sp\n" \
-	"	rts\n");
-
-PALETTE_SHIMS(prg, 0)
-PALETTE_SHIMS(mog, 1)
-
-// colour-cycle slot allocator: mog only. program's twin (the unlabelled routine after LAB_0576) has no caller,
-// so it is not patched (docs/DEAD_RT.md).
-asm(".text\n"
-	".globl rt_palette_cycle_add_mog\n"
-	"rt_palette_cycle_add_mog:\n"
-	"	move.l %d0,-(%sp)\n"
-	"	movem.l %d1/%a0-%a1,-(%sp)\n"
-	"	move.l %d3,-(%sp)\n"
-	"	move.l %d2,-(%sp)\n"
-	"	move.l %d1,-(%sp)\n"
-	"	move.l %d0,-(%sp)\n"
-	"	move.l #1,-(%sp)\n"
-	"	jsr rtPaletteCycleAdd\n"
-	"	lea 20(%sp),%sp\n"
-	"	movem.l (%sp)+,%d1/%a0-%a1\n"
-	"	tst.l %d0\n"
-	"	bne 1f\n"
-	"	move.l (%sp),%d0\n"
-	"1:	addq.l #4,%sp\n"
-	"	rts\n");

@@ -31,7 +31,7 @@ import cellnames as CN  # noqa: E402  (ROADMAP 7.1s)
 H, UM = TE.H if TE.HAVE_UC else None, (TE.UM if TE.HAVE_UC else None)
 SYMS_HPP = os.path.join(ROOT, 'include', 'ms', 'gen', 'program_syms.hpp')
 PROG_EXE = os.path.join(ROOT, 'build', 'reasm', 'program')
-SRCS = ('src/game/progmain.cpp', 'src/rt/progmain.cpp')
+SRCS = ('src/game/progmain.cpp', 'src/rt/progmain.cpp', 'src/rt/amiga/progmain_entries.cpp', 'tests/progmain_emu_support.cpp')   # the support: C arguments -> the registers of the stubs
 STUBS = TE.BLOB_BASE + 0xC000
 STUB_SIZE = 0x40
 LOG_CELL = 0x19F000
@@ -54,12 +54,14 @@ SYM = load_syms() if os.path.exists(SYMS_HPP) else {}
 
 # the rt entries the C++ calls: name -> (stub index, log id, ends the run)
 RT_STUBS = {'rt_prg_intro_begin': (0, 0x025F, True), 'rt_prg_intro_run': (1, 0x7001, False), 'rt_prg_ending_run': (2, 0x0054, True),
-            'rt_job_handler_stop': (3, 0x7003, False), 'rt_run_mog': (4, 0x7004, False),
+            'rtJobHandlerStop': (3, 0x7003, False), 'rt_run_mog': (4, 0x7004, False),
             # the entries that replaced the patch stubs at the labels of LEAVES (the C++ calls them directly since 7.1o): same log ids
             'rt_prg_file_init': (5, 0x038F, False), 'rt_prg_display_init': (6, 0x8029, False), 'rt_prg_cel_scratch': (7, 0x8025, False),
             'rt_prg_cel_init': (8, 0x8023, False), 'rt_prg_cel_clip': (9, 0x04A7, False), 'rtEnhCarveProgram': (10, 0x0044, False),
             'rt_prg_anim_init': (11, 0x8010, False), 'rt_prg_palette_hook_add': (12, 0x8031, False), 'rt_scn_message': (13, 0x0051, False),
-            'rtSceneFlip': (14, 0x0262, False)}   # 7.1q: LAB_0262 and LAB_0044 are C++ (called directly)
+            'rtSceneFlip': (14, 0x0262, False),   # 7.1q: LAB_0262 and LAB_0044 are C++ (called directly)
+            # ROADMAP 12.19: opEndingRun closes a network game's session after the ending (never reached here: the rt_prg_ending_run stub ends the run)
+            '_ZN2rt26netSessionCloseAfterEndingEv': (15, 0x7005, False)}
 
 
 def stub_log(entry_id, ends=False):
@@ -250,7 +252,7 @@ class ProgMainEmuTest(unittest.TestCase):
         g = lambda lab: struct.unpack('>I', data[SYM[lab] - self.image_lo:][:4])[0]
         self.assertEqual([g('LAB_00C2'), g('LAB_00C3'), g('LAB_00C4'), g('LAB_00C5')],
                          [regs['A1'], regs['D1'], regs['A0'], regs['D0']])
-        self.assertEqual(g('LAB_011B'), STUBS + STUB_SIZE * RT_STUBS['rt_job_handler_stop'][0])
+        self.assertEqual(g('LAB_011B'), STUBS + STUB_SIZE * RT_STUBS['rtJobHandlerStop'][0])
         self.assertEqual(struct.unpack('>I', so[0][1][SYM['LAB_011B'] - self.image_lo:][:4])[0], SYM['LAB_0014'])
         self.assertEqual((g('LAB_0060'), g('LAB_0123')), (0, 0) if ends_with == 0x025F else (g('LAB_0060'), g('LAB_0123')))
         return lo

@@ -11,7 +11,8 @@ Steps (stop at the first failing gate):
   5. --boot STEPS: powershell uaeshot.ps1 -Joy -Steps STEPS (e.g. "wait:40,shot:integ")
      --boot (no argument) / --boot regression: configure+build build-autoplay/ (Debug, MS_AUTOPLAY) and build-autoplay-rel/
             (Release LTO, MS_AUTOPLAY) + their hdinstall, then run every tests/boot/regression*.txt headlessly on each
-            (uaeshot.ps1 -Instance $MS_BOOT_INSTANCE -Autoplay) and compare the shots with build/shots/ref/ (Debug,
+            (uaeshot.ps1 -Instance $MS_BOOT_INSTANCE -Autoplay, at WinUAE warp speed unless --boot-speed real, see DEFAULT_BOOT_SPEED; the
+            whole batch holds the machine-wide emulator lock, tools/emulock.py) and compare the shots with build/shots/ref/ (Debug,
             `[boot     ]`) resp. build/shots/ref-rel/ (Release, `[boot rel ]`) (tools/shotcmp.py), PASS/FAIL per screen;
             docs/AUTOPLAY.md. A plain --boot also runs the per-commit play scripts (PLAY_COMMIT, ~10 min) on the Debug leg; --no-play skips
             them, --boot-play nightly runs every tests/boot/play_*.txt. --only-boot skips steps 1-4. --no-rel drops the Release leg, --rel-only the Debug one; --update-refs-rel rewrites ref-rel/
@@ -104,7 +105,10 @@ def verify_summary(out):
 
 
 def run_test(mod):
-    rc, out, dt = run([sys.executable, '-m', 'unittest', f'tests.{mod}'], mod)
+    env = toolchain_env()
+    if env.get('MS_HOSTCACHE', '1') != '0':    # host clang drivers through tools/hostcache.py (also in the python children)
+        env['PYTHONPATH'] = os.pathsep.join([os.path.join(ROOT, 'tools', 'hostcache_site')] + ([env['PYTHONPATH']] if env.get('PYTHONPATH') else []))
+    rc, out, dt = run([sys.executable, '-m', 'unittest', f'tests.{mod}'], mod, env=env)
     m = re.search(r'Ran (\d+) tests?', out)
     bad = re.findall(r'^(?:FAIL|ERROR): (\S+)', out, re.M)
     return mod, rc, (m.group(1) if m else '?'), bad, dt
@@ -119,6 +123,11 @@ AUTOPLAY_REL_DIR = 'build-autoplay-rel'
 # The play scripts (tests/boot/play_*.txt, docs/AUTOPLAY.md) of the per-commit tier: a plain --boot adds them to the Debug leg
 # (castle 92 s + wizard 139 s + stonehenge 185 s + duel 151 s = ~9.5 min). --boot-play nightly runs all of them (~45 min serial).
 PLAY_COMMIT = ['play_castle.txt', 'play_wizard.txt', 'play_stonehenge.txt', 'play_duel.txt']
+# Emulation speed of the boot runs (uaeshot.ps1 -Speed, measured 2026-10-11 on tests/boot/play_options.txt: real 126 s, warp 45 s, same
+# 8 screens PASS). A script that fails at warp is run again at real speed and only that verdict counts (warp can shift when a pulse
+# lands relative to a redraw: "pulse MISSED" notes), perf_* scripts and --update-refs-rel always run at real speed. MS_EMU_SPEED=real
+# (or --boot-speed real) switches warp off.
+DEFAULT_BOOT_SPEED = 'warp'
 BOOT_INSTANCE = int(os.environ.get('MS_BOOT_INSTANCE', '3'))   # uaeshot.ps1 -Instance: own config copy + log, kills only its own WinUAE; parallel worktrees set their own number
 
 
@@ -169,13 +178,16 @@ def autoplay_config(adir=AUTOPLAY_DIR, stock=False):
     return rel
 
 
-def run_boot(rel=False, update_refs=False, scripts_glob='regression*.txt', scripts=None, shots_dir=None, ref_dir=None, repeat=1):
+def run_boot(rel=False, update_refs=False, scripts_glob='regression*.txt', scripts=None, shots_dir=None, ref_dir=None, repeat=1, speed=None):
     """Run tests/boot/<scripts_glob> (or the given scripts, `repeat` times each), compare the shots (rel: the Release build
     against build/shots/ref-rel/, labelled `[boot rel ]`; update_refs: copy the shots to ref-rel/ instead). shots_dir / ref_dir
     default to build/shots and build/shots/ref[-rel] (a worktree can point at the main checkout's references).
     -> True when every screen passes."""
     import shutil, bootcheck, shotcmp
     tag = '[boot rel ]' if rel else '[boot     ]'
+    speed = speed or os.environ.get('MS_EMU_SPEED') or DEFAULT_BOOT_SPEED
+    if update_refs:
+        speed = 'real'
     shots_dir = shots_dir or os.path.join(ROOT, 'build', 'shots')
     ref_dir = ref_dir or os.path.join(shots_dir, 'ref-rel' if rel else 'ref')
     os.makedirs(shots_dir, exist_ok=True)
@@ -188,8 +200,11 @@ def run_boot(rel=False, update_refs=False, scripts_glob='regression*.txt', scrip
         print(tag + ' no tests/boot/' + scripts_glob)
         return False
     ok = True
+    failed_at_speed = []
     for script in scripts:
         name = os.path.basename(script)
+        ok_all, ok = ok, True   # this script's verdict alone (kept apart so that a warp failure can be retried at real speed)
+        script_speed = 'real' if name.startswith('perf_') else speed
         info = bootcheck.parse(open(script, encoding='utf-8').read())
         for n in info['shots']:   # a stale shot must not pass for a fresh one
             try:
@@ -200,14 +215,15 @@ def run_boot(rel=False, update_refs=False, scripts_glob='regression*.txt', scrip
         rc, out, dt = run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'uaeshot.ps1', '-Config', cfg,
                            '-Instance', str(BOOT_INSTANCE), '-Autoplay', script, '-Dir', shots_dir,
                            '-Timeout', str(bootcheck.timeout_for(info['last_frame'], shots=len(info['shots']))),
-                           '-ShotDelayMs', os.environ.get('MS_SHOT_DELAY_MS', '300')], ('boot_rel_' if rel else 'boot_') + name[:-4])
+                           '-ShotDelayMs', os.environ.get('MS_SHOT_DELAY_MS', '300')], ('boot_rel_' if rel else 'boot_') + name[:-4],
+                          env=dict(toolchain_env(), MS_EMU_SPEED=script_speed))
         quit_seen = 'AUTOPLAY quit' in out
         runs[name] = runs.get(name, 0) + 1
         try:   # keep every run's serial log (WARN/ERR/crash lines, files: open FAIL) next to the shots
             shutil.copyfile(os.path.join(ROOT, 'build', f'uaeshot-{BOOT_INSTANCE}.log'), os.path.join(shots_dir, f'{name[:-4]}-run{runs[name]}.log'))
         except OSError:
             pass
-        print(f'{tag} {name}: {"ran to quit" if quit_seen else "NO quit line (timeout)"} ({dt:.0f}s), log build/integrate/{"boot_rel_" if rel else "boot_"}{name[:-4]}.log')
+        print(f'{tag} {name}: {"ran to quit" if quit_seen else "NO quit line (timeout)"} ({dt:.0f}s, {script_speed}), log build/integrate/{"boot_rel_" if rel else "boot_"}{name[:-4]}.log')
         ok &= quit_seen
         try:   # serial log scan: errors fail the run, the harness notes (a wait that gave up, a press the game never read) are printed
             logtext = open(os.path.join(shots_dir, f'{name[:-4]}-run{runs[name]}.log'), encoding='latin-1').read().splitlines()
@@ -256,6 +272,15 @@ def run_boot(rel=False, update_refs=False, scripts_glob='regression*.txt', scrip
                 good, line = bootcheck.judge_differ(a, b, pct, minimum)
                 print('    ' + line)
                 ok &= good
+        if not ok and script_speed != 'real':
+            failed_at_speed.append(script)   # the rerun at real speed decides, not this pass
+            ok = True
+        ok = ok_all and ok
+    if failed_at_speed:   # warp can differ from the real machine in when an input lands: the real-speed run decides
+        print(f'{tag} failed at {speed} speed: {", ".join(os.path.basename(x) for x in failed_at_speed)} -> again at real speed')
+        again = run_boot(rel=rel, update_refs=update_refs, scripts_glob=scripts_glob, scripts=failed_at_speed, shots_dir=shots_dir,
+                         ref_dir=ref_dir, repeat=1, speed='real')
+        return ok and again   # ok = the other scripts of this pass
     return ok
 
 
@@ -269,6 +294,8 @@ def main():
                     help='with --boot: the whole-game play scripts after the regression scripts: commit = %s (~10 min, the default of a plain '
                          '--boot), nightly = every tests/boot/play_*.txt (~45 min serial)' % ' '.join(PLAY_COMMIT))
     ap.add_argument('--no-play', action='store_true', help='with --boot: no play scripts (regression*.txt only)')
+    ap.add_argument('--boot-speed', choices=['real', 'max', 'warp'],
+                    help='with --boot: emulation speed (default %s; a script failing at warp is repeated at real speed; perf_* always real). Same as MS_EMU_SPEED' % DEFAULT_BOOT_SPEED)
     ap.add_argument('--boot-repeat', type=int, default=1, help='with --boot: run every script this many times (stability check)')
     ap.add_argument('--boot-shots', metavar='DIR', help='with --boot: shot directory (default build/shots)')
     ap.add_argument('--boot-refs', metavar='DIR', help='with --boot: reference directory (default <shots>/ref)')
@@ -282,6 +309,8 @@ def main():
     ap.add_argument('--tests', choices=['auto', 'all', 'none'], default='auto')
     ap.add_argument('--skip-build', action='store_true', help='regenerate + verify (+ tests) only')
     a = ap.parse_args()
+    if a.boot_speed:
+        os.environ['MS_EMU_SPEED'] = a.boot_speed
     ok = True
     auto = a.boot in ('regression', 'autoplay')
     a.rel_only = a.rel_only or a.update_refs_rel
@@ -372,26 +401,28 @@ def main():
         print('[tests    ] none selected')
 
     if auto:
-        boot_scripts = [os.path.abspath(x) for x in a.boot_script] if a.boot_script else None
-        tier = a.boot_play or (None if a.no_play or boot_scripts is not None else 'commit')
-        if tier:
-            if boot_scripts is None:
-                boot_scripts = sorted(glob.glob(os.path.join(ROOT, 'tests', 'boot', 'regression*.txt')))
-            if tier == 'commit':
-                boot_scripts += [os.path.join(ROOT, 'tests', 'boot', f) for f in PLAY_COMMIT]
-            else:
-                boot_scripts += sorted(glob.glob(os.path.join(ROOT, 'tests', 'boot', 'play_*.txt')))
-        bkw = dict(scripts=boot_scripts, shots_dir=a.boot_shots, ref_dir=a.boot_refs, repeat=a.boot_repeat)
-        if not a.rel_only:
-            passed = run_boot(**bkw)
-            print(f'[boot     ] regression: {"all screens PASS" if passed else "FAILED"}')
-            ok &= passed
-        if not a.no_rel or a.rel_only:
-            passed = run_boot(rel=True, update_refs=a.update_refs_rel,
-                              scripts_glob='regression_practice.txt' if a.rel_practice_only else 'regression*.txt',
-                              shots_dir=a.boot_shots, repeat=a.boot_repeat)
-            print(f'[boot rel ] regression: {"refs updated" if a.update_refs_rel else "all screens PASS" if passed else "FAILED"}')
-            ok &= passed
+        import emulock   # one emulator job at a time on this machine (tools/emulock.py); the uaeshot.ps1 calls inside run on this hold
+        with emulock.EmuLock("integrate.py --boot"):
+            boot_scripts = [os.path.abspath(x) for x in a.boot_script] if a.boot_script else None
+            tier = a.boot_play or (None if a.no_play or boot_scripts is not None else 'commit')
+            if tier:
+                if boot_scripts is None:
+                    boot_scripts = sorted(glob.glob(os.path.join(ROOT, 'tests', 'boot', 'regression*.txt')))
+                if tier == 'commit':
+                    boot_scripts += [os.path.join(ROOT, 'tests', 'boot', f) for f in PLAY_COMMIT]
+                else:
+                    boot_scripts += sorted(glob.glob(os.path.join(ROOT, 'tests', 'boot', 'play_*.txt')))
+            bkw = dict(scripts=boot_scripts, shots_dir=a.boot_shots, ref_dir=a.boot_refs, repeat=a.boot_repeat)
+            if not a.rel_only:
+                passed = run_boot(**bkw)
+                print(f'[boot     ] regression: {"all screens PASS" if passed else "FAILED"}')
+                ok &= passed
+            if not a.no_rel or a.rel_only:
+                passed = run_boot(rel=True, update_refs=a.update_refs_rel,
+                                  scripts_glob='regression_practice.txt' if a.rel_practice_only else 'regression*.txt',
+                                  shots_dir=a.boot_shots, repeat=a.boot_repeat)
+                print(f'[boot rel ] regression: {"refs updated" if a.update_refs_rel else "all screens PASS" if passed else "FAILED"}')
+                ok &= passed
     elif a.boot:
         rc, out, dt = run(['powershell', '-NoProfile', '-File', 'uaeshot.ps1', '-Joy', '-Steps', a.boot], 'boot')
         print(f'[boot     ] {"ok" if rc == 0 else "FAILED"} ({dt:.0f}s), screenshots in build/shots')

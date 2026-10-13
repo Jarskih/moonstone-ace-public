@@ -34,8 +34,13 @@
 #include "rt/arena.hpp"
 #include "rt/combat_load.hpp"
 #include "rt/hunk9.hpp"
+#include "rt/input.hpp"
 #include "rt/combat_ui.hpp"
+#include "rt/combat_pool.hpp"
+#include "rt/fight_roster.hpp"
 #include "rt/loot.hpp"
+#include "rt/logwrite.hpp"
+#include "rt/party_turn.hpp"
 #include "rt/perf.hpp"
 #include "rt/sfx.hpp"
 #include "rt/stubfn.h"
@@ -107,7 +112,13 @@ Lair *lair(uint32_t a) { return reinterpret_cast<Lair *>((uintptr_t)a); }
 
 // ---- FightOps ------------------------------------------------------------------------------------------------
 
-void opKeyReset() { call(RT_FN(rt_mog_key_reset)); }
+void opKeyReset() {
+	if(rt::fightRoster().ubActive != 0) {   // Moonstone 2: keyboard pads are HELD keys; only the "any key" word is forgotten, the down flags stay (ROADMAP 8.4b)
+		*rt::inputMogCells().puwKeyAny = 0;
+		return;
+	}
+	call(RT_FN(rt_mog_key_reset));
+}
 void opClearScriptSlots() { call(RT_FN(rt_mog_dagger_clear)); }
 void opFlip() {
 	rt::perfTickDone();                                                     // MS_AUTOPLAY perf split (8.4a); no-op otherwise
@@ -179,6 +190,7 @@ void op0116() { rtClHe(); }                                                 // L
 void op0121() { rtClDragon(); }                                             // LAB_0121
 void opPlaceAttacker() { rt::arenaPlaceAttacker(); }                           // LAB_01A4
 void opSpawn(uint32_t ulRecord, uint32_t ulScript) { rt::arenaSpawn(ulRecord, ulScript); }   // LAB_01A9: A1 = record, A0 = script
+void opSpawnAt(uint32_t ulRecord, uint32_t ulScript, uint16_t uwDepth) { rt::arenaSpawnAt(ulRecord, ulScript, uwDepth); }   // Moonstone 2: LAB_01A9 at a chosen depth
 uint32_t opAllocCreature() { return rt::arenaAlloc(); }                         // LAB_0171 -> A1
 void opPaletteMode(uint32_t ulMode) {
 	if(ulMode == 0x14) {   // the last step of the dragon arena's set-up: log its numbers (serial log, MS_AUTOPLAY; the boot proof of a `dragon` row)
@@ -200,7 +212,7 @@ const FightOps g_fightOps = {
 	opContactPass, opDrawPass, opExtraPass, opTranslateKey, opFrameWait, opSpawnWarning, opKillJob, opSoundTick,
 	opAfterFight, opFadeIn, opClearJobs, opResetScreen, opScreen, opReturnToMap, opClearObjects, op0155, opFadeOut,
 	opCopyName, opShowAvoidText, opWaitFire, op03EB, opMapStep, opCallSpawn, opCommonSetup, op0100, op015F, op0116,
-	op0121, opPlaceAttacker, opSpawn, opAllocCreature, opPaletteMode, opPoke32, opCreatureArena,
+	op0121, opPlaceAttacker, opSpawn, opAllocCreature, opPaletteMode, opPoke32, opCreatureArena, opSpawnAt,
 };
 
 void buildFightEnv(FightEnv &e) {
@@ -233,6 +245,9 @@ void buildFightEnv(FightEnv &e) {
 	e.aKnights = mogKnights;
 	e.aInv = mogInventories;  // LAB_0618
 	e.pDragonRow = &ms::game::g_gameData.aCreatures[9];   // creatures.ini row `dragon` (CR_DRAGON, ROADMAP 9.7)
+	e.pRoster = &rt::fightRoster();                       // Moonstone 2: the party fights together (ROADMAP 8.4b); inactive in a classic game
+	e.pfnSeedRoster = rt::fightSeedRoster;
+	e.pfnPool = rt::combatPoolUse;
 	FightCells &c = e.c;
 	c.pAct = &mogActive;  // LAB_05E4
 	c.pDefeat = &mogDefeatBits;  // LAB_05DC
@@ -284,7 +299,7 @@ void sOp0575() { call(RT_FN(rt_mog_cursor_on)); }
 void sOp0588() { rt::uiButtonTables(); }                                   // LAB_0588, C++ since ROADMAP 7.1j (src/rt/combat_ui.cpp)
 void sOp057B() { call(RT_FN(rt_mog_cursor_off)); }
 uint32_t sHitTest(uint32_t ulX, uint32_t ulY) { return rt::uiHitTest(ulX, ulY); }   // LAB_0451 -> the region or 0
-void sClick(uint32_t ulRegion) { rtLootClick(ulRegion); }   // LAB_052A: A0 = region (C++, rt/loot.hpp, 7.1q)
+void sClick(uint32_t ulRegion) { if(!rt::turnArrowClick(ulRegion)) rtLootClick(ulRegion); }   // LAB_052A: A0 = region (C++, rt/loot.hpp, 7.1q)
 void sFlip() { call(RT_FN(rt_mog_display_flip)); }
 void sDrawPass() { call(RT_FN(rt_mog_restore_pass)); }
 void sOp044E() { rt::uiPoolClear(); }                                       // LAB_044E
@@ -303,12 +318,17 @@ void sOp051D() { rt::uiLootDragon(); }                                     // LA
 void sBlitScreen() { call(RT_FN(rt_mog_blit_screen), 0, 0, 0, 0, mogShownScreen, mogDrawScreen); }     // A0 = SECSTRT_35, A1 = LAB_0D92
 void sWaitBlitter() { call(RT_FN(rt_blit_wait)); }
 void sOp0D8A() { call(RT_FN(rt_display_palette_write), 0, 0, 0, 0, addr(mogLootPalette)); }        // A0 = LAB_09F0
-void sOp03EE() { call(RT_FN(rt_mog_pal_copy_live), 0, 0, 0, 0, addr(mogLootPalette)); }
+void sOp03EE() {
+	call(RT_FN(rt_mog_pal_copy_live), 0, 0, 0, 0, addr(mogLootPalette));
+	logWrite("screen ready %lu\n", static_cast<unsigned long>(mogSceneId));   // after the redraw and palette, unlike the scene-id store before fade-out
+}
+void sTurnBanner() { rt::turnBannerScreen(); }
+void sTurnCorner() { rt::turnCornerScreen(); }                              // ROADMAP 8.5a: inert outside a co-op shop queue
 
 const ScreenOps g_screenOps = {
 	sFadeOut, sOp0575, sOp0588, sOp057B, sHitTest, sClick, sFlip, sDrawPass, sOp044E, sOp04EA, sBlitBackground,
 	sSetTarget, sLootSetup, sOp03A7, sDrawStats, sOp051B, sOp0524, sOp0522, sOp04FE, sOp051F, sOp051D, sBlitScreen,
-	sWaitBlitter, sOp0D8A, sOp03EE,
+	sWaitBlitter, sOp0D8A, sOp03EE, sTurnBanner, sTurnCorner,
 };
 
 void buildScreenEnv(ScreenEnv &e) {
@@ -503,4 +523,3 @@ rt_screen_redraw:
 	movem.l (%sp)+,%d0-%d7/%a0-%a6
 	rts
 )");
-

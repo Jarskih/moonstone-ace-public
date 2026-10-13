@@ -23,6 +23,7 @@
 #include "rt/abs.h"
 #include "rt/autoplay.hpp"
 #include "rt/input.hpp"
+#include "rt/net_tick.hpp"
 
 extern "C" {
 
@@ -66,7 +67,7 @@ namespace {
 
 constexpr UWORD INTS_GAME_MASKED = INTF_COPER | INTF_AUD0 | INTF_AUD1 | INTF_AUD2 | INTF_AUD3;
 
-ULONG s_ulVbl;
+volatile ULONG s_ulVbl;
 UWORD s_uwInstalls;
 
 // The original SECSTRT_15 / SECSTRT_20 (the VBL service routine). Its head counted down the trackdisk motor-off timeout
@@ -157,10 +158,18 @@ void irqLevel3() {
 		g_pCustom->intreq = INTF_BLIT;
 	}
 	if(uwReq & INTF_VERTB) {
+		const bool isNet = netDeterministic();                       // ROADMAP 12.4: the tick (main thread) owns the frame counter and the mouse
 		if(*pCells->puwFrameOn != 0) {                               // LAB_0363: frame counting enabled
-			++*pCells->pulFrame;                                     // LAB_0379
+			if(isNet) {
+				netCountPaceFrame();                                 // only the pacing counter moves here
+			}
+			else {
+				++*pCells->pulFrame;                                 // LAB_0379
+			}
 		}
-		inputPointerTick(*pCells);                                   // JSR LAB_034D
+		if(!isNet) {
+			inputPointerTick(*pCells);                               // JSR LAB_034D
+		}
 		g_pCustom->potgo = 1;                                        // MOVE.W #1,POTGO
 		runHooks(pCells->pulHooks);                                  // JSR SECSTRT_15
 		g_pCustom->intreq = INTF_VERTB;

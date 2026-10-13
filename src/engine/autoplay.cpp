@@ -2,6 +2,7 @@
 #include "engine/autoplay.hpp"
 
 #include "engine/input.hpp"
+#include "engine/tickpoke.hpp"
 
 namespace ms {
 
@@ -146,7 +147,7 @@ constexpr unsigned kMaxLineEvents = 2 * kApTypeLen;
 // Builds the events of one tokenised line into aOut; returns the count, or -1 if the line is invalid.
 int buildLine(const Tok *aTok, unsigned uTok, ApEvent *aOut) {
 	ApEvent e = {};
-	if(uTok >= 1 && (eq(aTok[0].p, aTok[0].n, "wait") || eq(aTok[0].p, aTok[0].n, "sync"))) {   // no "frame N" prefix: N = 0
+	if(uTok >= 1 && (eq(aTok[0].p, aTok[0].n, "wait") || eq(aTok[0].p, aTok[0].n, "sync") || eq(aTok[0].p, aTok[0].n, "tick"))) {   // no "frame N" prefix: N = 0
 		static const Tok s_tokFrame = {"frame", 5}, s_tokZero = {"0", 1};
 		Tok aShift[kMaxTok];
 		if(uTok + 2 > kMaxTok) {
@@ -227,14 +228,35 @@ int buildLine(const Tok *aTok, unsigned uTok, ApEvent *aOut) {
 		}
 		aOut[uOut++] = e;
 	}
-	else if(eq(k.p, k.n, "mash") && uTok == 5 && (eq(aTok[3].p, aTok[3].n, "joy0") || eq(aTok[3].p, aTok[3].n, "joy1"))) {
+	else if(eq(k.p, k.n, "mash") && uTok == 5 && (eq(aTok[3].p, aTok[3].n, "joy0") || eq(aTok[3].p, aTok[3].n, "joy1") || eq(aTok[3].p, aTok[3].n, "wasd"))) {
 		uint32_t ulF = 0;
 		if(!eq(aTok[4].p, aTok[4].n, "off") && (!parseUint(aTok[4], ulF) || ulF < 1 || ulF > 255)) {
 			return -1;
 		}
 		e.ubKind = AP_MASH;
-		e.ubCode = (uint8_t)(aTok[3].p[3] - '0');
+		e.ubCode = aTok[3].p[0] == 'w' || aTok[3].p[0] == 'W' ? 2 : (uint8_t)(aTok[3].p[3] - '0');   // 2 = the keyboard set W A S D + Alt
 		e.ubBits = (uint8_t)ulF;
+		aOut[uOut++] = e;
+	}
+	else if(eq(k.p, k.n, "tick") && uTok == 7 && eq(aTok[4].p, aTok[4].n, "poke")) {   // tick <N>|+<K>|hash+<K> poke NAME VALUE
+		Tok n = aTok[3];
+		e.ubKind = AP_TICK_POKE;
+		e.ubCode = TPM_ABSOLUTE;
+		if(n.n > 0 && n.p[0] == '+') {
+			e.ubCode = TPM_RELATIVE;
+			++n.p;
+			--n.n;
+		}
+		else if(n.n > 5 && eq(n.p, 5, "hash+")) {
+			e.ubCode = TPM_HASH;
+			n.p += 5;
+			n.n -= 5;
+		}
+		uint32_t ulV = 0;
+		if(!parseUint(n, e.ulTick) || !setText(e, aTok[5]) || !parseNum(aTok[6], ulV)) {
+			return -1;
+		}
+		e.ulValue = ulV;
 		aOut[uOut++] = e;
 	}
 	else if(eq(k.p, k.n, "poke") && uTok == 5) {

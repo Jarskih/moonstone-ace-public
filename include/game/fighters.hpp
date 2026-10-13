@@ -57,6 +57,7 @@
 
 #include "game/creatures.hpp"
 #include "game/rules/ai_fight.hpp"
+#include "game/roster.hpp"
 #include "game/world.hpp"
 
 namespace ms { namespace game {
@@ -180,6 +181,7 @@ struct FighterEnv {
 	uint16_t *pHopStep;             // LAB_08CF: the hop counter of LAB_0210 / LAB_0211
 	uint16_t *pFade;                // LAB_08D9: palette block the demon's death clears (words 2..7) before the fade calls
 	SoundCycle *pPickCycle;         // LAB_02EC: the counters of the sound pickers
+	const FightRoster *pRoster = nullptr;   // Moonstone 2 (ROADMAP 8.4b): the party fight's roster; null / inactive = the classic fight
 	FightScripts scripts;
 	// callbacks (asm in the game, deterministic stand-ins in the host test).  The comments give the original's registers.
 	Joystick (*joystick)();                                          // LAB_00EE: JSR; D0 / D1
@@ -257,6 +259,13 @@ void soundPick(SoundPick which, uint32_t &ulSeed, SoundCycle &cycle, void (*soun
 const uint32_t FIGHT_OP_TAG = 0xF0000000u;
 bool fightOpRun(const FighterEnv &env, uint32_t ulFn, uint32_t ulOwner, uint32_t ulFrames, uint16_t uwX, uint16_t uwY,
                 uint16_t uwZ, uint8_t ubFacing);
+// Moonstone 2 (ROADMAP 8.4b): in a party fight the script of a PARTY KNIGHT that calls LAB_000D (mark dead), LAB_0006 (fight over) or
+// LAB_0005 (a fighter died) settles that knight, not "the current knight": the owner is marked dead / the fight ends when the whole party
+// is down.  A CREATURE's kill script (LAB_000D, LAB_0006 after its finishing blow) is settled the same way (roster.hpp rosterScriptVictim /
+// rosterScriptEndsFight): the knight it struck is marked dead and the fight goes on while another party knight stands (a creature's own death
+// script, the boss's, still ends it).  Returns true when it ran the op; false for every other op (a creature's LAB_0005 / LAB_000A) and in a
+// classic fight (the caller then runs the routines of the original).
+bool fightOpPartyRun(const FighterEnv &env, uint32_t ulFn, uint32_t ulOwner);
 
 // The first sixteen entries of the handler table LAB_08C7 that LAB_01AE filled with asm addresses (slot 68, LAB_04AC, is a
 // map handler and stays asm): hKnight at 12 / 56, ..., written big-endian into env.pHandlerTable.

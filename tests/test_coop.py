@@ -41,8 +41,6 @@ static void oClear(MenuBuffer) {}
 static void oTFlag(uint16_t) {}
 static void oSprite(MenuBank b, uint16_t i, uint16_t x, uint16_t y) { snprintf(g_buf, sizeof g_buf, "spr %d %u %u %u", (int)b, i, x, y); tr(g_buf); }
 static void oNum(uint16_t v) { snprintf(g_buf, sizeof g_buf, "num %u", v); tr(g_buf); }
-static void oParty(uint16_t v) { snprintf(g_buf, sizeof g_buf, "coop %u", v); tr(g_buf); }
-static void oGore(bool) {}
 static void oText(MenuText t) { snprintf(g_buf, sizeof g_buf, "text %d", (int)t); tr(g_buf); }
 static void oStr(const uint8_t *p, uint16_t x, uint16_t y, uint16_t) { snprintf(g_buf, sizeof g_buf, "str %s %u %u", (const char *)p, x, y); tr(g_buf); }
 static void oPal(MenuPalette) {}
@@ -56,8 +54,8 @@ static uint8_t oXlat(uint16_t) { return 0; }
 static void oPub(uint16_t) {}
 static uint32_t oSpawn(uint16_t, uint16_t, uint16_t, uint16_t) { return 1; }
 static void oKill(uint32_t) {}
-static const MenuOps g_ops = {oNop, oNop, oFlip, oWait, oNop, oNop, oNop, oClear, oTFlag, oSprite, oNum, oGore, oText, oStr,
-	oPal, oNop, oJoy, oKey, oKeyNop, oKeyNop, oXlat, oNop, oPub, oSpawn, oKill, oParty};
+static const MenuOps g_ops = {oNop, oNop, oFlip, oWait, oNop, oNop, oNop, oClear, oTFlag, oSprite, oNum, oText, oStr,
+	oPal, oNop, oJoy, oKey, oKeyNop, oKeyNop, oXlat, oNop, oPub, oSpawn, oKill, nullptr, nullptr};
 
 static int g_fail, g_checks;
 static void check(bool ok, const char *what) {
@@ -69,7 +67,7 @@ static void run(const uint16_t *joy, int n) { g_joy = joy; g_nJoy = n; g_pos = 0
 
 static SceneMenu menuRun(const uint16_t *joy, int n, uint16_t players, bool allowed, bool coop) {
 	SceneMenu m;
-	m.state.uwPlayers = players; m.state.uwCursor = 0; m.state.uwMoved = 0; m.state.ulGore = 0; m.state.uwDamageDiv = 3;
+	m.state.uwPlayers = players; m.state.uwCursor = 0; m.state.uwMoved = 0; m.state.uwDamageDiv = 3;
 	m.state.bCoopAllowed = allowed; m.state.bCoop = coop;
 	run(joy, n);
 	m.enter(g_ops);
@@ -165,37 +163,93 @@ int main() {
 	r.ubFocus = 1;
 	check(partyStick(r, f, 0) == kJoyRight, "fixed focus member 1");
 	check(partyPadBits(r, f, 3) == 0, "no member 3");
+	// ---- network game: the binding is (node, pad); a pad is unique per node, the merged slot is the member index -----------
+	{
+		PartyConfig q; partyStart(q, 4);
+		const uint8_t nodes[4] = {0, 1, 0, 1};
+		partyNetBind(q, nodes);
+		check(q.active && q.n == 4 && q.isNet && q.aubNode[1] == 1 && q.aubNode[2] == 0 && q.aubPad[0] == PAD_NONE && q.aubPad[3] == PAD_NONE, "net bind: nodes set, nothing chosen");
+		check(partySlot(q, 0) == 0 && partySlot(q, 3) == 3 && partySlot(q, 4) == PAD_NONE, "net slot = member index");
+		check(partyFirstFreePad(q, 0) == PAD_JOY1 && partyFirstFreePad(q, 1) == PAD_JOY1, "net default is Joystick 1 for everybody");
+		q.aubPad[0] = PAD_JOY1;
+		check(partyFirstFreePad(q, 1) == PAD_JOY1, "member on another node may pick the same pad");
+		check(!partyPadTakenFor(q, 1, PAD_JOY1) && partyPadTaken(q, 1, PAD_JOY1), "taken per node");
+		q.aubPad[1] = PAD_JOY1;
+		check(partyPadTakenFor(q, 2, PAD_JOY1) && !partyPadTakenFor(q, 3, PAD_JOY0), "member 2 shares node 0 with member 0, member 3 sees only node 1");
+		check(partyFirstFreePad(q, 2) == PAD_JOY0, "same node: the default is taken, next free");
+		check(partyNextPad(q, 2, PAD_JOY0, 1) == PAD_KEYS_ARROWS && partyNextPad(q, 2, PAD_JOY0, -1) == PAD_KEYS_WASD, "same node: cycling skips the taken pad");
+		check(partyNextPad(q, 3, PAD_JOY0, -1) == PAD_KEYS_WASD && partyNextPad(q, 3, PAD_KEYS_WASD, 1) == PAD_JOY0, "node 1: member 1 holds Joystick 1");
+		q.aubPad[2] = PAD_KEYS_WASD; q.aubPad[3] = PAD_KEYS_WASD;   // WASD on node 0 and on node 1: fine
+		PadFrame mf;
+		for(int i = 0; i < PAD_SOURCE_COUNT; ++i) mf.auwBits[i] = (uint16_t)(0x10 + i);
+		check(partyPadBits(q, mf, 1) == 0x11 && partyPadBits(q, mf, 3) == 0x13, "net: a member reads its merged slot, not its controller");
+		q.ubFocus = PARTY_FOCUS_TURN;
+		check(partyStick(q, mf, 2) == 0x12, "net: stick of member 2 = slot 2");
+		partyLocalize(q);
+		check(!q.isNet && partySlot(q, 3) == PAD_KEYS_WASD && partyPadBits(q, mf, 3) == 0x13 && partyPadBits(q, mf, 0) == 0x10, "localize: members read their picked pads");
+		partyStart(q, 2);
+		check(!q.isNet && q.aubPad[1] == PAD_JOY0, "partyStart is local again");
+		PartyConfig z; memset(&z, 0, sizeof z);
+		check(partySlot(z, 0) == 0 && !z.isNet, "zero config = local");
+	}
 	partyReset(r);
 	check(!r.active && r.n == 0 && r.aubPad[0] == PAD_NONE, "reset");
 
-	// ---- title menu: Players past 4 -> Coop 2 ---------------------------------------------------------------------------
+	// ---- title menu: Players is the count, Mode (under it) is Classic / Coop (owner 2026-10-11; Players, Mode, an empty line, Practice, Select Knight) --------
 	{
-		const uint16_t s[] = {1, 1, 1, 4, 4, 4, 0x10};          // right x3 (1 -> 4), down x3 to Select Knight, fire
-		SceneMenu m = menuRun(s, 7, 1, false, false);
+		const uint16_t s[] = {1, 1, 1, 4, 4, 0x10};             // right x3 (1 -> 4), down x2 (no Mode row) to Select Knight, fire
+		SceneMenu m = menuRun(s, 6, 1, false, false);
 		check(m.state.uwPlayers == 4 && !m.state.bCoop && m.eResult == MENU_SELECT, "classic clamps at 4");
-		check(!strstr(g_trace, "coop"), "classic never draws coop");
+		check(!strstr(g_trace, "coop") && strstr(g_trace, "num 4|"), "classic draws the number");
 	}
 	{
-		const uint16_t s[] = {1, 1, 1, 1, 4, 4, 4, 0x10};       // right x4: 4 -> Coop 2
+		const uint16_t s[] = {1, 1, 1, 1, 4, 4, 4, 0x10};       // right x4 on Players: 4 stays 4 (no Coop beyond), still classic; down x3 over Mode
 		SceneMenu m = menuRun(s, 8, 1, true, false);
-		check(m.state.bCoop && m.state.uwPlayers == 2 && m.state.uwDamageDiv == 2 && m.eResult == MENU_SELECT, "coop 2");
-		check(strstr(g_trace, "num 4|") && strstr(g_trace, "coop 2|"), "coop text drawn");
+		check(!m.state.bCoop && m.state.uwPlayers == 4 && m.state.uwDamageDiv == 1 && m.eResult == MENU_SELECT, "players past 4 stay 4, classic");
+		check(!strstr(g_trace, "Coop"), "no Coop N text");
 	}
 	{
-		const uint16_t s[] = {1, 1, 4, 4, 4, 0x10};             // already Coop 2: right stays at PARTY_COOP_MAX
-		SceneMenu m = menuRun(s, 6, 2, true, true);
-		check(m.state.bCoop && m.state.uwPlayers == PARTY_COOP_MAX, "coop max");
-	}
-	{
-		const uint16_t s[] = {2, 4, 4, 4, 0x10};                // Coop 2, left: back to 4 players
-		SceneMenu m = menuRun(s, 5, 2, true, true);
-		check(!m.state.bCoop && m.state.uwPlayers == 4 && m.state.uwDamageDiv == 1, "coop left -> 4");
-		check(strstr(g_trace, "coop 2|") && strstr(g_trace, "num 4|"), "coop then number");
-	}
-	{
-		const uint16_t s[] = {1, 4, 4, 4, 0x10};                // 1 player, right: 2 (no co-op below 4)
+		const uint16_t s[] = {4, 1, 4, 4, 0x10};                // down to Mode, right = Coop (1 player -> 2), down x2 to Select Knight, fire
 		SceneMenu m = menuRun(s, 5, 1, true, false);
-		check(!m.state.bCoop && m.state.uwPlayers == 2, "coop only past 4");
+		check(m.state.bCoop && m.state.uwPlayers == 2 && m.state.uwDamageDiv == 2 && m.eResult == MENU_SELECT, "mode right: coop, 1 -> 2");
+		check(strstr(g_trace, "str Mode  Classic 88 86|") && strstr(g_trace, "str Mode  Coop 88 86|"), "mode labels drawn under Players, no number");
+		check(strstr(g_trace, "spr 1 0 50 86|"), "mode cursor position");
+		check(menuItemY(ITEM_PLAYERS) == 66 && menuItemY(ITEM_MODE) == 86 && menuItemY(ITEM_PRACTICE) == 126 && menuItemY(ITEM_SELECT) == 146,
+		      "Players, Mode, one empty line, Practice, Select Knight");
+	}
+	{
+		const uint16_t s[] = {4, 1, 2, 4, 4, 0x10};             // 3 players: Coop keeps 3, back to Classic keeps 3
+		SceneMenu m = menuRun(s, 6, 3, true, false);
+		check(!m.state.bCoop && m.state.uwPlayers == 3 && m.eResult == MENU_SELECT, "classic -> coop -> classic keeps the count");
+	}
+	{
+		const uint16_t s[] = {2, 2, 2, 4, 4, 4, 0x10};          // coop, Players left x3 from 3: 2, 2, 2 (never out of co-op, never 1), down x3, fire
+		SceneMenu m = menuRun(s, 7, 3, true, true);
+		check(m.state.bCoop && m.state.uwPlayers == 2 && m.state.uwDamageDiv == 2, "coop players clamp at 2");
+	}
+	{
+		const uint16_t s[] = {1, 1, 1, 1, 4, 4, 4, 0x10};       // coop, right x4 from 2: 3, 4, 4, 4, then down x3, fire
+		SceneMenu m = menuRun(s, 8, 2, true, true);
+		check(m.state.bCoop && m.state.uwPlayers == PARTY_COOP_MAX && PARTY_COOP_MAX == 4 && m.state.uwDamageDiv == 1, "coop players clamp at PARTY_COOP_MAX");
+	}
+	{
+		MenuState s = {};
+		s.uwPlayers = 1; s.bCoopAllowed = true; s.uwCursor = ITEM_PLAYERS;
+		check(menuInput(s, 4) == MENU_REDRAW && s.uwCursor == ITEM_MODE, "mode follows Players");
+		check(menuInput(s, 4) == MENU_REDRAW && s.uwCursor == ITEM_PRACTICE, "the cursor skips the empty line");
+		check(menuInput(s, 4) == MENU_REDRAW && s.uwCursor == ITEM_SELECT, "Select Knight follows Practice");
+		check(menuInput(s, 4) == MENU_REDRAW && s.uwCursor == ITEM_SELECT && s.uwMoved == 1, "no Back row without bBack: Select Knight is the end stop");
+		check(menuInput(s, 8) == MENU_REDRAW && menuInput(s, 8) == MENU_REDRAW && s.uwCursor == ITEM_MODE, "up over the empty line to Mode");
+	}
+	{
+		const uint16_t s[] = {4, 0x10, 2, 4, 4, 0x10};          // on Mode: fire = Coop, left = Classic, then down x2 to Select Knight
+		SceneMenu m = menuRun(s, 6, 1, true, false);
+		check(!m.state.bCoop && m.state.uwPlayers == 2 && m.eResult == MENU_SELECT, "mode fire enables coop and left restores classic");
+	}
+	{
+		const uint16_t s[] = {4, 4, 0x10};
+		SceneMenu m = menuRun(s, 3, 1, false, false);
+		check(m.state.uwCursor == ITEM_SELECT && !strstr(g_trace, "str Mode  "), "mode absent when disabled");
 	}
 
 	// ---- knight screen ---------------------------------------------------------------------------------------------------

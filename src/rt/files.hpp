@@ -17,6 +17,8 @@ LONG rt_file_open(const char *szName);
 LONG rt_file_open_exact(const char *szPath);
 LONG rt_file_write_exact(const char *szPath, const void *pData, ULONG ulCount);
 LONG rt_file_list(const char *szDir, void (*pFn)(const char *szName, void *pUser), void *pUser);
+// The same for the drawers of szDir (the mod packs, ROADMAP 9.9).
+LONG rt_file_list_dirs(const char *szDir, void (*pFn)(const char *szName, void *pUser), void *pUser);
 // Copy up to ulCount bytes at the current position to pDst; clamps at EOF; advances.
 void rt_file_read(void *pDst, ULONG ulCount);
 // Advance the position by ulCount bytes (clamped to the file size).

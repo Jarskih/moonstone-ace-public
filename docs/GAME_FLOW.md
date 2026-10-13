@@ -34,7 +34,7 @@ Code: `include/game/flow/flow.hpp` (the manager's types), `src/game/flow/machine
 
 | id | scene (file) | original | entered from (event, op) | leaves to | assets (rows) |
 |---|---|---|---|---|---|
-| 0 | Title (`title.cpp`) | LAB_0001 head, LAB_00B4, LAB_0152/0156; co-op: Players past 4 = "Coop 2" (ROADMAP 8.2) | boot; Practice / Quit `Done` switch | Practice / Campaign (menu cursor LAB_06DC; a co-op choice turns `g_party` on) | ch.piv (packed) -> screens, sel.cel -> LAB_05C1 |
+| 0 | Title (`title.cpp`) | LAB_0001 head, LAB_00B4, LAB_0152/0156; main menu LOCAL / MULTIPLAYER / SETTINGS, then the title menu; co-op: the Mode row (ROADMAP 8.2) | boot; Practice / Quit `Done` switch | Practice / Campaign (menu cursor LAB_06DC; a co-op choice turns `g_party` on) | ch.piv (packed) -> screens, sel.cel -> LAB_05C1 |
 | 1 | Practice (`practice.cpp`) | LAB_0002 | Title `Practice` switch | Title | message.piv, arena pictures (Test pack), tile set *.t, HE?.ob |
 | 2 | Campaign (`campaign.cpp`) | LAB_0001 tail: LAB_01AE, LAB_00D3 knight select (co-op: + a controller per knight, ROADMAP 8.2), SECSTRT_36 | Title `Campaign` switch | Map | (portraits from LAB_05C1) |
 | 3 | Quit (`quit.cpp`) | LAB_0064: "game over" text, wait fire, LAB_0DC8 | Map `Quit` (Q key), TurnEnd `GameOver` (no knight left) | Title | message.piv |
@@ -183,8 +183,12 @@ menu's key poll (busy, no wait). None of them was restructured.
 - **The overlay switch** (program <-> mog, intro, ending playback): a different binary's code with its own scene engine
   (`src/engine/scenes.cpp`); the switch is an SP unwind by design. Documented above; mog's flow ends in the Ending scene.
 - **The node menu** (LAB_0E3D): it is part of the map frame (drawn over the map, polled inside the frame); it raises the scenes.
-- **The co-op choices** (ROADMAP 8.2): no new scene and no new transition. The title menu's Players item goes on past 4 to "Coop 2"
-  (`menuCoopStep`, `src/game/scene_menu.cpp`) and the knight select gets a controller line after each name (phases
+- **The co-op choices** (ROADMAP 8.2): no new scene and no new transition. The title menu's Players row is the count 1..4 whatever the mode.
+  A separate Mode row directly under Players offers Classic / Coop (owner 2026-10-11); left selects Classic, right selects Coop, and fire toggles
+  (ROADMAP 8.2a). The rows are Players, Mode, an empty line (the cursor skips it), Practice, Select Knight, Back. The count is not touched, except that co-op needs two knights: Coop with one player makes two, and in co-op Players stays within
+  2..`PARTY_COOP_MAX` (`menuSetPlayers` / `menuSetMode`, `src/game/scene_menu.cpp`). Go down to Select Knight and press fire to start.
+  The title menu is the LOCAL row of the main menu (`SceneMainMenu`: LOCAL / MULTIPLAYER / SETTINGS, the first screen after the intro and after a
+  game over; Back or Esc in the title menu return to it; a running network game shows the title menu alone, without Back). The knight select gets a controller line after each name (phases
   `KP_PAD_RELEASE` / `KP_PAD_CHOICE` of `SceneKnights`); `src/rt/scene_menu.cpp` turns `g_party` (`include/game/party.hpp`) on.
 - **The knight select** (LAB_00D3) and the title menu: one screen each inside Title / Campaign (they are already scene-shaped in
   `src/game/scene_menu.cpp`).

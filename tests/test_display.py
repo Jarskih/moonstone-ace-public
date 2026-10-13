@@ -55,7 +55,7 @@ CELL_PLANES = TI.STUB_BASE + 0x120     # rt_enh_planes (word)
 CELL_CLRCNT = TI.STUB_BASE + 0x124     # rt_enh_clrcnt (long)
 CELL_SCRLONGS = TI.STUB_BASE + 0x128   # rt_enh_scr_longs (long, ROADMAP 7.1q: the screen copy of mog LAB_041F)
 STUB_ADDR = {
-    '_ZN2rt11displayShowEm': STUB + 0x00,
+    '_ZN2rt8platform11displayShowEm': STUB + 0x00,
     '_ZN2rt15displayStubInitEm': STUB + 0x20,
     'rt_irq_disable': STUB + 0x40,
     'rt_irq_enable': STUB + 0x60,
@@ -84,7 +84,7 @@ def _log_stub(mark, with_arg, hw_write=None):
 def _static_patches():
     wait = bytes.fromhex('0C3900F5') + be32(VHPOSR) + bytes.fromhex('66F6' + '4E75')   # cmpi.b #$f5,VHPOSR / bne.s / rts
     return [
-        (STUB_ADDR['_ZN2rt11displayShowEm'], _log_stub(MARK_SHOW, True)),
+        (STUB_ADDR['_ZN2rt8platform11displayShowEm'], _log_stub(MARK_SHOW, True)),
         (STUB_ADDR['_ZN2rt15displayStubInitEm'], _log_stub(MARK_STUBINIT, True)),
         (STUB_ADDR['rt_irq_disable'], _log_stub(MARK_IRQ_OFF, False, (INTENA, 0x4000))),
         (STUB_ADDR['rt_irq_enable'], _log_stub(MARK_IRQ_ON, False, (INTENA, 0xC000))),
@@ -96,7 +96,8 @@ def _static_patches():
 # --------------------------------------------------------------------------------------------------------------------
 # blob
 # --------------------------------------------------------------------------------------------------------------------
-SOURCES = ['src/rt/display_ops.cpp', 'src/rt/sprites.cpp', 'src/engine/display_fx.cpp', 'tests/display_emu_support.cpp']
+SOURCES = ['src/rt/display_ops.cpp', 'src/rt/sprites.cpp', 'src/engine/display_fx.cpp', 'tests/display_emu_support.cpp', 'src/rt/amiga/display_ops_entries.cpp',
+           'src/rt/amiga/sprites_entries.cpp', 'src/rt/amiga/platform_display.cpp', 'src/rt/amiga/platform_timer.cpp', 'src/rt/amiga/display_hw.cpp']   # 11.10: the moved halves (the irq install and the key table are still the test's to stub)
 _BLOBS = {}
 # 7.1o: rt entries the C++ calls instead of the patch stub at the original label: the emulation runs the original routine there
 RT_ALIAS = {'rt_palette_tick_mog': 'LAB_0E5D', 'rt_palette_tick_prg': 'LAB_057D', 'rt_prg_copy_rect': 'LAB_04E1',
@@ -164,7 +165,7 @@ def build_blob(binary, h, sources, extra=None):
             cmd.append('--defsym=rt_enh_scr_longs=%d' % CELL_SCRLONGS)
         elif s == 'g_sKeyManager':
             cmd.append('--defsym=g_sKeyManager=%d' % (TI.SCRATCH + 0x100))
-        elif s.startswith(('system', 'log', 'onKey', 'rt_blit_wait', 'rt_prg_irq_init')):
+        elif s.startswith(('system', 'log', 'onKey', 'keyCheck', 'rtCuiCursorStep', 'rtEnhPalSetLive', 'rt_blit_wait', 'rt_prg_irq_init')):   # keyCheck: ACE's key table behind platform::inputKeyHeld (11.10); rtCuiCursorStep: net_tick's cursor tick, never reached with the mode off (as in test_input)
             cmd.append('--defsym=%s=%d' % (s, TI.RTS_ADDR))
         else:
             raise RuntimeError('unresolved symbol ' + s)

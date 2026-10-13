@@ -6,6 +6,9 @@
 // {x1, x2, y, unused} (pixels).  Each is a wall segment: the area x1..x2 whose far edge is at depth y.  A backdrop blob is that
 // table followed by the 2,400 bytes of tile script (engine/bgblit.hpp).
 //
+// Byte order (ROADMAP 11.3): the table is FILE data, big-endian words read with engine/endian.hpp; pTable is therefore a void pointer
+// (it points at bytes, not at an array of native uint16_t).  The Knight is a native struct: the probe clears bits of uwInput.
+//
 // Pure: no ACE, no globals; the cells are passed in.  src/rt/arena.cpp wires them to the asm symbols.
 #pragma once
 #include <stdint.h>
@@ -20,17 +23,17 @@ constexpr uint32_t ARENA_SCRIPT_BYTES = 0x960;     // LAB_0A6E: MOVE.L #$95F,D1 
 constexpr uint32_t ARENA_RECORD_BYTES = 8;
 
 // LAB_0A6C: one rectangle {0, $135, $63, $0A} and its count, written over the table.  Returns LAB_0A98's new value.
-uint16_t arenaDefaultTable(uint16_t *pTable);
+uint16_t arenaDefaultTable(void *pTable);
 
 // LAB_0A6D after the blob decode: the 2,400 bytes that follow the n records of the table are copied to 'pScript', and the lowest
 // edge is the largest y (a signed word compare, equal replaces) of the records, starting from ARENA_EDGE_MIN.  The scan visits
 // n + 1 records (DBF D0 with D0 = n): the last one is the first 8 bytes of the script, its +4 word the script's second entry word.
 // Returns the new LAB_0A98.
-uint16_t arenaAdopt(const uint16_t *pTable, uint8_t *pScript);
+uint16_t arenaAdopt(const void *pTable, uint8_t *pScript);
 
 // LAB_0A71.  A moving fighter (record pRecord) wants to move by (swStepX, swStepY): every wall segment it would touch clears the
 // matching direction bit in byte +63 of the record (bit 0 right, 1 left, 3 up), the way blockedMask does for other fighters.
 // Word arithmetic as the asm; the count word 0 would loop 65,536 times (the table is never empty: LAB_0A6C writes one).
-void arenaObstacles(const uint16_t *pTable, Knight *pRecord, int16_t swStepX, int16_t swStepY);
+void arenaObstacles(const void *pTable, Knight *pRecord, int16_t swStepX, int16_t swStepY);
 
 }}  // namespace ms::game

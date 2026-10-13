@@ -1,14 +1,16 @@
 // rt/engine_scenes - the game side of src/engine/scenes.cpp (ROADMAP 7.1i): program's intro and ending scenes, the frame
 // loop and the S_8 scene loaders run in C++; the host below hands the engine the game's own RAM cells and calls the routines
 // that stay asm (display, palette, disk, music) through one register trampoline. Patches: asm/patches/program.scenes.json.
-// This file names game symbols (prg_*), so it is built only with the game asm linked (CMake exclude list).
+// Since ROADMAP 11.1d the host calls those routines as typed C++ functions (rt/prim.hpp): hostCall below is one switch over ms::SceneFn,
+// no register block, no routine addresses; the register entries rt_scn_call, rt_scn_message and rt_job_handler_stop are in
+// src/rt/amiga/engine_scenes_entries.cpp.
 //
 // Entries:
 //   rtSceneRun(label)          C: runs the scene/loader behind a label of the intro and ending sequences
 //                              (src/rt/engine_intro.cpp); false = not one of ours (the caller runs it as asm).
 //   rtSceneScriptCall(fn)      C: the animation scripts' direct calls ($B4 with selector 0, src/rt/engine_anim.cpp): the
 //                              routine addresses LAB_0032 / LAB_003F / LAB_0040 (still in the script data) run as C++.
-//   rtSceneCaption(text)       C: the caption screen LAB_0054 (src/rt/engine_intro.cpp); rt_scn_message: asm entry behind the
+//   rtSceneCaption(text)       C: the caption screen LAB_0054 (src/rt/engine_intro.cpp); rtSceneMessage / rt_scn_message: behind the
 //                              patched LAB_0051 (message picture loader, called by SECSTRT_0), no inputs.
 //   rtSceneFade, rtSceneFlip   C: LAB_025F / LAB_0262 for the intro skip (src/rt/introskip.cpp) and the boot (src/rt/progmain.cpp).
 //   (The asm routines LAB_025F..LAB_0264, LAB_026C and the progress screens LAB_059E..LAB_05AC are C++ since 7.1q: ms::sceneFade,
@@ -21,11 +23,13 @@
 #include <ace/types.h>
 
 #include "engine/scenes.hpp"
+#include "engine/endian.hpp"
+#include "rt/display_ops.hpp"
 #include "rt/prgops.hpp"
-#include "rt/stubfn.h"
+#include "rt/prim.hpp"
+#include "rt/files.hpp"
 
 extern "C" {
-extern void rt_job_reset();
 extern UWORD prgSceneEnded, prgPageFlag;  // LAB_0120, LAB_05E6
 extern uint32_t prgFrameSets[], prgRectListB, prgRectListA, prgFrames[], prgDrawListA[], prgDrawListB[];  // LAB_0281, LAB_0279, LAB_027A, LAB_0276, LAB_0286, LAB_0287
 extern ULONG rt_enh_scr_cell asm("rt_enh_scr");
@@ -41,9 +45,7 @@ void rtPrgWipeRowsC(void);
 void rtPrgWipeRefreshC(void);
 void rtAnimOverlay(void);
 ULONG rtAnimSpawn(ULONG ulKind, ULONG ulScript, ULONG ulId);
-
-// rt_scn_call(fn, regs): JSR fn with D0-D3/A0/A1 loaded from the SceneRegs; returns D0. D2-D7/A2-A6 preserved.
-ULONG rt_scn_call(ULONG ulFn, const ms::SceneRegs *pRegs);
+extern UBYTE prgFileErr[4];  // LAB_0382: the word at +2 is the result of the last file open (what rt_prg_file_open stored)
 }
 
 #define SYM(n) extern UBYTE prg_LAB_##n[];
@@ -106,31 +108,9 @@ ULONG symAddr(UWORD uwId) {
 	return 0;  // not reachable: the engine only names the ids listed above
 }
 
-ULONG fnAddr(ms::SceneFn fn) {
-	switch(fn) {
-		case ms::FnJobsReset: return (ULONG)&rt_job_reset;
-		case ms::FnSpriteBlit: return (ULONG)RT_FN(rt_prg_restore_pass);
-		case ms::FnWait: return (ULONG)RT_FN(rt_display_wait_frames);
-		case ms::FnPalFade: return (ULONG)RT_FN(rt_palette_set_target_prg);
-		case ms::FnPalWrite: return (ULONG)RT_FN(rt_display_palette_write);
-		case ms::FnPalCopy: return (ULONG)RT_FN(rt_prg_pal_copy_live);
-		case ms::FnRamp: return (ULONG)RT_FN(rt_palette_ramp_add_prg);
-		case ms::FnRampSet: return (ULONG)RT_FN(rt_palette_slot_free);
-		case ms::FnMusic: return (ULONG)RT_FN(rt_music_start);
-		case ms::FnText: return (ULONG)RT_FN(rt_prg_text_list);
-		case ms::FnPicFile: return (ULONG)RT_FN(rt_prg_pic_file);
-		case ms::FnFileOpen: return (ULONG)RT_FN(rt_prg_file_open);
-		case ms::FnFileRead: return (ULONG)RT_FN(rt_prg_file_read);
-		case ms::FnFileClose: return (ULONG)RT_FN(rt_prg_file_close);
-		case ms::FnCelLoad: return (ULONG)RT_FN(rt_prg_cel_load);
-		case ms::FnCelSize: return (ULONG)RT_FN(rt_prg_cel_size);
-		case ms::FnRnc: return (ULONG)RT_FN(rt_rnc_decode);
-		case ms::FnPicMem: return (ULONG)RT_FN(rt_prg_pic_mem);
-		case ms::FnSwap: return (ULONG)RT_FN(rt_prg_display_swap);
-		case ms::FnKeyReset: return (ULONG)RT_FN(rt_prg_key_reset);
-		case ms::FnDrawCel: return (ULONG)RT_FN(rt_prg_draw_cel);
-		default: return 0;  // the operations hostCall runs in C++ below
-	}
+// The file name of a loader call: the string the engine passes, else A0 (the register the original loaders took it in).
+const char *nameOf(const ms::SceneRegs &r) {
+	return r.name ? r.name : reinterpret_cast<const char *>(r.a0);
 }
 
 // Byte loop on purpose: no libc here, and GCC must not turn it into a memcpy call.
@@ -176,14 +156,39 @@ ULONG hostCall(void *, ms::SceneFn fn, const ms::SceneRegs &r) {
 		case ms::FnWipeStep: rtPrgWipeStepC(r.d1); return 0;
 		case ms::FnWipeRows: rtPrgWipeRowsC(); return 0;
 		case ms::FnWipeRefresh: rtPrgWipeRefreshC(); return 0;
+		// the routines of the original that stay behind their own register contract in the asm world; each is the C++ body behind the entry
+		case ms::FnJobsReset: rtJobResetAll(); return 0;                              // LAB_01E4
+		case ms::FnSpriteBlit: rtRestorePass_prg(); return 0;                         // LAB_0242
+		case ms::FnWait: rt::displayWaitFrames(r.d0); return 0;                       // LAB_054F: D0 = ticks
+		case ms::FnPalFade: rtPaletteSetTarget(0, r.a0, r.d0); return 0;              // LAB_0576: A0 = table, D0 = steps
+		case ms::FnPalWrite: rtDisplayPaletteWriteC(reinterpret_cast<const UWORD *>(r.a0)); return 0;   // LAB_0565
+		case ms::FnPalCopy: rtPalCopyLive_prg(reinterpret_cast<const UWORD *>(r.a0)); return 0;         // LAB_025D
+		case ms::FnRamp: {                                                            // LAB_057A: D0..D3 -> the slot; D0 stays when all are busy
+			const ULONG ulSlot = rtPaletteRampAdd(0, r.d0, r.d1, r.d2, r.d3);
+			return ulSlot ? ulSlot : r.d0;
+		}
+		case ms::FnRampSet: rtPaletteSlotFreeC(r.d0); return 0;                       // LAB_0579
+		case ms::FnMusic: rtMusicStartC(); return 0;                                  // SECSTRT_1
+		case ms::FnText: rtPrgTextList(reinterpret_cast<const void *>(r.a0)); return 0;                 // LAB_028F
+		case ms::FnPicFile: return rtLoadPicFile_prg(nameOf(r), reinterpret_cast<UBYTE *>(r.a1));         // LAB_0402: name, A1 = work buffer
+		case ms::FnFileOpen: {                                                        // LAB_0390: the result is also the error word at LAB_0382+2
+			const LONG lErr = rt_file_open(nameOf(r));
+			ms::be::st16(prgFileErr + 2, static_cast<UWORD>(lErr));
+			return static_cast<ULONG>(lErr);
+		}
+		case ms::FnFileRead: rt_file_read(reinterpret_cast<void *>(r.a0), r.d0); return 0;             // LAB_03B2: A0 = destination, D0 = bytes
+		case ms::FnFileClose: rt_file_close(); return 0;                              // LAB_03DA
+		case ms::FnCelLoad: return rtLoadCel_prg(nameOf(r), reinterpret_cast<UBYTE *>(r.a1));             // LAB_0496: name, A1 = destination
+		case ms::FnCelSize: return rtCelSize_prg(nameOf(r));                             // LAB_0491: name -> bytes
+		case ms::FnRnc: return rtRncDecode(reinterpret_cast<UBYTE *>(r.a0));          // LAB_0190: A0 = RNC block, decoded in place
+		case ms::FnPicMem: return rtLoadPicMem_prg(reinterpret_cast<UBYTE *>(r.a0));  // LAB_03FC: A0 = picture file image
+		case ms::FnSwap: rtPrgDisplaySwapC(); return 0;                               // LAB_054C
+		case ms::FnKeyReset: rtPrgKeyResetC(); return 0;                              // LAB_035E
+		case ms::FnDrawCel: rtDrawCel_prg(r.d0, r.d1, r.d2, reinterpret_cast<const UBYTE *>(r.a0)); return 0;   // LAB_04B4: frame, x, y, cel
 		default:
 			break;
 	}
-	ms::SceneRegs regs = r;
-	if(r.name) {
-		regs.a0 = (ULONG)r.name;  // the file name loaders take it in A0
-	}
-	return rt_scn_call(fnAddr(fn), &regs);
+	return 0;   // not reachable: the engine only names the functions above
 }
 
 ULONG hostGet(void *, UWORD uwId, UBYTE ubBits) {
@@ -300,31 +305,3 @@ extern "C" __attribute__((used, externally_visible)) void rt_prg_anim_init(void)
 	prgRectListA = (ULONG)prgDrawListA;
 	prgRectListB = (ULONG)prgDrawListB;
 }
-
-asm(R"(
-	.text
-	.globl rt_job_handler_stop
-rt_job_handler_stop:
-	jmp rtJobHandlerStop
-
-	.globl rt_scn_call
-rt_scn_call:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a2
-	move.l 52(%sp),%a3
-	move.l (%a3),%d0
-	move.l 4(%a3),%d1
-	move.l 8(%a3),%d2
-	move.l 12(%a3),%d3
-	move.l 16(%a3),%a0
-	move.l 20(%a3),%a1
-	jsr (%a2)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rt_scn_message
-rt_scn_message:
-	jsr rtSceneMessage
-	rts
-)");
-

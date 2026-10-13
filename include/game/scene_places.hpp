@@ -54,7 +54,7 @@ PlaceKind placeClassify(uint16_t uwNodeId, const GameData *pData = nullptr);
 
 // The five buttons of the two town menus (LAB_008C / LAB_0095): the long at button record +16 selects the action, any
 // other value does nothing.  Town A: 4 = market (scene 6); town B: 4 = the mystic.  5 leaves the town.
-enum TownButton { TB_NONE = 0, TB_SMITH = 1, TB_DICE = 2, TB_HEALER = 3, TB_THIRD = 4, TB_EXIT = 5 };
+enum TownButton { TB_NONE = 0, TB_SMITH = 1, TB_DICE = 2, TB_HEALER = 3, TB_THIRD = 4, TB_EXIT = 5, TB_PREV = 6, TB_NEXT = 7 };   // 6 / 7: the co-op corner arrows (rt/party_turn)
 TownButton townButton(uint32_t ulButtonId);
 
 }}  // namespace ms::game

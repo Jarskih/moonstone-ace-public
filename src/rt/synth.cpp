@@ -22,8 +22,9 @@
 
 #include "engine/synth.hpp"
 #include "rt/irq.hpp"
+#include "rt/platform/audio.hpp"
 #ifdef MS_AUTOPLAY
-#include "rt/serlog.hpp"
+#include "rt/amiga/serlog.hpp"
 #endif
 
 #ifndef MS_SYNTH_ASM
@@ -70,8 +71,6 @@ rt_synth_fade:
 
 namespace {
 
-constexpr uintptr_t kCustom = 0xDFF000;
-
 ms::Synth s_synth;                                           // zero == a freshly loaded hunk
 #ifdef MS_AUTOPLAY
 struct Stats {
@@ -81,7 +80,8 @@ struct Stats {
 Stats s_stats;
 #endif
 
-// Each access is a compiler barrier too: the INT4 handler reads the voice state these writes publish.
+// Paula's registers through the platform (rt/platform/audio.hpp; the Amiga's are volatile accesses to $DFF000 + reg, each one a compiler barrier too:
+// the INT4 handler reads the voice state these writes publish).
 void hwWrite16(void *, uint16_t uwReg, uint16_t uwValue) {
 #ifdef MS_AUTOPLAY
 	if(uwReg >= 0xA0 && uwReg < 0xE0 && (uwReg & 0x0F) == 8 && uwValue != 0) {   // AUDxVOL
@@ -89,19 +89,16 @@ void hwWrite16(void *, uint16_t uwReg, uint16_t uwValue) {
 		if(uwValue > s_stats.uwPeakVol) s_stats.uwPeakVol = uwValue;
 	}
 #endif
-	*reinterpret_cast<volatile uint16_t *>(kCustom + uwReg) = uwValue;
-	asm volatile("" ::: "memory");
+	rt::platform::paulaWrite16(uwReg, uwValue);
 }
 void hwWrite32(void *, uint16_t uwReg, uint32_t ulValue) {
 #ifdef MS_AUTOPLAY
 	++s_stats.ulLcWrites;
 #endif
-	*reinterpret_cast<volatile uint32_t *>(kCustom + uwReg) = ulValue;
-	asm volatile("" ::: "memory");
+	rt::platform::paulaWrite32(uwReg, ulValue);
 }
 uint16_t hwRead16(void *, uint16_t uwReg) {
-	asm volatile("" ::: "memory");
-	return *reinterpret_cast<volatile uint16_t *>(kCustom + uwReg);
+	return rt::platform::paulaRead16(uwReg);
 }
 
 const ms::SynthHw s_hw = {nullptr, hwWrite16, hwWrite32, hwRead16};
@@ -159,57 +156,6 @@ __attribute__((used, externally_visible)) void rtSynthInt4C(void) {
 	ms::synthInt4(s_synth, s_hw);
 }
 }
-
-asm(R"(
-	.text
-	.globl rt_synth_init
-rt_synth_init:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtSynthInitC
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_synth_reloc
-rt_synth_reloc:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtSynthRelocC
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_synth_start
-rt_synth_start:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	andi.l #0xffff,%d1
-	move.l %d1,-(%sp)
-	andi.l #0xffff,%d0
-	move.l %d0,-(%sp)
-	jsr rtSynthStartC
-	addq.l #8,%sp
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_synth_tick
-rt_synth_tick:
-	movem.l %d1/%a0-%a1,-(%sp)
-	jsr rtSynthTickC
-	movem.l (%sp)+,%d1/%a0-%a1
-	moveq #0,%d0
-	rts
-
-	.globl rt_synth_fade
-rt_synth_fade:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtSynthFadeC
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_synth_int4
-rt_synth_int4:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtSynthInt4C
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rte
-)");
 
 #endif
 

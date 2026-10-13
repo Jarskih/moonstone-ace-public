@@ -16,6 +16,8 @@
 #include <ace/managers/system.h>
 #include <ace/utils/custom.h>
 
+#include "rt/modsanitise.hpp"
+
 extern "C" {
 // Pointer cell of program (LAB_0124: DS.L 1) that holds the module base: chip RAM, word aligned, 31-sample
 // 4-channel module ("FLT4", the layout of M.K.) decoded in place by rt/engine_rnc.
@@ -25,7 +27,7 @@ extern ULONG prgModuleBase __attribute__((weak));  // LAB_0124
 namespace {
 
 constexpr ULONG kHeaderSize = 1084;   // 20 title + 31*30 samples + 1 + 1 + 128 arrangement + 4 tag
-constexpr ULONG kPatternSize = 1024;  // 64 rows * 4 channels * 4 bytes
+constexpr ULONG kPatternSize = rt::kModPatternSize;  // 64 rows * 4 channels * 4 bytes
 constexpr UBYTE kSampleCount = PTPLAYER_MOD_SAMPLE_COUNT;
 constexpr UBYTE kMasterMax = PTPLAYER_VOLUME_MAX;
 
@@ -39,31 +41,6 @@ constexpr bool kMimicOriginalEffects = true;
 tPtplayerMod s_mod;  // header copy + pattern/sample pointers into the module (BSS, zero at start)
 UBYTE s_isActive;    // ptplayer created and music enabled
 UBYTE s_ubMaster;    // master volume mirror (0..64) for musicFade
-
-// Effect nibbles the original ignores (5, 6, 7, 8, 9, E): cleared together with their argument.
-inline bool isIgnoredEffect(UBYTE ubCmd) {
-	return (ubCmd >= 5 && ubCmd <= 9) || ubCmd == 0x0E;
-}
-
-void sanitisePatterns(UBYTE *pPatterns, ULONG ulPatternCount) {
-	UBYTE *pNote = pPatterns;
-	for(ULONG i = ulPatternCount * (kPatternSize / 4); i; --i, pNote += 4) {
-		const UBYTE ubCmd = pNote[2] & 0x0F;
-		if(isIgnoredEffect(ubCmd)) {
-			pNote[2] &= 0xF0;
-			pNote[3] = 0;
-		}
-		else if(ubCmd == 0x0D) {
-			pNote[3] = 0;
-		}
-		else if(ubCmd == 0x0F) {
-			pNote[3] &= 0x1F;
-			if(!pNote[3]) {
-				pNote[2] &= 0xF0;
-			}
-		}
-	}
-}
 
 // Fill s_mod from the module image at pBase. Returns false if the image cannot be used.
 bool buildMod(UBYTE *pBase) {
@@ -90,7 +67,7 @@ bool buildMod(UBYTE *pBase) {
 		pSample += ULONG(s_mod.pSampleHeaders[i].uwLength) * 2;
 	}
 	if(kMimicOriginalEffects) {
-		sanitisePatterns(s_mod.pPatterns, ulPatterns);
+		rt::modSanitisePatterns(s_mod.pPatterns, ulPatterns);
 	}
 	return true;
 }

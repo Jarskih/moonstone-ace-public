@@ -17,6 +17,7 @@
 // The asm has no bounds: a corrupt stream runs wild. libmoon_assets' rnc1.c is a different, guessed
 // format (18-byte header, Huffman tables) and decodes none of the game's files; the asm is the reference.
 #include "engine/rnc.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
@@ -29,9 +30,8 @@ constexpr uint8_t LENGTH_BASE[5] = {10, 6, 4, 3, 2};  // LAB_01A9 + 1
 constexpr uint8_t OFFSET_BITS[3] = {12, 5, 8};        // LAB_01B0 + 1 (stored as count - 1)
 constexpr uint16_t OFFSET_BASE[3] = {0x0120, 0x0000, 0x0020};  // LAB_01B1
 
-uint32_t readBe32(const uint8_t *p) {
-	return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3];
-}
+// A plain wrapper (kept out of line as before ROADMAP 11.3).
+uint32_t readBe32(const uint8_t *p) { return be::ld32(p); }
 
 // LAB_01A1: the bit reader. The first byte (the stream's last) is loaded without a bit taken from it.
 class BitReader {

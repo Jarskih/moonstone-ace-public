@@ -1,25 +1,21 @@
-// rt/engine_blit - the Amiga side of src/engine/blit.cpp (ROADMAP 4.4, 7.1c): WaitBlit + custom-register writes for a
-// planned blit, the two CPU memory loops of the cel renderer, and asm-callable shims patched over
-// program S_23/S_25 and their mog twins S_28/S_30 (asm/patches/{program,mog}.blit.json: draw_cel, copy_rect;
-// {program,mog}.blit2.json: init, destination planes, clip, mirror, IMAGEXCEL scratch carve, WaitBlit).
+// rt/engine_blit - the glue of src/engine/blit.cpp (ROADMAP 4.4, 7.1c): the planned blits go to the blitter, the two CPU memory loops of the
+// cel renderer, and the cells of the cel renderer (the C bodies behind program S_23/S_25 and their mog twins S_28/S_30).  The asm shims
+// patched over those routines (asm/patches/{program,mog}.blit.json, .blit2.json) are in src/rt/amiga/engine_blit_entries.cpp.
 //
-// M2 ownership: the game owns the blitter while its asm runs, so this writes the custom chips directly
-// (no ACE blit manager). Every op does WaitBlit (BTST #6,DMACONR == DMAF_BLTDONE), loads the registers in the
-// asm's order (masks, BLTCON1, modulos, BLTCON0, pointers A..D) and writes BLTSIZE last, which starts the
-// blitter; nothing waits for it afterwards (the asm returns with the last blit in flight, too).
+// The blitter is the platform's (ROADMAP 11.1c, include/rt/platform/blit.hpp): on the Amiga src/rt/amiga/blit.cpp, whose blitRun is what
+// hwBlit was (WaitBlit, the registers in the asm's order, BLTSIZE last; nothing waits for the blit afterwards, as the asm did not); on the
+// PC the software blitter over the emulated chip RAM.
 
 #include <ace/types.h>
-#include <ace/utils/custom.h>
-#include <hardware/dmabits.h>
 
 #include "engine/blit.hpp"
 #include "rt/enhanced_cells.hpp"
+#include "rt/platform/blit.hpp"
 
 namespace {
 
 inline void waitBlit() {
-	while(g_pCustom->dmaconr & DMAF_BLTDONE) {
-	}
+	rt::platform::blitWait();
 }
 
 // The asm entry rt_blit_wait (program LAB_04D7 / LAB_04F6, mog LAB_0CFD / LAB_0D1B): BTST #6,DMACONR until clear.
@@ -28,20 +24,7 @@ extern "C" __attribute__((used, externally_visible)) void rtBlitWait() {
 }
 
 void hwBlit(void *, const ms::BlitOp &op) {
-	waitBlit();
-	g_pCustom->bltafwm = op.afwm;
-	g_pCustom->bltalwm = op.alwm;
-	g_pCustom->bltcon1 = op.con1;
-	if(op.channels & ms::BLT_CH_A) g_pCustom->bltamod = op.modA;
-	if(op.channels & ms::BLT_CH_B) g_pCustom->bltbmod = op.modB;
-	if(op.channels & ms::BLT_CH_C) g_pCustom->bltcmod = op.modC;
-	if(op.channels & ms::BLT_CH_D) g_pCustom->bltdmod = op.modD;
-	g_pCustom->bltcon0 = op.con0;
-	if(op.channels & ms::BLT_CH_A) g_pCustom->bltapt = reinterpret_cast<APTR>(op.ptA);
-	if(op.channels & ms::BLT_CH_B) g_pCustom->bltbpt = reinterpret_cast<APTR>(op.ptB);
-	if(op.channels & ms::BLT_CH_C) g_pCustom->bltcpt = reinterpret_cast<APTR>(op.ptC);
-	if(op.channels & ms::BLT_CH_D) g_pCustom->bltdpt = reinterpret_cast<APTR>(op.ptD);
-	g_pCustom->bltsize = op.size;
+	rt::platform::blitRun(op);
 }
 
 // LAB_04CF: the mask-mode gather (ms::cpuGatherPlane). The asm does not wait for the previous call's blits that still read
@@ -200,163 +183,5 @@ extern "C" __attribute__((used, externally_visible)) ULONG rtCopyRectDesc(ULONG 
 	return op.size;
 }
 
-// rt_prg_draw_cel / rt_mog_draw_cel: program LAB_04B5 / mog LAB_0CDB (draw_cel after its LAB_0528 init check,
-// which stays asm). In: D0 = frame, D1 = x, D2 = y, A0 = cel. Out: nothing; the asm clobbered every register
-// and left only a running blitter, the shim preserves D0-D7/A0-A6 (a superset). CCR is not reproduced.
-// rt_prg_copy_rect: LAB_04E1 (rt_mog_copy_rect, LAB_0D07, went with its dead patch, 7.1 cleanup). In: D0 = modA, D1 = modD, D2 = words, D3 = rows,
-// A0 = src, A1 = dst. Out: D3 = BLTSIZE value as the asm leaves it; D0-D2, A0, A1 preserved (as the asm does).
-// rt_prg_copy_rect_desc: LAB_04E2 (program only; mog's copy is unlabeled and never called). Same inputs, D3 =
-// BLTSIZE; the asm also advances A0/A1 and clobbers D4-D6, callers reload those, the shim preserves all.
-asm(R"(
-	.text
-	.globl rt_prg_draw_cel
-rt_prg_draw_cel:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %a0,-(%sp)
-	move.l %d2,-(%sp)
-	move.l %d1,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtDrawCel_prg
-	lea 16(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
 
-	.globl rt_mog_draw_cel
-rt_mog_draw_cel:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %a0,-(%sp)
-	move.l %d2,-(%sp)
-	move.l %d1,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtDrawCel_mog
-	lea 16(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_prg_copy_rect
-rt_prg_copy_rect:
-	movem.l %d0-%d2/%d4-%d7/%a0-%a6,-(%sp)
-	move.l %d3,-(%sp)
-	move.l %d2,-(%sp)
-	move.l %d1,-(%sp)
-	move.l %d0,-(%sp)
-	move.l %a1,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtCopyRect
-	lea 24(%sp),%sp
-	move.l %d0,%d3
-	movem.l (%sp)+,%d0-%d2/%d4-%d7/%a0-%a6
-	rts
-
-	.globl rt_prg_copy_rect_desc
-rt_prg_copy_rect_desc:
-	movem.l %d0-%d2/%d4-%d7/%a0-%a6,-(%sp)
-	move.l %d3,-(%sp)
-	move.l %d2,-(%sp)
-	move.l %d1,-(%sp)
-	move.l %d0,-(%sp)
-	move.l %a1,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtCopyRectDesc
-	lea 24(%sp),%sp
-	move.l %d0,%d3
-	movem.l (%sp)+,%d0-%d2/%d4-%d7/%a0-%a6
-	rts
-)");
-
-// ---- ROADMAP 7.1c entries (asm/patches/{program,mog}.blit2.json) ----------------------------------------------------------
-// Every entry is JMPed to from the first instructions of the replaced routine, so its RTS returns to the original caller. Each
-// preserves D0-D7/A0-A6 (the originals clobbered some of them; callers reload what they use), CCR is not reproduced.
-//   rt_*_cel_init     SECSTRT_23 / SECSTRT_28: D7 = screen planes -> LAB_04DE / LAB_0D04 = planes - 1
-//   (LAB_0CCC / LAB_04A6, the five screen plane bases -> LAB_0CFF..0D03 / LAB_04A6: rtCelDest_mog / rtCelDest_prg are called by the C++
-//   directly; the entries rt_mog_cel_dest and rt_prg_cel_dest are gone, 7.1q / 7.1s)
-//   rt_*_cel_clip     LAB_04A7 / LAB_0CCD: D0 = left byte, D1 = top, D2 = right byte, D3 = bottom
-//   rt_*_cel_mirror   LAB_04A8 / LAB_0CCE: D0 = frame, A0 = cel; flips the frame in place (header and planes)
-//   rt_*_cel_scratch  SECSTRT_25 / SECSTRT_30: the IMAGEXCEL init (flag, scratch carve, loaders' tables)
-//   rt_blit_wait      program LAB_04D7 / LAB_04F6, mog LAB_0CFD / LAB_0D1B: WaitBlit
-asm(R"(
-	.text
-	.globl rt_prg_cel_init
-rt_prg_cel_init:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %d7,-(%sp)
-	jsr rtCelInit_prg
-	lea 4(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_mog_cel_init
-rt_mog_cel_init:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %d7,-(%sp)
-	jsr rtCelInit_mog
-	lea 4(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_prg_cel_clip
-rt_prg_cel_clip:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %d3,-(%sp)
-	move.l %d2,-(%sp)
-	move.l %d1,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtCelClip_prg
-	lea 16(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_mog_cel_clip
-rt_mog_cel_clip:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %d3,-(%sp)
-	move.l %d2,-(%sp)
-	move.l %d1,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtCelClip_mog
-	lea 16(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_prg_cel_mirror
-rt_prg_cel_mirror:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %a0,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtCelMirror_prg
-	lea 8(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_mog_cel_mirror
-rt_mog_cel_mirror:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %a0,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtCelMirror_mog
-	lea 8(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_prg_cel_scratch
-rt_prg_cel_scratch:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtCelScratch_prg
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_mog_cel_scratch
-rt_mog_cel_scratch:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtCelScratch_mog
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_blit_wait
-rt_blit_wait:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtBlitWait
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-)");
 

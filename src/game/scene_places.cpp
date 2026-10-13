@@ -36,7 +36,7 @@ PlaceKind placeClassify(uint16_t uwNodeId, const GameData *pData) {
 
 // LAB_008C / LAB_0095 (mog.asm 1347, 1418)
 TownButton townButton(uint32_t ulButtonId) {
-	return ulButtonId >= 1 && ulButtonId <= 5 ? static_cast<TownButton>(ulButtonId) : TB_NONE;   // CMPI.L #n,16(A0)
+	return ulButtonId >= 1 && ulButtonId <= 7 ? static_cast<TownButton>(ulButtonId) : TB_NONE;   // CMPI.L #n,16(A0)
 }
 
 }}  // namespace ms::game

@@ -29,6 +29,11 @@ original executables + the facts' label table into `build/reasm/` when there is 
 run the original code from there), finds the toolchain (MS_TOOLCHAIN, `tools/toolchain`, the D:/Amiga workspace or the
 amiga-debug VS Code extension), configures and builds Release (+ Debug with `--debug`) and runs `hdinstall`. The build itself
 needs no original file; setup.py is a convenience, the disks are only needed to run the game and the comparison tests.
+Since 10.2 (2026-10-12) it is the one command for a public clone: a folder of images works too (found by content), every disk is
+checked against the known dump's SHA-1 and disk A's executables against `tools/facts` (the errors name the expected hashes),
+the toolchain is checked with a "missing: what, how to get it" list (`--fetch-deps` clones the pinned bartman_gcc_support),
+`--dry-run` lists the steps, and it ends by writing `build/moonstone-ace-hd.uae` and printing the WinUAE command for `build/hd`.
+BUILD.md "From a public clone", `tests/test_setup.py`.
 
 ## 2. Audit (10.1): tracked files of moonstone-ace
 

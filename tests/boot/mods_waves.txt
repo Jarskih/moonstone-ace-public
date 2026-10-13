@@ -3,6 +3,7 @@
 # they grow. Run with: py tools/modsboot.py waves|plain|defaults   (same script; only mods/ differs)
 frame 300 key SPACE tap
 wait input 10 max 3000
+frame 40 joy1 fire pulse
 frame 100 joy1 down pulse
 frame 130 joy1 down pulse
 frame 160 joy1 down pulse

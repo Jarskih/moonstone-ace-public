@@ -70,6 +70,23 @@ def run_cpp(exe, script):
     return O.parse_driver_output(r.stdout, len(script))
 
 
+def run_cpp_many(exe, scripts):
+    """The C++ side of several independent scripts in ONE process (a process start is ~30 ms on Windows; the 'R' op starts each
+    script from the state of a fresh process). -> one result list per script."""
+    flat = []
+    for sc in scripts:
+        flat.append(('R',))
+        flat.extend(sc)
+    r = subprocess.run([exe], input=O.script_text(flat), capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    res = O.parse_driver_output(r.stdout, len(flat))
+    out, i = [], 0
+    for sc in scripts:
+        out.append(res[i + 1:i + 1 + len(sc)])
+        i += 1 + len(sc)
+    return out
+
+
 def first_diff(script, a, b):
     for i, (x, y) in enumerate(zip(a, b)):
         if x != y:
@@ -208,13 +225,24 @@ class SynthHostTest(unittest.TestCase):
         self.assertIsNone(first_diff(script, a, b))
         return a
 
+    def compare_many(self, scripts, chunk=48):
+        """compare() for many independent scripts, the C++ side in a few processes (run_cpp_many). -> the original's results."""
+        outs = []
+        for k in range(0, len(scripts), chunk):
+            part = scripts[k:k + chunk]
+            for script, b in zip(part, run_cpp_many(self.exe, part)):
+                self.orig.reset()
+                a = self.orig.run(script)
+                self.assertIsNone(first_diff(script, a, b))
+                outs.append(a)
+        return outs
+
     def test_every_sequence_on_every_channel(self):
         total = 0
-        for seq in range(SEQ_COUNT):
-            for ch in range(4):
-                script = [('Z', self.orig.wave_base, BANKS), ('S', seq, ch)] + [('T',)] * 1500
-                a = self.compare(script)
-                total += sum(len(x) for x in a)
+        scripts = [[('Z', self.orig.wave_base, BANKS), ('S', seq, ch)] + [('T',)] * 1500
+                   for seq in range(SEQ_COUNT) for ch in range(4)]
+        for a in self.compare_many(scripts):
+            total += sum(len(x) for x in a)
         self.assertGreater(total, 1_000_000)      # the sequences really write a lot (not a vacuous pass)
 
     def test_music_and_effects_play_something(self):
@@ -224,9 +252,7 @@ class SynthHostTest(unittest.TestCase):
         self.assertGreater(max(vols), 0)
 
     def test_random_scenarios(self):
-        for seed in range(40):
-            rng = random.Random(1000 + seed)
-            self.compare(random_scenario(rng, self.orig.wave_base, 1200))
+        self.compare_many([random_scenario(random.Random(1000 + seed), self.orig.wave_base, 1200) for seed in range(40)])
 
     def test_four_voices_together(self):
         # the area music: sequences $6E..$71 on channels 0..3, then effects over it, as LAB_0133 and LAB_0AA2 do
@@ -242,6 +268,7 @@ class SynthHostTest(unittest.TestCase):
 
     def test_int4_against_random_voice_states(self):
         rng = random.Random(5)
+        scripts = []
         for case in range(60):
             seq = rng.randrange(1, SEQ_COUNT)
             sc = [('Z', self.orig.wave_base, BANKS)]
@@ -254,10 +281,12 @@ class SynthHostTest(unittest.TestCase):
                 sc.append(('I', req, rng.choice((0x780, 0x780, 0x080, 0x100, 0x200, 0x400, 0))))
                 if rng.random() < 0.5:
                     sc.append(('T',))
-            self.compare(sc)
+            scripts.append(sc)
+        self.compare_many(scripts)
 
     def test_synthetic_sequences_cover_the_whole_interpreter(self):
         wb = self.orig.wave_base
+        scripts = []
         for seed in range(30):
             rng = random.Random(500 + seed)
             sc = [('Z', wb, BANKS)] + synthetic_setup(rng)
@@ -265,8 +294,8 @@ class SynthHostTest(unittest.TestCase):
                 sc.append(('S', rng.randrange(1, 35), c))
             sc += random_scenario(rng, wb, 1500)[1:]       # (its 'Z' dropped: the setup must survive)
             sc = [o if o[0] != 'S' else ('S', 1 + o[1] % 34, o[2]) for o in sc]      # not 0 (null), not the call leaves
-            with self.subTest(seed=seed):
-                self.compare(sc)
+            scripts.append(sc)
+        self.compare_many(scripts)
 
     def test_synthetic_sequences_use_every_command(self):
         # sanity of the generator itself: the streams contain each command at least once over the seeds
@@ -354,7 +383,7 @@ def build_blob(asm_mode):
              '-I', os.path.join(ROOT, 'include'), '-I', os.path.join(ROOT, 'src'), '-I', os.path.join(E.ACE, 'mini_std'), '-I', E.ACE,
              '-I', E.GCC_SUPPORT]
     objs = []
-    for i, src in enumerate(('src/engine/synth.cpp', 'src/engine/synth_data.cpp', 'src/rt/synth.cpp', 'tests/synth_emu_support.cpp')):
+    for i, src in enumerate(('src/engine/synth.cpp', 'src/engine/synth_data.cpp', 'src/rt/synth.cpp', 'src/rt/amiga/synth_entries.cpp', 'src/rt/amiga/platform_audio.cpp', 'tests/synth_emu_support.cpp')):
         o = os.path.join(tmp, '%d.o' % i)
         sp = origskip.synth_data_cpp() if src.endswith('synth_data.cpp') else os.path.join(ROOT, src)
         r = subprocess.run([E.GXX] + flags + ['-c', sp, '-o', o], capture_output=True, text=True, env=env)

@@ -66,7 +66,7 @@ IMAGES = {b: os.path.join(ROOT, 'build', 'reasm', b) for b in ('mog', 'program')
 HAVE_TOOLS = all((GXX, LD, OBJCOPY, NM)) and ACE and os.path.isdir(GCC_SUPPORT) and all(os.path.exists(p) for p in IMAGES.values())
 
 SOURCES = ['src/engine/restore.cpp', 'src/engine/bgblit.cpp', 'src/engine/blit.cpp', 'src/game/arena.cpp', 'src/game/prims.cpp',
-           'src/game/creatures.cpp', 'src/rt/prims.cpp', 'src/rt/arena_bg.cpp', 'tests/prims_emu_stubs.cpp']
+           'src/game/creatures.cpp', 'src/rt/prims.cpp', 'src/rt/amiga/prims_entries.cpp', 'src/rt/arena_bg.cpp', 'tests/prims_emu_stubs.cpp']
 
 BLOB_BASE, BLOB_SIZE = 0x00A00000, 0x00020000
 DATA_BASE, DATA_SIZE = 0x00300000, 0x00080000

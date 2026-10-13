@@ -9,6 +9,7 @@
 #include "game/fighters_int.hpp"
 #include "game/rules/ai_fight.hpp"
 #include "game/rules/damage.hpp"
+#include "engine/endian.hpp"
 
 namespace ms { namespace game {
 
@@ -40,21 +41,13 @@ const uint32_t kTabWalk = 0, kTabAttackUp = 12, kTabAttackDown = 22;            
 
 // ---- game memory access ---------------------------------------------------------------------------------------------
 
-inline uint16_t rd16(const uint8_t *p) { return (uint16_t)((p[0] << 8) | p[1]); }
-inline uint32_t rd32(const uint8_t *p) { return ((uint32_t)rd16(p) << 16) | rd16(p + 2); }
-inline void wr32(uint8_t *p, uint32_t v) {
-	p[0] = (uint8_t)(v >> 24);
-	p[1] = (uint8_t)(v >> 16);
-	p[2] = (uint8_t)(v >> 8);
-	p[3] = (uint8_t)v;
-}
 
 inline Knight *rec(uint32_t a) { return jobPtr<Knight>(a); }
 inline uint32_t addr(const void *p) { return jobAddr(p); }
 
 // MOVE.L 0(A,D.W),X: a long at a base address plus the sign-extended word index.
 inline uint32_t tab32(uint32_t ulBase, uint16_t uwIndex) {
-	return rd32(jobPtr<const uint8_t>(ulBase + (uint32_t)(int32_t)(int16_t)uwIndex));
+	return be::ld32(jobPtr<const uint8_t>(ulBase + (uint32_t)(int32_t)(int16_t)uwIndex));
 }
 
 // The word at +106 (timer byte, then the byte after it), big-endian like the 68k sees it.
@@ -101,12 +94,63 @@ void fightTimer(const FighterEnv &e) {
 }
 void killCurrent(const FighterEnv &e) { rec(e.pActive->ulCurrent)->swHp = -1; }
 
+// ---- Moonstone 2 co-op fights (ROADMAP 8.4b, game/roster.hpp).  Each helper is the original's line when no party fight runs.
+inline const FightRoster *partyFight(const FighterEnv &e) { return rosterOn(e.pRoster) ? e.pRoster : 0; }
+
+// The head of a creature handler, `*e.pTarget = *e.pFirst`: the party knight the creature turns on (nearest, sticky, the one that hit
+// it last).  bHolding keeps the knight a grab is on.
+uint32_t targetFor(const FighterEnv &e, Knight &self, bool bHolding = false) {
+	const FightRoster *r = partyFight(e);
+	if(r == 0) {
+		return *e.pFirst;
+	}
+	if(bHolding) {
+		return addr(&rosterHeldTarget(*r, self));
+	}
+	return addr(&rosterPickTarget(*r, self));
+}
+
+// `*e.pFirst` read after the head of the handler: the handler's own target in a party fight (the same knight in the classic one).
+inline uint32_t firstOf(const FighterEnv &e) { return partyFight(e) ? *e.pTarget : *e.pFirst; }
+
+// The knight a script op of a creature acts on (a grab): its held target in a party fight, the first fighter otherwise.
+uint32_t heldOf(const FighterEnv &e, uint32_t ulOwner) {
+	const FightRoster *r = partyFight(e);
+	return r ? addr(&rosterHeldTarget(*r, *rec(ulOwner))) : *e.pFirst;
+}
+
+// LAB_0006 after a finishing blow: the fight ends at once in the classic fight, when the whole party is down in a party fight.
+void endIfPartyDown(const FighterEnv &e) {
+	const FightRoster *r = partyFight(e);
+	if(r == 0 || rosterPartyDown(*r)) {
+		fightTimer(e);
+	}
+}
+
+// A party knight that has no hit points left and whose job asks the handler for its next script: its death script (LAB_07F7 / 07F8, the fall
+// and the corpse drawn into the background) has run to its end.  The original never gets here (LAB_0006 ends the fight inside that script,
+// before the corpse loop is over), a party fight goes on with the other knights: the handler would stand the fallen knight up again on its
+// pad's input (idle script, walking, striking), a ghost beside its own corpse.
+bool partyKnightStaysDown(const FighterEnv &e, const Knight &k) {
+	const FightRoster *r = partyFight(e);
+	return r != 0 && rosterSlotOf(*r, k) >= 0 && rosterDown(k);
+}
+
+// A creature's finishing blow on a knight: classic marks the current knight dead (LAB_000D); a party fight marks the victim.
+void knockOut(const FighterEnv &e, Knight &victim) {
+	if(partyFight(e)) {
+		victim.swHp = -1;
+	} else {
+		killCurrent(e);
+	}
+}
+
 // LAB_02C6: the first fighter's job takes the opposite horizontal facing (BCHG #1) and the record follows.
 void flipFirstFacing(const FighterEnv &e) {
-	CombatJob *j = jobOfOwner(e.pJobs, *e.pFirst);
+	CombatJob *j = jobOfOwner(e.pJobs, firstOf(e));
 	if(j != 0) {
 		j->ubFlags ^= 2;
-		rec(*e.pFirst)->ubFacing = j->ubFlags;
+		rec(firstOf(e))->ubFacing = j->ubFlags;
 	}
 }
 
@@ -125,7 +169,7 @@ uint16_t inputFor(const FighterEnv &e, const Knight &k) {
 
 // LAB_0315: the first of the ten job slots (active or not) whose owner is ulOwner.
 CombatJob *jobOfOwner(CombatJob *pJobs, uint32_t ulOwner) {
-	for(uint32_t i = 0; i < COMBAT_JOB_COUNT; ++i) {
+	for(uint32_t i = 0; i < combatJobs(); ++i) {
 		if(pJobs[i].ulOwner == ulOwner) {
 			return &pJobs[i];
 		}
@@ -240,8 +284,8 @@ void takeDamage(const FighterEnv &e, Knight &self, const Knight &att, const Hurt
 	case HitDamage::None: break;
 	case HitDamage::Contact: subHp(self, damageOf(e, att)); break;
 	case HitDamage::TableByAction: subHp(self, (uint16_t)tab32(att.ulDamageTable, att.uwAction)); break;     // LAB_01F3: the table value, not LAB_021B
-	case HitDamage::TableSlot4: subHp(self, (uint16_t)rd32(jobPtr<const uint8_t>(att.ulDamageTable + 4))); break;
-	case HitDamage::TableSlot8: subHp(self, (uint16_t)rd32(jobPtr<const uint8_t>(att.ulDamageTable + 8))); break;
+	case HitDamage::TableSlot4: subHp(self, (uint16_t)be::ld32(jobPtr<const uint8_t>(att.ulDamageTable + 4))); break;
+	case HitDamage::TableSlot8: subHp(self, (uint16_t)be::ld32(jobPtr<const uint8_t>(att.ulDamageTable + 8))); break;
 	case HitDamage::Fixed: subHp(self, o.uwAmount); break;
 	case HitDamage::FixedProtected: protectedHit(self, o.uwAmount); break;
 	}
@@ -327,6 +371,11 @@ HandlerResult fighterKnight(const FighterEnv &e, Knight &k) {
 	FightVars &v = *e.pVars;
 	*e.pSelf = addr(&k);                                           // MOVE.L A0,LAB_0633
 	v.ulNextScript = k.ulIdleScript;
+	if(k.ulAttacker == 0 && partyKnightStaysDown(e, k)) {          // Moonstone 2: the death script is over, the knight stays where it fell
+		k.ulHitTarget = 0;
+		v.ulNextScript = 0;                                        // the job ends (LAB_0325); the corpse is in the background
+		return finish(e);
+	}
 	if(k.ulAttacker != 0) {
 		return knightHurt(e, k);
 	}
@@ -373,7 +422,7 @@ HandlerResult fighterKnight(const FighterEnv &e, Knight &k) {
 		k.ubFacing = 3;
 		v.swStepX = (int16_t)-(int16_t)kStepX[phase];
 	}
-	const uint16_t mask = blockedMask(e.pJobs, &k, (uint16_t)v.swStepX, k.ubFacing);   // LAB_03A9
+	const uint16_t mask = blockedMask(e.pJobs, &k, (uint16_t)v.swStepX, k.ubFacing, e.pRoster);   // LAB_03A9
 	k.uwInput = (uint16_t)(k.uwInput & mask);
 	clipToArena(k);                                                // LAB_0215
 	e.obstacles(k, v.swStepX, v.swStepY);                          // LAB_0A71
@@ -421,7 +470,7 @@ HandlerResult fighterFlyer(const FighterEnv &e, Knight &k) {
 	*e.pSelf = addr(&k);
 	k.uwInput = 0;
 	k.uwAction = raw(Action::Heavy);
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k);
 	if(k.ulAttacker != 0) {                                        // LAB_0230
 		Knight &att = *rec(k.ulAttacker);
 		if(flyerHitTaken(att.ubType).bHurt) {                      // everything but another flyer
@@ -435,8 +484,8 @@ HandlerResult fighterFlyer(const FighterEnv &e, Knight &k) {
 		if(flyerHitsTarget(t.ubType)) {
 			if(flyerFinishesTarget(t.ulHitTarget != 0, t.swHp, *e.pDemoFlag != 0)) {
 				jobKill(e.pJobs, *e.pTarget);                      // the first fighter's job and record
-				killCurrent(e);                                    // LAB_000D
-				fightTimer(e);                                     // LAB_0006
+				knockOut(e, *rec(*e.pTarget));                     // LAB_000D
+				endIfPartyDown(e);                                 // LAB_0006
 				v.ulNextScript = k.ubFacing == t.ubFacing ? e.scripts.s0849 : e.scripts.s084E;
 				return finish(e);
 			}
@@ -545,7 +594,7 @@ HandlerResult moveApply(const FighterEnv &e, Knight &k, const Dir &d) {
 	FightVars &v = *e.pVars;
 	MoveVars &m = *e.pMove;
 	advancePhase(e, k, d.d6, d.d7);
-	const uint16_t mask = blockedMask(e.pJobs, &k, (uint16_t)m.swDx, k.ubFacing);
+	const uint16_t mask = blockedMask(e.pJobs, &k, (uint16_t)m.swDx, k.ubFacing, e.pRoster);
 	k.uwInput = (uint16_t)(k.uwInput & mask);
 	if(k.uwInput == 0) {
 		k.ubAnimPhase = 0;
@@ -665,7 +714,7 @@ HandlerResult brawlerAttack(const FighterEnv &e, Knight &k, uint16_t d1, uint16_
 	f.bSpear = k.ubType == raw(ActorType::TroggSpear);
 	f.bDemo = *e.pDemoFlag != 0;
 	f.bGloated = v.uwLairFlag != 0;
-	f.bFirstDefends = rec(*e.pFirst)->uwAction == raw(Action::Defend);
+	f.bFirstDefends = rec(firstOf(e))->uwAction == raw(Action::Defend);
 	const BrawlerPlan plan = brawlerDecide(f, *e.pSeed);
 	switch(plan) {
 	case BrawlerPlan::Walk: return brawlerWalk(e, k, d7);
@@ -704,7 +753,7 @@ HandlerResult fighterBrawler(const FighterEnv &e, Knight &k) {
 	FightVars &v = *e.pVars;
 	*e.pSelf = addr(&k);
 	v.ulNextScript = k.ulIdleScript;
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k);
 	if(k.ulAttacker != 0) {                                        // LAB_0246
 		Knight &att = *rec(k.ulAttacker);
 		k.ubCooldown = 0;
@@ -885,11 +934,11 @@ HandlerResult casterThrow(const FighterEnv &e, Knight &k) {
 	k.ubAnimPhase = 0;
 	k.uwHeight = 0xFFBA;
 	v.ulNextScript = e.scripts.s0851;
-	CombatJob *job = jobOfOwner(e.pJobs, *e.pFirst);
+	CombatJob *job = jobOfOwner(e.pJobs, firstOf(e));
 	if(job != 0) {
 		job->ubFlags = k.ubFacing;
 	}
-	Knight &first = *rec(*e.pFirst);
+	Knight &first = *rec(firstOf(e));
 	first.ulHitTarget = 0;
 	first.ulAttacker = 0;
 	uint32_t script = first.ulIdleScript;
@@ -905,13 +954,28 @@ HandlerResult casterThrow(const FighterEnv &e, Knight &k) {
 HandlerResult casterRelease(const FighterEnv &e, Knight &k) {
 	(void)k;
 	FightVars &v = *e.pVars;
-	jobTogglePause(e.pJobs, *e.pFirst);
-	Knight &first = *rec(*e.pFirst);
+	jobTogglePause(e.pJobs, firstOf(e));
+	Knight &first = *rec(firstOf(e));
 	first.ulHitTarget = 0;
 	first.ulAttacker = 0;
 	jobRestart(e.pJobs, addr(&first), first.ulScript26);
 	v.ubCasterFlags[0] &= 0xDF;
 	v.ulNextScript = 0;
+	return finish(e);
+}
+
+// The caster lets go of the knight it holds (LAB_0263's tail): the knight's job runs again from its idle script, whose `ifdead` lets a knight
+// without hit points fall (LAB_07F7), and the caster plays its let-go script.  Also the end of a squeeze that killed the knight while another
+// party knight stands (Moonstone 2: the original ends the fight at that point, casterSlam).
+HandlerResult casterDropVictim(const FighterEnv &e) {
+	FightVars &v = *e.pVars;
+	jobTogglePause(e.pJobs, *e.pTarget);
+	Knight &t = *rec(*e.pTarget);
+	t.ulHitTarget = 0;
+	t.ulAttacker = 0;
+	jobRestart(e.pJobs, addr(&t), e.scripts.s07FA);
+	v.ubCasterFlags[0] &= 0xF7;
+	v.ulNextScript = e.scripts.s0868;
 	return finish(e);
 }
 
@@ -925,19 +989,15 @@ HandlerResult casterSlam(const FighterEnv &e, Knight &k) {
 		if(subHpGt(k, damageOf(e, first))) {                       // LAB_0263
 			return finish(e);
 		}
-		jobTogglePause(e.pJobs, *e.pTarget);
-		Knight &t = *rec(*e.pTarget);
-		t.ulHitTarget = 0;
-		t.ulAttacker = 0;
-		jobRestart(e.pJobs, addr(&t), e.scripts.s07FA);
-		v.ubCasterFlags[0] &= 0xF7;
-		v.ulNextScript = e.scripts.s0868;
-		return finish(e);
+		return casterDropVictim(e);
 	}
 	v.ulNextScript = e.scripts.s0866;                              // LAB_0262
 	Knight &t = *rec(*e.pTarget);
 	if(!subHpGt(t, 1)) {
-		v.ulNextScript = e.scripts.s0869;
+		if(partyFight(e) && !rosterPartyDown(*e.pRoster)) {        // Moonstone 2: the squeezed knight is dead but another one stands: the fight goes on
+			return casterDropVictim(e);
+		}
+		v.ulNextScript = e.scripts.s0869;                          // the last knight: the fight is over
 	}
 	return finish(e);
 }
@@ -983,7 +1043,7 @@ HandlerResult fighterCaster(const FighterEnv &e, Knight &k) {
 	FightVars &v = *e.pVars;
 	v.ulNextScript = k.ulIdleScript;
 	*e.pSelf = addr(&k);
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k, (v.ubCasterFlags[0] & 0x28) != 0);   // grabbing or grabbed: keep the held knight
 	if(k.ulAttacker != 0) {                                        // LAB_026B
 		Knight &att = *rec(k.ulAttacker);
 		switch(casterHurtBy(att.ubType, k.ubBehaviourFlags, att.uwAction)) {
@@ -1061,14 +1121,14 @@ namespace {
 
 // LAB_0F34: a hit spark at the hit point of the record src (the type $28 slot of the handler table becomes LAB_02D2).
 void hitSpark(const FighterEnv &e, const Knight &src) {
-	wr32(e.pHandlerTable + 40, e.scripts.hIdle);
+	be::st32(e.pHandlerTable + 40, e.scripts.hIdle);
 	creatureSpawn(e.pJobs, e.pCreatures, e.scripts.s08BF, e.scripts.fFrames0648, src.uwHitX, 0, src.uwHitY,
-	              rec(*e.pFirst)->ubFacing, 0x28);
+	              rec(firstOf(e))->ubFacing, 0x28);
 }
 
 // LAB_0297: the dragon's object, 55 to the right of it.
 void dragonSpawn(const FighterEnv &e) {
-	wr32(e.pHandlerTable + 40, e.scripts.hIdle);
+	be::st32(e.pHandlerTable + 40, e.scripts.hIdle);
 	const Knight &d = dragonOf(e);
 	creatureSpawn(e.pJobs, e.pCreatures, e.scripts.s0886, e.scripts.fFrames05E0, (uint16_t)(d.uwX + 0x37), 0,
 	              (uint16_t)(d.uwY + 5), 1, 0x28);
@@ -1094,7 +1154,7 @@ void dragonStep(const FighterEnv &e) {
 	Knight &d = dragonOf(e);
 	d.uwInput = 0;
 	*e.pSelf = addr(&d);
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = firstOf(e);                                       // Moonstone 2: the handler's own target (the first fighter in a classic fight)
 	uint16_t save116 = 0, save118 = 0;
 	const bool reduced = (v.ubDragonFlags[0] & DRAGON_REDUCED) != 0;
 	if(reduced) {                                                  // tunables forced to 2 / 1 for this step
@@ -1196,7 +1256,7 @@ HandlerResult dragonThink(const FighterEnv &e, Knight *pA1) {
 	fl |= plan.ubFlagsSet;
 	fl &= (uint8_t)~plan.ubFlagsClear;
 	d.ubAnimPhase = 0;
-	v.ulNextScript = rd32(jobPtr<const uint8_t>(knightWalkScripts(d) + plan.uwWalkOffset));
+	v.ulNextScript = be::ld32(jobPtr<const uint8_t>(knightWalkScripts(d) + plan.uwWalkOffset));
 	setCooldownWord(d, plan.uwSteps);
 	b.ulOwner = addr(&d);
 	b.uwX = d.uwX;
@@ -1218,7 +1278,7 @@ HandlerResult fighterDragon(const FighterEnv &e, Knight &k) {
 	uint8_t &fl = v.ubDragonFlags[0];
 	v.ulNextScript = k.ulIdleScript;
 	*e.pSelf = addr(&k);
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k);
 	Knight *a1 = &k;
 	if(k.ulAttacker != 0) {                                        // LAB_0287
 		Knight &att = *rec(k.ulAttacker);
@@ -1229,7 +1289,7 @@ HandlerResult fighterDragon(const FighterEnv &e, Knight &k) {
 				subHp(k, damageOf(e, att));
 				v.ulNextScript = tab32(k.ulHurtScripts, att.uwAction);
 			} else {
-				v.ulNextScript = rd32(jobPtr<const uint8_t>(k.ulHurtScripts + 12));
+				v.ulNextScript = be::ld32(jobPtr<const uint8_t>(k.ulHurtScripts + 12));
 				subHp(k, hit.uwFixed);
 			}
 			hitSpark(e, dragonOf(e));                              // LAB_028A: A0 = the dragon record
@@ -1265,7 +1325,7 @@ HandlerResult fighterDragonPart(const FighterEnv &e, Knight &k) {
 	FightVars &v = *e.pVars;
 	v.ulNextScript = k.ulIdleScript;
 	*e.pSelf = addr(&k);
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k);
 	const Knight &tgt = *rec(*e.pTarget);
 	if(k.ulAttacker != 0) {                                        // LAB_029B
 		v.ulNextScript = k.ulIdleScript;
@@ -1331,7 +1391,7 @@ HandlerResult drakeFlight(const FighterEnv &e, Knight &k, Knight &tgt) {
 		k.uwX = tgt.uwX;                                           // landed on the target: it is hurt and the fight ends
 		k.uwY = tgt.uwY;
 		jobRestart(e.pJobs, addr(&tgt), e.scripts.s07FD);
-		killCurrent(e);
+		knockOut(e, tgt);
 	}
 	drakeLanded(e, k);                                             // LAB_02AA
 	return finish(e);
@@ -1343,7 +1403,7 @@ HandlerResult fighterDrake(const FighterEnv &e, Knight &k) {
 	FightVars &v = *e.pVars;
 	*e.pSelf = addr(&k);
 	v.ulNextScript = k.ulIdleScript;
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k, (v.ubDrakeFlags[0] & 0x03) != 0);   // flying at it or carrying it: keep the knight
 	Knight &tgt = *rec(*e.pTarget);
 	uint8_t &fl = v.ubDrakeFlags[0];
 	if(fl & 0x02) {
@@ -1379,7 +1439,7 @@ HandlerResult fighterDrake(const FighterEnv &e, Knight &k) {
 		return finish(e);
 	}
 	if(fl & 0x20) {                                                // LAB_02B8
-		Knight &first = *rec(*e.pFirst);
+		Knight &first = *rec(firstOf(e));
 		if(first.swHp <= 0) {                                      // LAB_02B6
 			v.uwDrakeToggle ^= 1;
 			v.ulNextScript = v.uwDrakeToggle != 0 ? e.scripts.s0895 : e.scripts.s0896;
@@ -1389,9 +1449,9 @@ HandlerResult fighterDrake(const FighterEnv &e, Knight &k) {
 		}
 		first.ulHitTarget = 0;
 		first.ulAttacker = 0;
-		jobTogglePause(e.pJobs, *e.pFirst);
+		jobTogglePause(e.pJobs, firstOf(e));
 		jobRestart(e.pJobs, addr(&first), first.ulIdleScript);
-		CombatJob *job = jobOfOwner(e.pJobs, *e.pFirst);
+		CombatJob *job = jobOfOwner(e.pJobs, firstOf(e));
 		if(job != 0) {
 			uint16_t d1 = DRAKE_RELEASE_OFFSET;
 			if(bit(k.ubFacing, 1)) {
@@ -1413,7 +1473,7 @@ HandlerResult fighterDrake(const FighterEnv &e, Knight &k) {
 		fl = 0;
 		bool left;
 		const uint16_t d0 = xDelta(k, tgt, left);
-		switch(drakeMelee((int16_t)d0, k.uwAction, rec(*e.pFirst)->ubDaggers)) {
+		switch(drakeMelee((int16_t)d0, k.uwAction, rec(firstOf(e))->ubDaggers)) {
 		case DrakeMelee::JumpClose: k.ubBehaviourFlags2 = 0; break;
 		case DrakeMelee::HopStrike:                                // LAB_02A2
 			v.ulNextScript = e.scripts.s088D;
@@ -1615,6 +1675,11 @@ namespace fi {
 HandlerResult finish(const FighterEnv &e) { return ms::game::finish(e); }
 uint16_t damageOf(const FighterEnv &e, const Knight &attacker) { return ms::game::damageOf(e, attacker); }
 void killCurrent(const FighterEnv &e) { ms::game::killCurrent(e); }
+uint32_t targetFor(const FighterEnv &e, Knight &self, bool bHolding) { return ms::game::targetFor(e, self, bHolding); }
+uint32_t firstOf(const FighterEnv &e) { return ms::game::firstOf(e); }
+uint32_t heldOf(const FighterEnv &e, uint32_t ulOwner) { return ms::game::heldOf(e, ulOwner); }
+void knockOut(const FighterEnv &e, Knight &victim) { ms::game::knockOut(e, victim); }
+void endIfPartyDown(const FighterEnv &e) { ms::game::endIfPartyDown(e); }
 Approach approach(const FighterEnv &e) { return ms::game::approach(e); }
 int32_t dirSign(const Knight &k) { return ms::game::dirSign(k); }
 void advancePhase(const FighterEnv &e, Knight &k, int32_t d6, int32_t d7) { ms::game::advancePhase(e, k, d6, d7); }

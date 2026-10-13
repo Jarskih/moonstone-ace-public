@@ -947,10 +947,11 @@ def analyse_binary(name, reasm=REASM):
 def load_symbols(path):
     try:
         import yaml
+        import yamlfast
     except ImportError:
         raise SystemExit('PyYAML missing: py -m pip install pyyaml')
     with open(path, encoding='utf-8') as f:
-        return yaml.safe_load(f) or {}
+        return yamlfast.safe_load(f) or {}
 
 
 def validate_symbols(sym, label_sets, aliases):

@@ -51,6 +51,7 @@
 
 #include "game/combat_script.hpp"
 #include "game/knight.hpp"
+#include "game/roster.hpp"
 
 namespace ms { namespace game {
 
@@ -148,6 +149,7 @@ struct ContactEnv {
 	Knight *pCreatures;            // LAB_05C3's value: the creature heap (20 records + the one the link clear touches)
 	uint8_t *pAttackLists;         // LAB_064F
 	uint8_t *pHurtLists;           // LAB_0650
+	const FightRoster *pRoster = nullptr;   // Moonstone 2 (ROADMAP 8.4b): a party fight's roster; allies never hit each other (null: classic)
 };
 
 // LAB_0161: every record's hit target (+14) and attacker (+18) links are cleared: the dragon, 21 creature records
@@ -166,7 +168,8 @@ void contactScan(const ContactEnv &env);
 // tested: facing right / left blocks bit 0 / 1 when it is on that side and its x box and y box overlap with the
 // step added to the x box; bits 2 / 3 block up / down when within 20 in depth and the boxes overlap.  Returns the
 // permitted-direction mask (bits 0..3 cleared when blocked, bit 4 always set, the asm's $1F start value).
-uint16_t blockedMask(const CombatJob *pJobs, const Knight *pSelf, uint16_t uwStep, uint16_t uwFacing);
+// Moonstone 2 (ROADMAP 8.4b): with an active roster (pRoster) the other fighters of the mover's team do not block it (pass-through).
+uint16_t blockedMask(const CombatJob *pJobs, const Knight *pSelf, uint16_t uwStep, uint16_t uwFacing, const FightRoster *pRoster = nullptr);
 
 // ---- damage -----------------------------------------------------------------------------------------------
 
@@ -236,10 +239,11 @@ SpawnResult creatureSpawn(CombatJob *pJobs, Knight *pCreatures, uint32_t ulScrip
 
 // LAB_02CA, the dagger throw (script op $B0 target): the thrower loses a dagger (+76, byte), a record of type $34 is
 // spawned with the dagger script, then it gets the dagger damage table (+42) and the action $0C (+64).  Returns what
-// LAB_02D0 left in A1 / D0.
+// LAB_02D0 left in A1 / D0.  Moonstone 2 (ROADMAP 8.4b): in a party fight (pRoster active) the dagger record carries its thrower's team
+// (Knight::ubTeam), so a knight's dagger never hits his party.
 SpawnResult daggerRelease(CombatJob *pJobs, Knight *pCreatures, Knight &thrower, uint32_t ulDaggerScript,
                       uint32_t ulDamageTable, uint32_t ulFrames, uint16_t uwX, uint16_t uwY, uint16_t uwZ,
-                      uint8_t ubFacing);
+                      uint8_t ubFacing, const FightRoster *pRoster = nullptr);
 
 // What an AI handler returns (LAB_0322's contract): A0 = next script, 0 (kill the creature) or -1 (keep running),
 // and the position / facing the job takes.

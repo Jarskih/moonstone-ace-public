@@ -19,7 +19,7 @@ HAVE_EMU = TD.HAVE_EMU
 if HAVE_EMU:
     TI, be16, be32 = TD.TI, TD.be16, TD.be32
 
-SOURCES = ('src/rt/sprites.cpp', 'src/engine/display_fx.cpp', 'tests/sprites_emu_support.cpp')
+SOURCES = ('src/rt/sprites.cpp', 'src/rt/amiga/platform_display.cpp', 'src/rt/amiga/sprites_entries.cpp', 'src/engine/display_fx.cpp', 'tests/sprites_emu_support.cpp')
 SPR_REC = (TD.TI.BLOB_BASE + 0xB000) if HAVE_EMU else 0      # sprite record + pixel data
 SPR_OUT = (TD.TI.BLOB_BASE + 0xC000) if HAVE_EMU else 0      # build output / placed sprite data
 SPR_TABLE_SYM = '_ZN12_GLOBAL__N_1L9s_aulDataE'

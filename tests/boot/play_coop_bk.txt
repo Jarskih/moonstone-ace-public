@@ -1,0 +1,74 @@
+# Moonstone 2 co-op against the black-knight group (ROADMAP 8.4b slice 3): two party knights (joy1, joy0) meet TWO black knights (N = party size,
+# the first is the original AI knight of record 2 at its normal start, the second a fight extra; `poke warp_knight 2` puts the party on it).  `poke fightdump 1` logs the roster (party=2 foes=2), both
+# fighters per side (the black knights have the AI handler and their own target slot), the limits (16 jobs / 64 rects); each knight
+# is moved with its own pad; both pads play the fight with the autopilot until the meeting screen (`wait var scene 1`).
+# the fight is random: loose tolerances
+# shotcmp-tol play-coop-bk-fight-map 3
+# shotcmp-tol play-coop-bk-fight-arena 15
+# shotcmp-tol play-coop-bk-fight-moved 15
+# shotcmp-tol play-coop-bk-fight-mash 100
+# shotcmp-tol play-coop-bk-fight-meet 5
+# shotcmp-tol play-coop-bk-fight-end 5
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 20 joy1 fire pulse
+frame 140 poke party 2
+frame 180 joy1 right pulse
+frame 220 shot play-coop-bk-fight-players
+frame 230 joy1 down pulse
+frame 260 joy1 down pulse
+frame 290 joy1 down pulse
+frame 340 joy1 fire pulse
+frame 790 joy1 fire pulse
+frame 1090 joy1 fire pulse
+frame 1160 joy1 fire pulse
+frame 1490 joy1 right pulse
+frame 1540 joy1 fire pulse
+frame 1890 joy1 fire pulse
+frame 1960 joy1 fire pulse
+frame 2490 poke who 0
+frame 2491 poke strength 9
+frame 2493 poke constitution 30
+frame 2496 poke endurance 9
+frame 2500 poke hpmax 310
+frame 2505 poke hp 310
+frame 2511 poke who 1
+frame 2518 poke strength 9
+frame 2526 poke constitution 30
+frame 2535 poke endurance 9
+frame 2545 poke hpmax 310
+frame 2556 poke hp 310
+frame 2568 poke who 0
+frame 2581 poke warp_knight 2
+frame 2611 shot play-coop-bk-fight-map
+frame 2621 poke dump 1
+frame 2631 joy1 fire pulse 8
+frame 2831 key 1 tap
+frame 3631 poke fightdump 1
+frame 3831 shot play-coop-bk-fight-arena
+frame 3841 poke fightdump 1
+frame 3851 joy1 up
+frame 3876 joy1 none
+frame 3881 joy0 down
+frame 3906 joy0 none
+frame 3936 poke fightdump 1
+frame 3946 shot play-coop-bk-fight-moved
+frame 3956 mash joy1 10
+frame 3956 mash joy0 13
+frame 4256 shot play-coop-bk-fight-mash
+frame 4266 poke fightdump 1
+wait var scene 1 max 12000
+frame 0 mash joy1 off
+frame 0 mash joy0 off
+frame 1 joy1 none
+frame 2 joy0 none
+frame 152 shot play-coop-bk-fight-meet
+frame 162 poke fightdump 1
+frame 172 poke dump 1
+frame 182 poke cursorx 155
+frame 182 poke cursory 110
+frame 207 joy1 fire pulse 8
+frame 507 shot play-coop-bk-fight-end
+frame 517 poke dump 1
+frame 617 quit

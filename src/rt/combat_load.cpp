@@ -20,7 +20,8 @@
 #include "rt/files.hpp"
 #include "rt/soundbank.hpp"
 #include "rt/display_ops.hpp"
-#include "rt/stubfn.h"
+#include "rt/mog_display.hpp"
+#include "rt/prim.hpp"
 
 using namespace ms::game::cl;
 
@@ -52,57 +53,30 @@ extern uint8_t mogKnightWalk21[], mogKnightWalk22[], mogKnightWalk23[], mogKnigh
 extern uint8_t mogKnightActionScript8[], mogKnightActionScript1[], mogKnightActionScript6[], mogKnightActionScript7[], mogKnightActionScript4[], mogKnightHurtScriptB[];  // LAB_07EE, LAB_07EF, LAB_07F1, LAB_07F3, LAB_07F4, LAB_07F5
 extern uint8_t mogKnightHurtScriptA[], mogShownScreen[];  // SECSTRT_35 (LAB_07F6)
 
-// asm primitives (called through rtClAsm)
-
-// the enhanced display's byte counts (src/rt/enhanced.cpp)
-extern ULONG rt_enh_raw_mog_msg, rt_enh_raw_mog_ch, rt_enh_raw_mog_pack;   // message.piv / ch.piv / pack byte counts
-extern ULONG rt_enh_pic_sz[9];                                             // DBF counts of the nine pack pictures
+// the enhanced display's byte counts (src/rt/enhanced.cpp; pinned to the Amiga symbol names, which carry no `_` on the PC's COFF either)
+extern ULONG rtEnhRawMogMsg asm("rt_enh_raw_mog_msg");   // message.piv byte count
+extern ULONG rtEnhRawMogCh asm("rt_enh_raw_mog_ch");     // ch.piv byte count
+extern ULONG rtEnhRawMogPack asm("rt_enh_raw_mog_pack"); // pack byte count
+extern ULONG rtEnhPicSz[9] asm("rt_enh_pic_sz");         // DBF counts of the nine pack pictures
 // the original file layer's error word (open result), kept for the readers that remain
-extern uint16_t rtClFileErr[2] asm("mogFileErr");
+extern uint16_t mogFileErr[2];
 
-void rt_mog_pack_done(void);   // src/rt/enhanced.cpp: the close after the arena pack read (+ the nine picture headers at 6 planes)
+void rtEnhPackDone(void);   // src/rt/enhanced.cpp: the close after the arena pack read (+ the nine picture headers at 6 planes)
 void rtSfxSynth(ULONG ulSeq, ULONG ulChannel);   // src/rt/sfx.cpp: the synth start LAB_0F8C, any C caller
+void rtArenaDefault(void);                       // src/rt/arena_bg.cpp: rt_mog_arena_default, LAB_0A6C
+void rtArenaLoad(const char *szName);            // src/rt/arena_bg.cpp: rt_mog_arena_load, LAB_0A6D (A0 = the backdrop blob name)
+uint32_t rtMogTextList(const void *pRecords);    // src/rt/gtext.cpp: rt_mog_text_list, LAB_0432
+uint32_t rtLoadPicMem_mog(uint8_t *pImage);                       // src/rt/loaders.cpp: rt_mog_pic_mem, LAB_0C21
+uint32_t rtLoadPicFile_mog(const char *szName, uint8_t *pBuf);    // rt_mog_pic_file, LAB_0C27
+uint32_t rtLoadCel_mog(const char *szName, uint8_t *pBuf);        // rt_mog_cel_load, LAB_0CBB
+uint32_t rtCelSize_mog(const char *szName);                       // rt_mog_cel_size, LAB_0CB6
+uint32_t rtHitLoad_mog(const char *szName, uint8_t *pBuf);        // rt_mog_hit_load, LAB_03CE
+void rtMogPaletteClearC(void);                                    // src/rt/palette_glue.cpp: rt_mog_palette_clear, LAB_03EB
 }
-
-namespace {
-
-// ---- register trampoline into the asm primitives ----------------------------------------------------------------------------------
-struct AsmRegs {
-	uint32_t d0, d1, d2, a0, a1, a2;
-	uint32_t rd0;   // out: D0
-};
-
-}  // namespace
-
-extern "C" void rtClAsm(uint32_t ulFn, AsmRegs *pRegs);
-
-// rtClAsm(fn, regs): loads D0-D2/A0-A2 from regs, JSRs fn, stores D0 back; D2-D7/A2-A6 are preserved for the C++ side (the
-// primitives clobber freely: LAB_0CDA uses D0-D7/A0-A5).
-asm(R"(
-	.text
-	.globl rtClAsm
-rtClAsm:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a5
-	move.l 52(%sp),%a6
-	move.l %a6,-(%sp)
-	movem.l (%a6),%d0-%d2/%a0-%a2
-	jsr (%a5)
-	move.l (%sp)+,%a6
-	move.l %d0,24(%a6)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-)");
 
 namespace {
 
 inline uint32_t addrOfSym(const void *p) { return (uint32_t)(uintptr_t)p; }
-
-uint32_t call(const void *pFn, uint32_t d0 = 0, uint32_t d1 = 0, uint32_t d2 = 0, uint32_t a0 = 0, uint32_t a1 = 0) {
-	AsmRegs r = {d0, d1, d2, a0, a1, 0, 0};
-	rtClAsm(addrOfSym(pFn), &r);
-	return r.rd0;
-}
 
 // ---- Label -> address ---------------------------------------------------------------------------------------------------------------
 uint32_t labelAddr(uint16_t uwLabel) {
@@ -268,24 +242,24 @@ void fillBytes(uint32_t ulDst, uint8_t ub, uint32_t ulCount) {
 }
 
 // ---- Ops ------------------------------------------------------------------------------------------------------------------------------
-uint32_t opCelSize(uint16_t n) { return call(RT_FN(rt_mog_cel_size), 0, 0, 0, labelAddr(n)); }
-void opCelLoad(uint16_t n, uint32_t d) { call(RT_FN(rt_mog_cel_load), 0, 0, 0, labelAddr(n), d); }
-void opHitLoad(uint16_t n, uint32_t d) { call(RT_FN(rt_mog_hit_load), 0, 0, 0, labelAddr(n), d); }
-void opFileOpen(uint16_t n) { rtClFileErr[1] = (uint16_t)rt_file_open(reinterpret_cast<const char *>((uintptr_t)labelAddr(n))); }
+uint32_t opCelSize(uint16_t n) { return rtCelSize_mog(reinterpret_cast<const char *>(labelAddr(n))); }
+void opCelLoad(uint16_t n, uint32_t d) { rtLoadCel_mog(reinterpret_cast<const char *>(labelAddr(n)), reinterpret_cast<uint8_t *>(d)); }
+void opHitLoad(uint16_t n, uint32_t d) { rtHitLoad_mog(reinterpret_cast<const char *>(labelAddr(n)), reinterpret_cast<uint8_t *>(d)); }
+void opFileOpen(uint16_t n) { mogFileErr[1] = (uint16_t)rt_file_open(reinterpret_cast<const char *>((uintptr_t)labelAddr(n))); }
 void opFileRead(uint32_t d, uint32_t c) { rt_file_read(reinterpret_cast<void *>((uintptr_t)d), c); }
 void opFileClose() { rt_file_close(); }
-void opPackDone() { rt_mog_pack_done(); }
-void opPlanes(uint32_t b) { call(RT_FN(rt_mog_set_planes), b); }
-void opUnpack(uint32_t p) { call(RT_FN(rt_mog_pic_mem), 0, 0, 0, p); }
-void opPictureLoad(uint16_t n, uint32_t b) { call(RT_FN(rt_mog_pic_file), 0, 0, 0, labelAddr(n), b); }
-void opPalette(uint32_t p) { call(RT_FN(rt_mog_fade_to), 0, 0, 0, p); }
-void opBlank() { call(RT_FN(rt_mog_palette_clear)); }
-void opFadeOut() { call(RT_FN(rt_mog_fade_out)); }
+void opPackDone() { rtEnhPackDone(); }
+void opPlanes(uint32_t b) { rt::setDrawTarget(b); }
+void opUnpack(uint32_t p) { rtLoadPicMem_mog(reinterpret_cast<uint8_t *>(p)); }
+void opPictureLoad(uint16_t n, uint32_t b) { rtLoadPicFile_mog(reinterpret_cast<const char *>(labelAddr(n)), reinterpret_cast<uint8_t *>(b)); }
+void opPalette(uint32_t p) { rtMogFadeToC(reinterpret_cast<const uint16_t *>(p)); }
+void opBlank() { rtMogPaletteClearC(); }
+void opFadeOut() { rtMogFadeOutC(); }
 void opClear(uint32_t s) { rt::displayClearScreen(reinterpret_cast<void *>((uintptr_t)s)); }   // LAB_0D72
-void opCopyScreen(uint32_t s, uint32_t d) { call(RT_FN(rt_mog_blit_screen), 0, 0, 0, s, d); }
-void opCopyScreens() { call(RT_FN(rt_mog_blit_both)); }
-void opText(uint32_t l) { call(RT_FN(rt_mog_text_list), 0, 0, 0, l); }
-void opDrawCel(uint32_t s, uint16_t cel, uint16_t x, uint16_t y) { call(RT_FN(rt_mog_draw_cel), cel, x, y, s); }
+void opCopyScreen(uint32_t s, uint32_t d) { rtMogBlitScreenC(s, d); }
+void opCopyScreens() { rtMogBlitBothC(); }
+void opText(uint32_t l) { rtMogTextList(reinterpret_cast<const void *>(l)); }
+void opDrawCel(uint32_t s, uint16_t cel, uint16_t x, uint16_t y) { rtDrawCel_mog(cel, x, y, reinterpret_cast<const uint8_t *>(s)); }
 void opSynth(uint16_t seq, uint16_t ch) { rtSfxSynth(seq, ch); }
 void opMusic(uint16_t e) {
 	switch(e) {
@@ -303,8 +277,8 @@ void opMusic(uint16_t e) {
 		default: break;
 	}
 }
-void opBackdrop(uint32_t s) { call(RT_FN(rt_mog_arena_load), 0, 0, 0, s); }
-void opBackdropReset() { call(RT_FN(rt_mog_arena_default)); }
+void opBackdrop(uint32_t s) { rtArenaLoad(reinterpret_cast<const char *>(s)); }
+void opBackdropReset() { rtArenaDefault(); }
 void opHunk9() {}   // LAB_012D's tail jump to SECSTRT_9 (the protection stub): rtTitleStep does the stub's return chain (src/rt/hunk9.cpp)
 
 const Mem kMem = {rd8, rd16, rd32, wr8, wr16, wr32, copyBytes, fillBytes};
@@ -318,11 +292,11 @@ Env makeEnv() {
 	e.m = kMem;
 	e.o = kOps;
 	e.addr = labelAddr;
-	e.sz.ulRawMessage = rt_enh_raw_mog_msg;
-	e.sz.ulRawChar = rt_enh_raw_mog_ch;
-	e.sz.ulRawPack = rt_enh_raw_mog_pack;
+	e.sz.ulRawMessage = rtEnhRawMogMsg;
+	e.sz.ulRawChar = rtEnhRawMogCh;
+	e.sz.ulRawPack = rtEnhRawMogPack;
 	for(uint8_t i = 0; i < 9; ++i) {
-		e.sz.aulPic[i] = rt_enh_pic_sz[i];
+		e.sz.aulPic[i] = rtEnhPicSz[i];
 	}
 	return e;
 }
@@ -352,6 +326,7 @@ RT_CL_ENTRY(rtClKiMi, loadKiMi)
 RT_CL_ENTRY(rtClMoon, drawMoon)
 RT_CL_ENTRY(rtClAssets, loadAssets)
 RT_CL_ENTRY(rtClSelect, selectScreen)
+RT_CL_ENTRY(rtClTitlePicture, restoreTitlePicture)
 RT_CL_ENTRY(rtClHighWood, placeHighWood)
 RT_CL_ENTRY(rtClWaterDeep, placeWaterDeep)
 RT_CL_ENTRY(rtClWizard, loadWizard)

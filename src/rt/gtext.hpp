@@ -15,6 +15,9 @@ struct TextExtent {
 // mog LAB_0431: one string at (x, y) with style bits (ms::TextStyle, the low byte of D2).
 TextExtent mogDrawString(const uint8_t *pText, uint16_t uwX, uint16_t uwY, uint16_t uwStyle);
 
+// The width in pixels mogDrawString would give the string in the font in use (mog LAB_043D); draws nothing, leaves the printer's cells alone.
+uint16_t mogStringWidth(const uint8_t *pText, uint16_t uwStyle);
+
 // mog LAB_0432: a list of text records (text ptr, x, y, style byte at +9, next ptr at +10); null prints nothing.
 TextExtent mogDrawList(const void *pRecords);
 

@@ -385,9 +385,10 @@ class WipeModelVsOriginal(unittest.TestCase):
             if not want[0]:
                 self.assertEqual(writes, [], (x, y, tile))
                 continue
-            aptr = [v for off, _, v in writes if off == 0x050]
-            dptr = [v for off, _, v in writes if off == 0x054]
-            size = [v for off, _, v in writes if off == 0x058]
+            # TW.blit: one tuple per blit, (BLTCON0, BLTCON1, BLTAFWM, BLTALWM, BLTSIZE, ((pointer register, value, modulo), ...) of the channels in use)
+            aptr = [v for w in writes for pt, v, _ in w[5] if pt == 0x050]
+            dptr = [v for w in writes for pt, v, _ in w[5] if pt == 0x054]
+            size = [w[4] for w in writes]
             self.assertEqual(aptr[0] - pic, want[3], (x, y, tile))
             self.assertEqual(dptr[0] - TW.DST, want[4], (x, y, tile))
             self.assertEqual(size[0] >> 6, want[1], (x, y, tile))

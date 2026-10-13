@@ -9,17 +9,25 @@
 // A skip replays the intro's tail (program.asm:146-155) minus the caption screen: fade to black (rtSceneFade = LAB_025F),
 // unhook LAB_005C from the VBL list (LAB_005B, only once SECSTRT_1 installed it), audio DMA off, then the
 // overlay jump to mog.
+//
+// Platform-neutral since ROADMAP 11.10 (it was asm for the two entries): rt_prg_wait_beam is the poll of the program overlay's beam wait
+// (rt::displayWaitBeamRaw hands it to rt::platform::timerWaitBeam, which also waits for line $F5), the skip is the C++ below.  On the PC a
+// platform may also ask for the skip outright (rt::platform::inputSkipRequested: --skip-intro of the PC build).
 
-#include <ace/managers/log.h>
-#include <ace/types.h>
-#include <ace/utils/custom.h>
-
+#include "rt/logwrite.hpp"
+#include "rt/abs.h"
 #include "rt/autoplay.hpp"
 #include "rt/input.hpp"
+#include "rt/platform/audio.hpp"
+#include "rt/platform/input.hpp"
 
 extern "C" {
 __attribute__((used, externally_visible)) void rt_intro_skip_arm(void);
 __attribute__((used, externally_visible)) ULONG rt_intro_skip_poll(void);
+extern ULONG prgIntroPhase;   // the intro's step counter (init 4, the skip sets 2) (LAB_00D0)
+extern ULONG prgIntroState;   // non-zero once SECSTRT_1 installed the music tick (LAB_0060)
+void rtSceneFade(void);       // LAB_025F (src/rt/engine_scenes.cpp)
+void rtMusicStopC(void);      // LAB_005B (the music player of the platform)
 }
 
 namespace {
@@ -29,10 +37,15 @@ bool s_isLeaving = false;
 bool s_wasFire = true;  // a button already held when the skip arms must be released first
 ULONG s_ulKeyPresses;   // rt::inputSkipPressCount() when the skip armed
 
+constexpr UWORD kRegDmacon = 0x96;
+constexpr UWORD kAudioDmaOff = 0x000F;   // DMACON clear: AUD0..AUD3 DMA
+
 // CIA-A PRA bit 6 = port 0 fire / left mouse button, bit 7 = port 1 fire; both active low. Sampled, not
 // latched: polls come at least every few frames while the intro animates, long enough for a button press.
 bool isFireDown() {
-	return (g_pCia[CIA_A]->pra & 0xC0) != 0xC0 || rt::autoplayFireHeld();
+	rt::platform::PortState sPorts;
+	rt::platform::inputReadPorts(sPorts);
+	return sPorts.isFire0 || sPorts.isFire1 || rt::autoplayFireHeld();
 }
 
 }  // namespace
@@ -51,7 +64,7 @@ ULONG rt_intro_skip_poll(void) {
 		return 0;
 	}
 	const bool isFire = isFireDown();
-	const bool isPress = (isFire && !s_wasFire) || rt::inputSkipPressCount() != s_ulKeyPresses;
+	const bool isPress = (isFire && !s_wasFire) || rt::inputSkipPressCount() != s_ulKeyPresses || rt::platform::inputSkipRequested();
 	s_wasFire = isFire;
 	if(!isPress) {
 		return 0;
@@ -62,33 +75,21 @@ ULONG rt_intro_skip_poll(void) {
 	return 1;
 }
 
-// rt_prg_intro_begin: the replaced MOVE.L #2,LAB_00D0 (program.asm:131), then arm. Preserves all registers.
-// rt_prg_wait_beam: LAB_0552's first loop (wait for line $F5) after the skip poll. Preserves all registers.
-asm(R"(
-	.text
-	.globl rt_prg_intro_begin
-rt_prg_intro_begin:
-	move.l #2,prgIntroPhase
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rt_intro_skip_arm
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
+// rt_prg_intro_begin: the replaced MOVE.L #2,LAB_00D0 (program.asm:131), then arm.
+extern "C" void rt_prg_intro_begin(void) {
+	prgIntroPhase = 2;
+	rt_intro_skip_arm();
+}
 
-	.globl rt_prg_wait_beam
-rt_prg_wait_beam:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rt_intro_skip_poll
-	tst.l %d0
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	bne.s 2f
-1:	cmpi.b #0xf5,0xdff006
-	bne.s 1b
-	rts
-2:	jsr rtSceneFade
-	tst.l prgIntroState
-	beq.s 3f
-	jsr rt_music_stop
-3:	move.w #0x000f,0xdff096
-	jmp rt_run_mog
-)");
-
+// rt_prg_wait_beam: the poll that LAB_0552 makes before it waits for line $F5.  A skip replays the intro's tail and never returns.
+extern "C" void rt_prg_wait_beam(void) {
+	if(rt_intro_skip_poll() == 0) {
+		return;
+	}
+	rtSceneFade();
+	if(prgIntroState != 0) {
+		rtMusicStopC();   // LAB_005B
+	}
+	rt::platform::paulaWrite16(kRegDmacon, kAudioDmaOff);
+	rt_run_mog();
+}

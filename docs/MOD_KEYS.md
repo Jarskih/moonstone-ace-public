@@ -187,6 +187,16 @@ Built-in rows: n15, n16, n17, n18, n19, n1a, n1c, n1b, n1e. A new row: a name th
 
 ## rules.ini - Rule switches
 
+### `[dexterity]`
+
+Optional fourth character stat. Reduces the final repeated recovery pose of melee attacks, not their wind-up.
+
+| key | type | allowed | meaning |
+|---|---|---|---|
+| `enabled` | bool | on, off (yes/no, true/false, 1/0) | Show and train Dexterity on the knight sheet and apply its recovery bonus. |
+| `starting` | int | 1..5 | Dexterity of each knight when a new game or practice fight starts. |
+| `recovery_frames_per_point` | int | 0..4 | Repeats removed from the final melee recovery hold for each Dexterity point above 1. At least one repeat remains; 0 disables the timing bonus. |
+
 ### `[waves]`
 
 Monster waves of the lair fights.

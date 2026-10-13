@@ -42,6 +42,7 @@ Text syntax (one instruction per line, `;` comments, `label:` lines, `.org <hunk
     py tools/fightscript.py asm f.txt [--out f.bin]               assemble (prints bytes and relocations)
     py tools/fightscript.py roundtrip [--creature troll]          disassemble -> assemble -> compare with the original
     py tools/fightscript.py creatures                             the creatures of ai_catalog.json and their records
+    py tools/fightscript.py loops                                 which original scripts use `loop random` (exit 1 if any: NETPLAY 12.4)
 """
 import argparse
 import json
@@ -966,6 +967,107 @@ def roundtrip_program(img, prog):
     return not problems, text, problems
 
 
+# ----------------------------------------------------------------------------------------- `loop random` scan (ROADMAP 12.3 / 12.4)
+
+# Opcode $88 with count 0 draws 1..31 from the frame counter (src/game/combat_script.cpp, src/engine/anim.cpp).  In deterministic
+# mode (network play) the counter is the logical tick, identical on every machine, so a script using it stays in step; the scan
+# says which scripts of the original do (docs/NETPLAY.md 1.1a T3).
+SCRIPT_HUNK = 4          # the mog hunk holding the fight scripts (knight actions, effects, map objects, the creature kits)
+
+# program overlay job scripts (src/engine/anim.cpp animRun): same family, other sizes for $A4 / $B8 / $BC / $C8 / $D0 / $D4
+PROGRAM_SIZE_OF = {0x80: 2, 0x84: 6, 0x88: 2, 0x8C: 8, 0x94: 2, 0xA0: 8, 0xA4: 4, 0xB4: 6, 0xB8: 6, 0xBC: 6, 0xC0: 2, 0xC4: 2, 0xC8: 6,
+                   0xCC: 8, 0xD0: 8, 0xD4: 2}
+
+
+def _label_of(img, h, o):
+    """The nearest label at or below (hunk, offset), as `name+$off`."""
+    best = None
+    for (hh, oo), names in img.by_addr.items():
+        if hh == h and oo <= o and (best is None or oo > best[0]):
+            best = (oo, names)
+    if best is None:
+        return 'h%d+$%X' % (h, o)
+    n = img.name((h, best[0])) or sorted(best[1])[0]
+    return n if best[0] == o else '%s+$%X' % (n, o - best[0])
+
+
+def scan_loop_random_mog(img, cat, hunk=SCRIPT_HUNK):
+    """{'creatures': {name: [site]}, 'other': [site], 'decoded': n} for the mog script hunk: every label of the hunk that
+    disassembles (as the round-trip test does) is walked; a `loop random` is credited to the creature kits that reach it, else to
+    `other` (knight actions, effects, map objects, scripts no kit reaches).  site = (hunk, offset, label)."""
+    allp = Program(img)
+    good = 0
+    for a in sorted(a for a in img.by_addr if a[0] == hunk):
+        p = Program(img)
+        try:
+            p.add_root(a)
+        except ScriptError:
+            continue
+        allp.insns.update(p.insns)
+        good += 1
+    sites = sorted(addr for addr, ins in allp.insns.items() if ins.text == 'loop random')
+    creatures = {}
+    claimed = set()
+    for c in cat.doc['creatures']:
+        prog = Creature(img, cat, c['name']).program(scope='all')
+        hit = [addr for addr in sites if addr in prog.insns]
+        if hit:
+            creatures[c['name']] = [(h, o, _label_of(img, h, o)) for (h, o) in hit]
+            claimed.update(hit)
+    other = [(h, o, _label_of(img, h, o)) for (h, o) in sites if (h, o) not in claimed]
+    return {'creatures': creatures, 'other': other, 'decoded': good, 'instructions': len(allp.insns)}
+
+
+def scan_loop_random_program(img):
+    """The program overlay (intro, ending): its job scripts are not reachable from a table the tool knows, so every DATA label is
+    tried as a script start and walked linearly with PROGRAM_SIZE_OF; a walk that ends on `$FF $FF` / `$FD` / `$FE` (a clean
+    script) is kept.  Branch targets are not followed.  Returns [site] of the `$88 $00` found in clean scripts."""
+    sites = set()
+    clean = 0
+    for (h, o) in sorted(img.by_addr):
+        hunk = img.hunk(h)
+        if hunk.kind != 'DATA':
+            continue
+        d = hunk.data
+        pos = o
+        found = []
+        ok = False
+        while pos + 2 <= len(d):
+            op = d[pos]
+            if op in (0xFD, 0xFE):
+                ok = True
+                break
+            if op == 0xFF:
+                ok = True
+                break
+            if op < 0x80:
+                pos += 6
+                continue
+            size = PROGRAM_SIZE_OF.get(op)
+            if size is None:
+                break
+            if op == 0x88 and d[pos + 1] == 0:
+                found.append(pos)
+            pos += size
+        if ok and found:
+            clean += 1
+            sites.update((h, f) for f in found)
+    return {'sites': [(h, f, _label_of(img, h, f)) for (h, f) in sorted(sites)], 'scripts_with_loop': clean}
+
+
+def format_loop_report(mog, prg):
+    lines = ['loop random (opcode $88, count 0) in the original scripts',
+             'mog script hunk: %d label starts decode, %d instructions' % (mog['decoded'], mog['instructions'])]
+    for name in sorted(mog['creatures']):
+        lines.append('  creature kit %-10s %s' % (name, ', '.join(x[2] for x in mog['creatures'][name])))
+    if not mog['creatures']:
+        lines.append('  creature kits: none')
+    lines.append('  knight / effect / map / unclaimed: ' + (', '.join(x[2] for x in mog['other']) or 'none'))
+    if prg is not None:
+        lines.append('program overlay (heuristic walk, branches not followed): ' + (', '.join(x[2] for x in prg['sites']) or 'none'))
+    return '\n'.join(lines)
+
+
 # ---------------------------------------------------------------------------------------------------------------- CLI
 
 def creature_header(c):
@@ -990,9 +1092,19 @@ def main():
     r = sub.add_parser('roundtrip')
     r.add_argument('--creature')
     sub.add_parser('creatures')
+    sub.add_parser('loops')
     args = ap.parse_args()
     img = Image()
     cat = Catalog()
+    if args.cmd == 'loops':
+        mog = scan_loop_random_mog(img, cat)
+        prg = None
+        try:
+            prg = scan_loop_random_program(Image('program'))
+        except (OSError, ImportError, KeyError):
+            pass
+        print(format_loop_report(mog, prg))
+        return 1 if (mog['creatures'] or mog['other']) else 0
     if args.cmd == 'creatures':
         for c in cat.doc['creatures']:
             cr = Creature(img, cat, c['name'])

@@ -1,0 +1,36 @@
+config_description=moonstone-ace HD, THEA1200 approximation (ROADMAP 10.7): A1200 AGA, 68020 fastest, 2MB chip + 8MB fast, bsdsocket emulation, DH0 = build-game-debug/hd
+
+; THEA1200 (Retro Games Ltd) is an ARM Linux box running a modified Amiberry; its A1200 profile is not published.
+; Approximation until a device measurement replaces it: 68020 at "fastest possible" (the box offers adjustable CPU speeds),
+; AGA, PAL, 2MB chip, 8MB fast (as the owner's ACA-1232 config, so the Debug exe fits), Kickstart 3.1, network through the
+; host's sockets (bsdsocket.library emulation; Amiberry offers it too, whether THEA1200 exposes it is unknown).
+cpu_model=68020
+cpu_24bit_addressing=false
+cpu_speed=max
+cpu_compatible=false
+chipset=aga
+ntsc=false
+chipmem_size=4
+bogomem_size=0
+fastmem_size=0
+z3mem_size=8
+
+kickstart_rom_file=C:\Users\Public\Documents\Amiga Files\WinUAE\Kickstart v3.1 r40.068 (1993-12)(Commodore)(A1200)[!].rom
+
+; TCP/IP without installing a stack: WinUAE provides bsdsocket.library on the host's sockets
+bsdsocket_emu=true
+
+; THEA1200 shows USB sticks as drives inside Workbench: a directory-mounted HD stands in for that
+filesystem2=rw,DH0:hd:D:\moonstone-ace-public\build-game-debug\hd,0
+
+use_gui=no
+
+; the THEA1200 gamepad drives joystick port 1; here WinUAE keyboard layout "kbd2" (arrows, Right Ctrl = fire)
+joyport1=kbd2
+joyport1autofire=none
+; two windows on one PC (network test): the unfocused window keeps full speed, otherwise its peer waits on it
+win32.inactive_pause=false
+win32.iconified_pause=false
+win32.inactive_nosound=false
+win32.active_priority=0
+win32.inactive_priority=0

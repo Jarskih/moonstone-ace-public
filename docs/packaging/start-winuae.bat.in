@@ -1,0 +1,9 @@
+@echo off
+rem Moonstone ACE @VERSION@ - start the game in WinUAE (set WINUAE and KICKSTART in the environment if needed)
+setlocal
+if "%WINUAE%"=="" set "WINUAE=C:\Program Files\WinUAE\winuae64.exe"
+if "%KICKSTART%"=="" set "KICKSTART=%~dp0Kickstart v3.1 r40.068 (1993-12)(Commodore)(A1200)[!].rom"
+if not exist "%WINUAE%" (echo WinUAE not found: set WINUAE to the full path of winuae64.exe & exit /b 1)
+if not exist "%KICKSTART%" (echo Kickstart ROM not found: set KICKSTART to your A1200 Kickstart 3.1 ROM file & exit /b 1)
+if not exist "%~dp0Moonstone\disks\*.adf" echo Note: no .adf files in Moonstone\disks yet - the game will ask for the disks.
+"%WINUAE%" -config="%~dp0moonstone-ace-a1200.uae" -s "kickstart_rom_file=%KICKSTART%" -s "filesystem2=rw,DH0:Moonstone:%~dp0Moonstone,0"

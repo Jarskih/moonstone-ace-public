@@ -2,14 +2,15 @@
 
 #include "rt/origload.hpp"
 
-#include <ace/managers/log.h>
-#include <ace/managers/system.h>
-#include <proto/dos.h>
-
 #include "engine/synth_data.hpp"
+#include "rt/file_handle.hpp"
 #include "rt/files.hpp"
-#include "rt/guards.hpp"
+#include "rt/logwrite.hpp"
 #include "rt/system.hpp"
+#if defined(MS_DATA_DUMP) && MS_DATA_DUMP
+#include <proto/dos.h>
+#include "rt/guards.hpp"
+#endif
 
 #if !defined(MS_DATA_COMPILED)
 #define MS_DATA_COMPILED 0
@@ -151,6 +152,7 @@ bool origLoad() {
 	return true;
 }
 
+#if defined(MS_DATA_DUMP) && MS_DATA_DUMP   // the dump is an Amiga debug aid (dos.library)
 void origDataDump() {
 	bool isDumped;
 	{
@@ -168,5 +170,6 @@ void origDataDump() {
 	}
 	logWrite("origDataDump: %s\n", isDumped ? "PROGDIR:datadump.bin" : "cannot write PROGDIR:datadump.bin");
 }
+#endif
 
 }  // namespace rt

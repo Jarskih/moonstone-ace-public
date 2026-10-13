@@ -3,7 +3,9 @@
 // it branches with BPL/BMI after a SUB or MOVE).  Host-testable: no globals, no OS.
 #include "game/api/party.hpp"
 #include "game/overworld.hpp"
+#include "game/rules/party.hpp"
 
+#include "engine/nettick.hpp"
 #include "engine/util.hpp"
 
 namespace ms { namespace game {
@@ -233,6 +235,7 @@ uint32_t arrivalMenu(const ArrivalEntry *aRows, bool bForced, const NodeMenuOps 
 	if (ops.pfnKeyReset) ops.pfnKeyReset(ops.pCtx);                   // JSR LAB_0B82
 	if (ops.pfnDrawMenu) ops.pfnDrawMenu(ops.pCtx);                   // BSR.W LAB_0E49 ; JSR LAB_0D9B ; JSR LAB_0416
 	for (;;) {                                                        // LAB_0E40
+		ms::tickIdle();                                               // deterministic mode (ROADMAP 12.4): a frame boundary per spin, else the key never arrives
 		const uint16_t uwKey = ops.pfnReadKey(ops.pCtx);              // MOVE.W SECSTRT_21,D0 ; BEQ.S ; JSR LAB_0D8D
 		if (uwKey < 0x31 || uwKey > 0x39) continue;                   // CMP.W #$31,D0 ; BLT.S ; CMP.W #$39,D0 ; BGT.S (signed)
 		const int iRow = uwKey - 0x31;                                // SUBI.W #$31,D0 ; MULU #8,D0
@@ -274,6 +277,30 @@ void drawKnight(const ScanOps &ops, const Knight &k) {
 	ops.pfnDraw(ops.pCtx, ulSprite, k.uwMapX, k.uwMapY);
 }
 
+// Moonstone 2 (ROADMAP 8.3): the "other knights" part of LAB_0069 for the tokens.  The party token (the leader) and the AI black
+// knights (records ubSize..3, one token each) are the knights on the map; a token of the scanning record's own group is skipped.  A touching token is a
+// {record, 1 alive / $21 dead} row as in the original ("Battle with <the black knights>").  The dragon touches the party only.
+void scanTokensParty(ScanCells &c, Appender &ap, const RecordSet &rs, int iCur, bool bDragonActive, const ScanOps &ops) {
+	const Knight &cur = rs.rec(iCur);
+	for (int t = -1; t < REC_DRAGON - rs.pParty->ubSize; ++t) {       // t = -1: the party token, then the black knights in record order
+		const int i = t < 0 ? partyLeader(rs) : rs.pParty->ubSize + t;
+		if (partySameGroup(rs, i, iCur)) continue;
+		const Knight &o = rs.rec(i);
+		if (!boxesTouch(ops, 0, cur.uwMapX, cur.uwMapY, o.uwMapX, o.uwMapY)) continue;
+		drawKnight(ops, o);
+		ap.add(rs.addr(i), (int8_t)o.ubLives > 0 ? 1u : 0x21u);
+	}
+	for (int i = 0; i < 4; ++i) c.aulTouch[i] = 0;
+	if (!bDragonActive) return;
+	const Knight &dr = rs.rec(REC_DRAGON);
+	const int iL = partyLeader(rs);
+	const Knight &o = rs.rec(iL);
+	if (boxesTouch(ops, 0x14, (uint16_t)(dr.uwX - 10), dr.uwY, o.uwMapX, o.uwMapY)) {
+		c.aulTouch[0] = rs.addr(iL);
+		drawKnight(ops, o);
+	}
+}
+
 }  // namespace
 
 // LAB_0069 (mog.asm 1032)
@@ -285,7 +312,7 @@ void scanMap(ScanCells &c, const RecordSet &rs, int iCur, const MapNode *aNodes,
 	}
 	c.uwLastId = 0xFFFF;                                              // MOVE.W #$ffff,LAB_069C
 	Appender ap = {c.aList, 0};
-	const Knight &cur = rs.aRec[iCur];
+	const Knight &cur = rs.rec(iCur);
 	const uint16_t uwCx = cur.uwMapX, uwCy = cur.uwMapY;
 	if (!bForced) {                                                   // TST.W LAB_065E ; BNE.W LAB_0076
 		for (int i = 0;; ++i) {                                       // LAB_006B: the node table, up to the negative id
@@ -302,6 +329,9 @@ void scanMap(ScanCells &c, const RecordSet &rs, int iCur, const MapNode *aNodes,
 			ops.pfnDraw(ops.pCtx, (uint32_t)(uint16_t)nd.swId, nd.uwX, nd.uwY);   // JSR LAB_0CDA
 			ap.add(((uint32_t)nd.uwX << 16) | nd.uwY, (uint32_t)(int32_t)nd.swId);   // MOVE.W D1,(A2)+ ; MOVE.W D2,(A2)+ ; EXT.L D0
 		}
+		if (rs.coop()) {
+			scanTokensParty(c, ap, rs, iCur, bDragonActive, ops);    // Moonstone 2: the party token and the black knights (ROADMAP 8.3)
+		} else {
 		for (int i = 0; i < 4; ++i) {                                 // LAB_0070: the other knights
 			if (i == iCur) continue;                                  // CMPA.L A0,A1 ; BEQ.S LAB_0073
 			const Knight &o = rs.aRec[i];
@@ -319,6 +349,7 @@ void scanMap(ScanCells &c, const RecordSet &rs, int iCur, const MapNode *aNodes,
 				c.aulTouch[iT++] = rs.addr(i);                        // MOVE.L A0,(A3)+
 				drawKnight(ops, o);
 			}
+		}
 		}
 	}
 	for (int i = 0; i < 24; ++i) {                                    // LAB_0076: the lairs
@@ -383,7 +414,7 @@ bool dragonSpawn(const RecordSet &rs, uint16_t uwDay, const DragonSpawnEnv &env,
 	cells.pFlight->swSpeedX = 2;                                      // MOVE.W #2,LAB_0DDC
 	cells.pFlight->uwTimer = 0x64;                                    // MOVE.W #$64,LAB_0666
 	*cells.puwActive = 1;                                             // MOVE.W #1,LAB_0667
-	const int iT = dragonPickTarget(rs.aRec, ulSeed);
+	const int iT = rs.coop() ? partyDragonTarget(rs) : dragonPickTarget(rs.aRec, ulSeed);   // co-op: the dragon engages the party
 	if (iT >= 0) knightEngage(dr, rs.addr(iT));                      // LAB_0DCC: MOVE.L A0,100(A1)
 	return true;
 }
@@ -435,7 +466,8 @@ struct TurnCtx {
 
 void hookTurnEnd(void *p) {
 	TurnCtx &c = *static_cast<TurnCtx *>(p);
-	const bool bRoundEnds = ((c.pTs->uwTurn + 1) & 3) == 0;           // the turn word wraps to 0 right after this hook
+	const bool bRoundEnds = c.pRs->coop() ? (c.pTs->uwTurn + 1) % partySlotCount(*c.pRs) == 0   // co-op: the turn slots
+	                                      : ((c.pTs->uwTurn + 1) & 3) == 0;   // the turn word wraps to 0 right after this hook
 	if (c.pPorts->pfnTurnEnd) c.pPorts->pfnTurnEnd(c.pPorts->pCtx, *c.pTs, bRoundEnds);
 }
 
@@ -446,9 +478,9 @@ void hookNewDay(void *p) {
 
 void hookTurnStart(void *p) {
 	TurnCtx &c = *static_cast<TurnCtx *>(p);
-	const uint16_t uwIdx = c.pTs->uwTurn;
-	c.pAct->ulCurrent = c.pRs->addr(uwIdx);                           // MOVE.L LAB_0633,0(A0) (LAB_05E4)
-	if (c.pPorts->pfnTurnStart) c.pPorts->pfnTurnStart(c.pPorts->pCtx, *c.pTs, c.pRs->aRec[uwIdx]);
+	const int iRec = turnRecordOf(*c.pRs, c.pTs->uwTurn);             // classic: the turn word is the record (co-op: the slot's token)
+	c.pAct->ulCurrent = c.pRs->addr(iRec);                            // MOVE.L LAB_0633,0(A0) (LAB_05E4)
+	if (c.pPorts->pfnTurnStart) c.pPorts->pfnTurnStart(c.pPorts->pCtx, *c.pTs, c.pRs->rec(iRec));
 }
 
 void hookAiDay(Knight &k, void *p) {
@@ -462,7 +494,8 @@ void hookAiDay(Knight &k, void *p) {
 void turnSetup(TurnState &ts, ActiveKnights &act, const RecordSet &rs, const TurnPorts &ports) {
 	TurnCtx c = {&ts, &act, &rs, &ports};
 	RuleHooks h = {hookTurnEnd, hookNewDay, hookTurnStart, hookAiDay, &c};
-	setupTurn(ts, rs.aRec, &h);
+	if (rs.coop()) partySetupTurn(ts, rs, &h);                        // Moonstone 2: the turn slots (ROADMAP 8.3a)
+	else setupTurn(ts, rs.aRec, &h);
 }
 
 // LAB_0DB9 .. LAB_0DBB (mog.asm 24883)
@@ -472,7 +505,8 @@ TurnNext turnRun(TurnState &ts, ActiveKnights &act, const RecordSet &rs, const T
 	ts.uwSkipped = 0;                                                 // CLR.W LAB_0663
 	TurnNext r;
 	do {
-		r = advanceTurn(ts, act, rs.aRec, &h);                        // BSR LAB_0E04 .. LAB_0DBB; the asm loops to LAB_0DBA
+		r = rs.coop() ? partyAdvanceTurn(ts, act, rs, &h)              // Moonstone 2: the turn slots (ROADMAP 8.3a)
+		              : advanceTurn(ts, act, rs.aRec, &h);            // BSR LAB_0E04 .. LAB_0DBB; the asm loops to LAB_0DBA
 	} while (r == TURN_REPEAT);
 	return r;
 }
@@ -493,11 +527,19 @@ void mapDrawLairs(const Lair *aLairs, uint32_t ulLairBase, uint32_t ulTarget, ui
 	}
 }
 
+namespace {
+
+}  // namespace
+
 // LAB_0D9E (mog.asm 24679)
 void mapDrawOthers(const RecordSet &rs, uint32_t ulCurrent, const MapDrawOps &ops) {
-	for (int i = 0; i < 4; ++i) {                                     // MOVEQ #3,D0 ; DBF
+	const int iCur = rs.index(ulCurrent);
+	for (int i = 0; i < (rs.coop() ? rs.count() : 4); ++i) {          // MOVEQ #3,D0 ; DBF (co-op: the pool too)
 		if (rs.addr(i) == ulCurrent) continue;                        // CMPA.L A0,A1 ; BEQ.S LAB_0DA2
-		const Knight &k = rs.aRec[i];
+		if (rs.coop()) {                                              // Moonstone 2: the party token and the black knights (ROADMAP 8.3)
+			if (i == REC_DRAGON || i >= REC_BK0 || partyTokenOf(rs, i) != i || (iCur >= 0 && partySameGroup(rs, i, iCur))) continue;
+		}
+		const Knight &k = rs.rec(i);
 		uint32_t ulSprite = k.ulKind;                                 // MOVE.L 54(A0),D0
 		if ((int8_t)k.ubLives > 0) {                                  // TST.B 73(A0) ; BGT.S LAB_0DA0
 			if (k.ubFrogDays != 0) ulSprite += 0x2B;                  // TST.B 82(A0) ; BEQ.S ; ADDI.L #$2b,D0
@@ -571,7 +613,7 @@ void mapMenuRow(const ArrivalEntry &row, const RecordSet &rs, const MapMenuText 
 	} else if (row.ulKind == 1) {                                     // CMPI.L #1,4(A5) ; LEA LAB_08F2,A1 ; BSR LAB_0E51
 		uint32_t n = appendStr(pcOut, 0, ulCap, t.pcBattle);
 		const int i = rs.index(row.ulKey);                            // MOVEA.L (A5),A4 ; MOVEA.L 108(A4),A1
-		if (i >= 0) appendStr(pcOut, n, ulCap, ops.pfnString(ops.pCtx, rs.aRec[i].ulName));   // SUBQ.L #1,A2: the NUL is overwritten
+		if (i >= 0) appendStr(pcOut, n, ulCap, ops.pfnString(ops.pCtx, rs.rec(i).ulName));   // SUBQ.L #1,A2: the NUL is overwritten
 	} else {
 		const uint32_t ulIdx = row.ulKind - 0x15;                     // SUBI.L #$15,D0 ; LSL.L #2,D0 ; MOVEA.L 0(A1,D0.L),A1
 		if (ulIdx < (uint32_t)MAP_PLACE_TEXTS) appendStr(pcOut, 0, ulCap, t.apcPlaces[ulIdx]);
@@ -610,7 +652,7 @@ namespace {
 
 inline const Knight &currentOf(const MapLoopCells &c) {
 	const int i = c.pRs->index(*c.pulCurrent);
-	return c.pRs->aRec[i < 0 ? 0 : i];                                // always one of the four knights on the map
+	return c.pRs->rec(i < 0 ? 0 : i);                                 // always one of the four knights on the map (co-op: the party token or a black knight)
 }
 
 inline void step(const MapLoopOps &ops, MapStep e) { ops.pfnStep(ops.pCtx, e); }

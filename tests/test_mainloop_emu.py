@@ -40,9 +40,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import flow_lib  # noqa: E402
 
 SRCS = ('src/game/mogjobs.cpp', 'src/game/mainloop.cpp', 'src/rt/mainloop.cpp', 'tests/mainloop_emu_support.cpp', 'src/game/rules/stats.cpp', 'src/game/rules/rituals.cpp', 'src/game/rules/dice.cpp', 'src/game/rules/shops.cpp', 'src/game/rules/healing.cpp', 'src/game/rules/levelling.cpp', 'src/game/rules/settle.cpp', 'src/game/rules/clock.cpp', 'src/game/rules/turns.cpp', 'src/game/overworld.cpp', 'src/game/rules/ai_map.cpp',
-        'src/engine/util.cpp', 'src/rt/overworld.cpp', 'src/rt/scene_places.cpp', 'src/game/scene_places.cpp', 'src/rt/scene_town.cpp',
-        'src/game/scene_town.cpp', 'src/rt/game_rules.cpp', 'src/game/placevisit.cpp') + flow_lib.flow_rel_sources()   # the scene manager the rt glue runs (ROADMAP 9.2a)
-BLOB_STUBS = TE.BLOB_BASE + 0xC000      # logging stubs for the C++ entries of the 7.1l steps (a JMP at the symbol leads there)
+        'src/engine/util.cpp', 'src/rt/overworld.cpp', 'src/rt/party.cpp', 'src/rt/scene_places.cpp', 'src/rt/amiga/scene_places_entries.cpp', 'src/game/scene_places.cpp', 'src/rt/scene_town.cpp', 'src/rt/party_loot.cpp', 'src/game/party_loot.cpp', 'src/game/loot.cpp',
+        'src/game/scene_town.cpp', 'src/rt/game_rules.cpp', 'src/rt/amiga/game_rules_entries.cpp', 'src/game/placevisit.cpp', 'src/game/net_drop.cpp', 'src/game/ending_knight.cpp', 'src/game/local_knight.cpp', 'src/engine/netplay.cpp', 'src/game/party.cpp', 'src/engine/pad.cpp', 'src/rt/combat_pool.cpp', 'src/rt/amiga/mainloop_entries.cpp') + flow_lib.flow_rel_sources()   # the scene manager the rt glue runs (ROADMAP 9.2a)
+BLOB_STUBS = TE.BLOB_BASE + 0x12000     # (0xC000 until the co-op rules, 8.3a; 0x10000 until the net / party code, 12.x) logging stubs for the C++ entries of the 7.1l steps (a JMP at the symbol leads there)
 PIC_SZ = 0x19F400                       # rt_enh_pic_sz[9], read by the map loop
 # rt entries the shim calls directly (instead of the patch stub at the label): the label whose logging stub they get, and the stub slot
 ALIAS = {'rt_mog_carve': ('LAB_0004', 0), 'rt_fight_run': ('LAB_0036', 1), 'rt_fight_meet': (None, 2), 'rt_fight_creature': (None, 3),
@@ -50,8 +50,9 @@ ALIAS = {'rt_mog_carve': ('LAB_0004', 0), 'rt_fight_run': ('LAB_0036', 1), 'rt_f
          'rt_mog_job_boot': ('LAB_0303', 7)}
 # 7.1o entries the map scenes call directly; no MainStep, so an RTS (they are never reached by the main-loop runs)
 for _k, _n in enumerate(('rt_palette_cycle_add_mog', 'rt_palette_slot_free', 'rt_scr_mystic', 'rt_scr_dice', 'rt_scr_healer', 'rt_scr_ritual',
-                         'rt_scr_ritual_done', 'rt_screen_redraw')):
+                         'rt_scr_ritual_done', 'rtScreenRedraw')):
     ALIAS[_n] = (None, 8 + _k)   # (the last three are the map's: never reached here)
+STEP_REGS = {'LAB_0E53_08D6': (0, 'LAB_08D6')}   # step -> (D0, label in A0) of the original's call; every other step loads zero and nothing
 SYM = TM.SYM
 TEXT_PAGE = (0x7F000, 0x1000)          # the text cursor cells rt_text_p0 / rt_text_p1 live here
 LOG_CELL = 0x19F000                    # pointer to the next free log slot (inside the data arena)
@@ -69,7 +70,7 @@ def build_blob():
     tmp = tempfile.mkdtemp(prefix='mainloop_emu_')
     env = dict(os.environ, PATH=os.path.dirname(TE.GXX) + os.pathsep + os.environ.get('PATH', ''))
     flags = ['-m68020', '-msoft-float', '-fomit-frame-pointer', '-nostdlib', '-fno-exceptions', '-fno-rtti',
-             '-fno-threadsafe-statics', '-std=c++17', '-O1', '-DNDEBUG', '-DAMIGA', '-DMS_LINK_GAME_ASM=1', '-DMS_TEST_ENTRIES',
+             '-fno-threadsafe-statics', '-std=c++17', '-O1', '-DNDEBUG', '-DAMIGA', '-DBARTMAN_GCC', '-DMS_LINK_GAME_ASM=1', '-DMS_TEST_ENTRIES',
              '-ffunction-sections', '-I', os.path.join(ROOT, 'include'), '-I', os.path.join(ROOT, 'src'),
              '-I', os.path.join(TE.ACE, 'mini_std'), '-I', TE.ACE, '-I', TE.GCC_SUPPORT]
     objs = []
@@ -103,6 +104,8 @@ def build_blob():
             cmd.append('--defsym=rt_boot_flags=%d' % 0x3E0)
         elif s == 'rt_run_program':
             cmd.append('--defsym=rt_run_program=%d' % (BLOB_STUBS + 0x3000))     # never called by these tests
+        elif s == '_ZN2rt23netSessionQuestCompleteEv':   # ROADMAP 12.19: pvRunProgram's network hook, on the same path as rt_run_program
+            cmd.append('--defsym=%s=%d' % (s, BLOB_STUBS + 0x3000))
         elif s in ALIAS:
             cmd.append('--defsym=%s=%d' % (s, BLOB_STUBS + 0x1000 + 0x40 * ALIAS[s][1]))
         elif s in TM.RT_LABELS:
@@ -123,6 +126,7 @@ def build_blob():
             syms[f[2]] = int(f[0], 16)
     blob = open(binf, 'rb').read()
     assert len(blob) < BLOB_STUBS - TE.BLOB_BASE, len(blob)
+    assert syms.get('_end', 0) <= BLOB_STUBS, hex(syms.get('_end', 0))   # the BSS too
     _BLOB = (blob, syms)
     return _BLOB
 
@@ -167,7 +171,7 @@ class MainLoopEmuTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.blob, cls.syms = build_blob()
-        regions = [(TE.BLOB_BASE, TE.BLOB_SIZE), (TE.LOW_BASE, TE.LOW_SIZE), TEXT_PAGE, (TE.DATA_BASE, TE.DATA_SIZE)]
+        regions = [(TE.BLOB_BASE, 2 * TE.BLOB_SIZE), (TE.LOW_BASE, TE.LOW_SIZE), TEXT_PAGE, (TE.DATA_BASE, TE.DATA_SIZE)]
         saved = H.CPU_MODEL
         H.CPU_MODEL = UM.UC_CPU_M68K_M68020
         try:
@@ -395,12 +399,13 @@ class MainLoopEmuTest(unittest.TestCase):
             lo = lo[1:]
         self.assertEqual([e[0] for e in lo], [e[0] for e in ls], '%s cursor %d: call sequence' % (shim, cursor))
         steps = {v[0]: k for k, v in TM.parse_steps().items()}
-        rows = TM.parse_step_table()
+        # ROADMAP 11.10: the g_steps table of register rows is gone (typed calls); the registers a step's original call loaded are listed here
+        # (D0 for the word steps `_D2`, A0 = a data label), and the wrappers of tests/mainloop_emu_support.cpp load them from the typed call
         for (ido, d0o, a0o), (ids, d0s, a0s) in zip(lo, ls):
             name = steps.get(ido)
-            if name is None or name in TM.CPP_STEPS:       # the C++ steps have no table row (their entries are stubbed in the blob)
+            if name is None or name in TM.CPP_STEPS:       # the C++ steps (their entries are stubbed in the blob)
                 continue
-            _, want_d0, want_a0 = rows[name]
+            want_d0, want_a0 = STEP_REGS.get(name, (0, None))
             if name.endswith('_D2'):
                 self.assertEqual((d0s & 0xFFFF, d0o & 0xFFFF), (want_d0, want_d0), name)
             if want_a0:

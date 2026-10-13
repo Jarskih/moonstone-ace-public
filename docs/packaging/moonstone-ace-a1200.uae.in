@@ -1,0 +1,34 @@
+config_description=Moonstone ACE @VERSION@ - A1200 (68020, AGA, 2MB chip + 8MB fast, bsdsocket), DH0 = the Moonstone drawer
+
+; A1200: 68020, AGA, PAL, 2MB chip RAM, 8MB fast RAM (an accelerator; the game also runs with none)
+cpu_model=68020
+cpu_24bit_addressing=false
+cpu_compatible=false
+chipset=aga
+ntsc=false
+chipmem_size=4
+bogomem_size=0
+fastmem_size=0
+z3mem_size=8
+
+; YOUR Kickstart 3.1 ROM for the A1200 (start-winuae.bat fills this in from %KICKSTART%)
+kickstart_rom_file=Kickstart v3.1 r40.068 (1993-12)(Commodore)(A1200)[!].rom
+
+; TCP/IP without installing a stack: WinUAE provides bsdsocket.library on the host's sockets (network play)
+bsdsocket_emu=true
+
+; the Moonstone drawer of this package as a bootable hard drive (its s/startup-sequence starts the game);
+; start-winuae.bat replaces the path with the folder it lives in
+filesystem2=rw,DH0:Moonstone:Moonstone,0
+
+use_gui=no
+
+; player 1 joystick = WinUAE keyboard layout "kbd2": arrow keys move, Right Ctrl (or Right Alt) is fire
+joyport1=kbd2
+joyport1autofire=none
+; two windows on one PC (network test): the unfocused window keeps full speed, otherwise its peer waits on it
+win32.inactive_pause=false
+win32.iconified_pause=false
+win32.inactive_nosound=false
+win32.active_priority=0
+win32.inactive_priority=0

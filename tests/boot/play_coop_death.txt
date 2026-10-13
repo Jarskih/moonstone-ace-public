@@ -1,0 +1,78 @@
+# Moonstone 2 co-op: one party knight dies in a lair fight, the other must fight on (owner report 2026-10-11: "when one knight was killed, the
+# survivor disappeared, the dead one took the other's colour and the fight ended").  `poke party 2`, the party walks onto lair 0 (ratmen) with
+# knight 2 at 12 hit points and nobody steering it: the ratmen hurt, grab and kill it (a squeeze by a ratman, the kill that ended the fight
+# before the fix, comes up now and then; the plain hurt death is the usual one).  Knight 1 (310 hp) fights with the autopilot (`mash joy1`).
+# `poke fightdump 1` logs the roster, both fighters, the job table (slots, owners, scripts) and the creatures every ~70 frames; the `fightop` log
+# lines (autoplay builds: the script ops LAB_0005 / 0006 / 000D with the owner and both knights' hit points) show what ends the fight.
+# Pass: after knight 2 is down (hp < 0) the dump says roster on=1 and the fight runs on with knight 1 until the lair is cleared (`wait var scene 2`
+# = creature loot screen); knight 2's corpse lies in its own colours and no standing knight 2 is drawn beside it (shots `play-coop-death-*`);
+# the end dump shows knight 2 one life down (5 -> 4), knight 1 untouched.
+# shotcmp-tol play-coop-death-arena 15
+# shotcmp-tol play-coop-death-dying 15
+# shotcmp-tol play-coop-death-after 15
+# shotcmp-tol play-coop-death-late 15
+# shotcmp-tol play-coop-death-corpse 15
+# shotcmp-tol play-coop-death-corpse2 15
+# shotcmp-tol play-coop-death-loot 15
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 20 joy1 fire pulse
+frame 140 poke party 2
+frame 180 joy1 right pulse 10
+frame 220 shot play-coop-death-players
+frame 250 poke menuact 3
+frame 700 joy1 fire pulse 30
+frame 1000 joy1 fire pulse 30
+frame 1070 joy1 fire pulse 30
+frame 1400 joy1 right pulse 10
+frame 1450 joy1 fire pulse 30
+frame 1800 joy1 fire pulse 30
+frame 1870 joy1 fire pulse 30
+frame 2400 poke who 0
+frame 2401 poke strength 9
+frame 2403 poke constitution 30
+frame 2406 poke endurance 9
+frame 2410 poke hpmax 310
+frame 2415 poke hp 310
+frame 2421 poke who 1
+frame 2428 poke strength 9
+frame 2436 poke constitution 30
+frame 2445 poke endurance 9
+frame 2455 poke hpmax 310
+frame 2466 poke hp 12
+frame 2478 poke who 0
+frame 2491 poke warp_lair 0
+frame 2505 poke lair_left 6
+frame 2535 poke dump 1
+frame 2545 joy1 fire pulse 8
+frame 3045 poke fightdump 1
+frame 3145 shot play-coop-death-arena
+frame 3145 mash joy1 10
+frame 3215 poke fightdump 1
+frame 3285 poke fightdump 1
+frame 3355 shot play-coop-death-dying
+frame 3355 poke fightdump 1
+frame 3425 poke fightdump 1
+frame 3495 poke fightdump 1
+frame 3565 poke fightdump 1
+frame 3635 shot play-coop-death-after
+frame 3635 poke fightdump 1
+frame 3705 poke fightdump 1
+frame 3775 poke fightdump 1
+frame 3845 poke fightdump 1
+frame 3915 poke fightdump 1
+frame 3985 shot play-coop-death-late
+frame 3985 poke fightdump 1
+wait log fightop_6 max 6000
+frame 100 shot play-coop-death-corpse
+frame 100 poke fightdump 1
+frame 300 shot play-coop-death-corpse2
+frame 300 poke fightdump 1
+frame 420 poke fightdump 1
+wait var scene 2 max 9000
+frame 0 mash joy1 off
+frame 1 joy1 none
+frame 151 shot play-coop-death-loot
+frame 161 poke fightdump 1
+frame 171 poke dump 1
+frame 271 quit

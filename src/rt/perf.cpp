@@ -7,8 +7,13 @@
 
 #include <ace/utils/custom.h>
 
+#include "game/combat_script.hpp"
+#include "rt/combat_pool.hpp"
 #include "rt/irq.hpp"
-#include "rt/serlog.hpp"
+#include "rt/net.hpp"
+#include "rt/net_box.hpp"
+#include "rt/net_session.hpp"
+#include "rt/amiga/serlog.hpp"
 
 extern "C" {
 extern uint8_t mogJobs[];            // 10 jobs of 50 bytes (+0 active, +32 type)
@@ -173,8 +178,8 @@ void perfTickDone() {
 	}
 	ULONG ulFighters = 0;
 	ULONG ulJobs = 0;
-	for(ULONG i = 0; i < JOB_COUNT; ++i) {
-		const uint8_t *pJob = mogJobs + i * 50;
+	for(ULONG i = 0; i < ms::game::combatJobs(); ++i) {
+		const uint8_t *pJob = reinterpret_cast<const uint8_t *>(rt::combatPool().pJobs) + i * 50;
 		if(pJob[0] != 0) {
 			++ulJobs;
 			s_ulFrameTypes |= 1UL << (pJob[32] >> 2 & 31);
@@ -257,10 +262,18 @@ void perfHeartbeat(ULONG ulWindowVbls) {
 	s_isTainted = true;   // the serial output stalls the interrupt: the frame in progress is not a frame
 	const ULONG ulFrames = s_ulFrames;
 	const ULONG ulAvg = ulFrames ? s_ulWorkSum / ulFrames : 0;
-	serLogf("PERF vbls=%lu frames=%lu fps100=%lu budget=%lu work_avg=%lu work_max=%lu late=%lu beam=%lu slip=%lu maxdelta=%lu\n", (unsigned long)ulWindowVbls,
+	serLogf("PERF vbls=%lu frames=%lu fps100=%lu budget=%lu work_avg=%lu work_max=%lu late=%lu beam=%lu slip=%lu maxdelta=%lu net=%lu/%u/%u/%u/%u ie=%04x ir=%04x\n", (unsigned long)ulWindowVbls,
 		(unsigned long)ulFrames, (unsigned long)(ulFrames * 5000UL / ulWindowVbls), (unsigned long)s_ulBudget, (unsigned long)ulAvg,
 		(unsigned long)s_ulWorkMax, (unsigned long)s_ulLate, (unsigned long)s_ulBeamCalls, (unsigned long)s_ulBeamSlip,
-		(unsigned long)s_ulBeamMaxDelta);
+		(unsigned long)s_ulBeamMaxDelta, (unsigned long)netSessionTraceTick(), (unsigned)netSessionTraceStage(), (unsigned)netTransportCall(), (unsigned)g_ubNetSub, (unsigned)netSessionTraceNode(), (unsigned)g_pCustom->intenar, (unsigned)g_pCustom->intreqr);
+	ms::NetUdpStats sUdp;
+	if(netSessionUdpStats(sUdp)) {   // a network session with UDP (ROADMAP 12.21): datagrams sent / received, losses the history covered, ticks that also went over TCP
+		serLogf("PERFU udp tx=%lu rx=%lu covered=%lu esc=%lu bad=%lu active=%u tcp=%u\n", (unsigned long)sUdp.ulTx, (unsigned long)sUdp.ulRx, (unsigned long)sUdp.ulCovered,
+			(unsigned long)sUdp.ulEscalated, (unsigned long)sUdp.ulBad, (unsigned)sUdp.ubActive, (unsigned)sUdp.ubTcp);
+	}
+	if(netStatsLineText()[0] != 0) {   // a network session: the link line as drawn (ping and loss of the worst link, NETPLAY.md 4.7)
+		serLogf("PERFN %s%s\n", netStatsLineText(), netStatsLineEnabled() ? "" : " (hidden)");
+	}
 	s_ulBeamCalls = 0;
 	s_ulBeamSlip = 0;
 	s_ulBeamMaxDelta = 0;

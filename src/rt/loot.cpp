@@ -12,6 +12,8 @@
 #include "game/rules.hpp"
 #include "game/scene_town.hpp"
 #include "game/state_bind.hpp"
+#include "rt/party.hpp"
+#include "rt/party_loot.hpp"
 #include "rt/sfx.hpp"
 
 extern "C" {
@@ -116,7 +118,8 @@ extern "C" {
 // LAB_0528: cycle LAB_068D to the next knight, copy its inventory pointer into LAB_068E[0]; returns D0 as the asm
 // leaves it (the table offset).
 __attribute__((used, externally_visible)) uint32_t rtLootNextKnight(void) {
-	const uint16_t uwIdx = lootNextKnight(mogCycleCounter, mogKnightAddrs, mogUiKnight);  // LAB_068B
+	const uint16_t uwIdx = rt::partyCoop() ? rt::lootNextMemberIndex(mogCycleCounter, mogKnightAddrs, mogUiKnight)   // co-op: members only (8.5)
+	                                       : lootNextKnight(mogCycleCounter, mogKnightAddrs, mogUiKnight);  // LAB_068B
 	const uint32_t ulKnight = mogKnightAddrs[uwIdx];
 	mogActive.ulOpponent = ulKnight;                               // MOVE.L 0(A0,D0.W),4(A1) (LAB_05E4)
 	mogUiKnight2 = ulKnight;  // LAB_068D
@@ -129,8 +132,11 @@ __attribute__((used, externally_visible)) void rtLootMove(uint32_t ulSlot) {
 	const uint16_t uwSlot = (uint16_t)ulSlot;
 	sfxClick(uwSlot);                                                 // MOVE.W #$9c,D0 ; JSR LAB_0AA2 (wrapped in MOVEM)
 	const bool bCreature = mogSceneId == SCENE_CREATURE;                         // CMPI.L #2,LAB_068F
+	rt::LootShare share;                                              // co-op: every living member gets the same take (8.5)
+	rt::lootShareBegin(share);
 	lootMove(*knightAt(mogUiKnight), bCreature ? 0 : knightAt(mogUiKnight2), *invAt(mogUiInventory),  // LAB_068C
 	         *invAt(mogUiInventory2[0]), uwSlot, bCreature);
+	rt::lootShareMove(share, uwSlot);
 	++mogInvChanged;                                                   // LAB_0542: ADDI.W #1,LAB_0689
 }
 
@@ -212,6 +218,7 @@ __attribute__((used, externally_visible)) void rtLootScreenSetup(void) {
 	Knight &me = *knightAt(mogActive.ulCurrent);
 	mogUiKnight = mogActive.ulCurrent;
 	mogUiInventory = me.ulInventory;                                    // MOVE.L 96(A1),LAB_068C
+	if (mogSceneId == SCENE_MEET) rt::lootBkPot();                      // co-op: the black knights' pot (8.5)
 	const LootScreen scr = lootScreenPick(mogSceneId, mogMapForced != 0);
 	switch (scr.ubOther) {
 		case LO_OPPONENT: {

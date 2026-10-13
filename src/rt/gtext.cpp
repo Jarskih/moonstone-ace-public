@@ -13,26 +13,26 @@
 //                      SECSTRT_14 table (98 records, free = word at +4 is 0) gets LAB_0A58 copied in, A0 = slot + 24,
 //                      A1 = LAB_0A58 + 24, D0 = $0000FFFF; a full table gives D0 = 1, A0 = table + 98 * 24.
 //
-// The printer draws glyphs with the asm draw_cel entry (program LAB_04B4 / mog LAB_0CDA: init check + C++ cel
-// renderer), D0 = glyph, D1 = x, D2 = y, A0 = font cel table, exactly as the original loop did. The text flag
+// The printer draws glyphs with the draw_cel body (program LAB_04B4 / mog LAB_0CDA: init check + C++ cel renderer,
+// rtDrawCel_prg / rtDrawCel_mog, src/rt/engine_blit.cpp): frame = glyph, x, y, the font cel table, as the original loop did.
+// The register entries above are in src/rt/amiga/gtext_entries.cpp. The text flag
 // cell (LAB_04DF / LAB_0D05) is 1 while printing, as in the original.
 
 #include <stdint.h>
 
 #include "engine/gtext.hpp"
+#include "game/state_bind.hpp"
 #include "rt/gtext.hpp"
-#include "rt/stubfn.h"
+#include "rt/prim.hpp"
 
 extern "C" {
 // mog
 extern const uint8_t mogCharMap[];
 extern uint16_t mogSpanWidth;
 extern uint16_t mogSpanMargin;
-extern uint8_t mogActiveKnights[] asm("mogActive");   // +10 = the long: font cel table in use
 extern uint32_t mogSmallFont[5];     // [4] = the small font table
 extern uint16_t mogTextFlag;
 extern uint32_t mogRectList;
-extern "C" void rt_mog_draw_cel(void);
 extern uint32_t mogRecordTable;
 extern uint8_t mogRecordTemplate[24];
 // program
@@ -42,22 +42,6 @@ extern uint16_t prgTextFlag;
 extern uint32_t prgRectList;
 }
 
-extern "C" void rtGtextDrawCall(uint32_t ulFn, uint32_t ulFont, uint32_t ulGlyph, uint32_t ulX, uint32_t ulY);
-
-asm(R"(
-	.text
-	.globl rtGtextDrawCall
-rtGtextDrawCall:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a1
-	move.l 52(%sp),%a0
-	move.l 56(%sp),%d0
-	move.l 60(%sp),%d1
-	move.l 64(%sp),%d2
-	jsr (%a1)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-)");
 
 namespace {
 
@@ -70,9 +54,11 @@ struct TextRec {
 	uint32_t ulNext;
 } __attribute__((packed));
 
+typedef void (*DrawCelFn)(int32_t lFrame, int32_t lX, int32_t lY, const uint8_t *pCel);
+
 struct Ctx {
 	const uint8_t *pFont;    // font cel table: record n at +10 + 10 * n has width at +4, height at +6
-	const uint8_t *pDraw;    // draw_cel entry
+	DrawCelFn pfnDraw;       // the cel renderer of the binary: rtDrawCel_mog / rtDrawCel_prg
 	uint32_t *pRectList;     // LAB_0641 / LAB_027C
 };
 
@@ -88,7 +74,7 @@ void glyphSize(void *pCtx, uint8_t ubGlyph, uint16_t &w, uint16_t &h) {
 
 void drawGlyph(void *pCtx, uint8_t ubGlyph, uint16_t uwX, uint16_t uwY) {
 	const Ctx *c = static_cast<Ctx *>(pCtx);
-	rtGtextDrawCall(reinterpret_cast<uint32_t>(c->pDraw), reinterpret_cast<uint32_t>(c->pFont), ubGlyph, uwX, uwY);
+	c->pfnDraw(ubGlyph, uwX, uwY, c->pFont);   // D0 = glyph, D1 = x, D2 = y, A0 = the font cel table, as the original loop did
 }
 
 // LAB_0447 / LAB_02A0: x, y, w, h and the end mark $FFFF at +12; the list pointer advances by 8, so the next
@@ -113,12 +99,12 @@ namespace rt {
 
 TextExtent mogDrawList(const void *pRecords) {
 	mogTextFlag = 1;
-	Ctx ctx = {nullptr, reinterpret_cast<uint8_t *>(&rt_mog_draw_cel), &mogRectList};
+	Ctx ctx = {nullptr, rtDrawCel_mog, &mogRectList};
 	const ms::TextHost host = {&ctx, glyphSize, drawGlyph, addRect};
 	for(const TextRec *pRec = static_cast<const TextRec *>(pRecords); pRec;
 	    pRec = reinterpret_cast<const TextRec *>(pRec->ulNext)) {
 		TextRec *pMut = const_cast<TextRec *>(pRec);
-		ctx.pFont = reinterpret_cast<const uint8_t *>(*reinterpret_cast<const uint32_t *>(mogActiveKnights + 10));
+		ctx.pFont = reinterpret_cast<const uint8_t *>(mogActive.ulSpriteBank);   // the font cel table in use
 		if(reinterpret_cast<uint32_t>(ctx.pFont) == mogSmallFont[4]) {   // LAB_043B: small font -> narrow glyphs
 			pMut->uwStyle |= ms::TEXT_NARROW;
 		}
@@ -145,6 +131,19 @@ TextExtent mogDrawString(const uint8_t *pText, uint16_t uwX, uint16_t uwY, uint1
 	return mogDrawList(&rec);
 }
 
+uint16_t mogStringWidth(const uint8_t *pText, uint16_t uwStyle) {
+	Ctx ctx = {reinterpret_cast<const uint8_t *>(mogActive.ulSpriteBank), rtDrawCel_mog, &mogRectList};
+	const ms::TextHost host = {&ctx, glyphSize, drawGlyph, addRect};
+	ms::TextCfg cfg;
+	cfg.charMap = mogCharMap;
+	cfg.advanceBias = 0;
+	cfg.span = static_cast<uint16_t>(mogSpanWidth - mogSpanMargin);
+	cfg.extendedStyles = true;
+	ms::TextState sState;   // a scratch state: the printer's last-width cells stay as they were
+	sState = s_mogState;
+	return ms::textWidth(cfg, host, pText, static_cast<uint8_t>(uwStyle), sState);
+}
+
 }  // namespace rt
 
 extern "C" __attribute__((used, externally_visible)) uint32_t rtMogTextList(const void *pRecords) {
@@ -162,7 +161,7 @@ extern "C" __attribute__((used, externally_visible)) uint32_t rtMogTextString(co
 // program LAB_028F: no return values, no style bits 2/3, advance = width - 2, line = 320 px.
 extern "C" __attribute__((used, externally_visible)) void rtPrgTextList(const void *pRecords) {
 	prgTextFlag = 1;
-	Ctx ctx = {nullptr, RT_FN(rt_prg_draw_cel), &prgRectList};
+	Ctx ctx = {nullptr, rtDrawCel_prg, &prgRectList};
 	const ms::TextHost host = {&ctx, glyphSize, drawGlyph, addRect};
 	ms::TextCfg cfg;
 	cfg.charMap = prgCharMap;
@@ -192,63 +191,3 @@ extern "C" __attribute__((used, externally_visible)) uint8_t *rtMogAddRecord() {
 	}
 	return pSlot;
 }
-
-asm(R"(
-	.text
-	.globl rt_prg_text_list
-rt_prg_text_list:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtPrgTextList
-	addq.l #4,%sp
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rt_mog_text_list
-rt_mog_text_list:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtMogTextList
-	addq.l #4,%sp
-	bra.s rtGtextExtent
-
-	.globl rt_mog_text_string
-rt_mog_text_string:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	andi.l #0xFFFF,%d2
-	move.l %d2,-(%sp)
-	andi.l #0xFFFF,%d1
-	move.l %d1,-(%sp)
-	andi.l #0xFFFF,%d0
-	move.l %d0,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtMogTextString
-	lea 16(%sp),%sp
-rtGtextExtent:
-	move.l %d0,%d1
-	swap %d1
-	andi.l #0xFFFF,%d1
-	andi.l #0xFFFF,%d0
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rt_mog_add_record
-rt_mog_add_record:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	jsr rtMogAddRecord
-	tst.l %d0
-	beq.s 1f
-	movea.l %d0,%a0
-	lea 24(%a0),%a0
-	lea mogRecordTemplate+24,%a1
-	move.l #0xFFFF,%d0
-	bra.s 2f
-1:
-	movea.l mogRecordTable,%a0
-	lea 2352(%a0),%a0
-	moveq #1,%d0
-2:
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-)");
-

@@ -6,7 +6,7 @@
 // asm/patches/{program,mog}.enhanced.json call the shims of src/rt/enhanced.cpp, which look at the cell
 // rt_enh_planes (5 = the original game, 6 = enhanced) and do exactly what the replaced code did when it is 5.
 //
-// Pieces: enhanced.cpp (cells, asm shims, memory carve glue), palette_enh.cpp (24-bit palette), display_ace.cpp (the
+// Pieces: enhanced.cpp (cells, asm shims, memory carve glue), palette_enh.cpp (24-bit palette), amiga/display_ace.cpp (the
 // view), engine_blit.cpp (draw_cel at depth 6), files.cpp (6-plane art and `.pal` sidecars), game.cpp (arena sizes).
 // The patched 5-plane sites and the reason for each: the `why` field of every patch in asm/patches/{program,mog}.enhanced.json.
 #pragma once

@@ -17,7 +17,7 @@
 #include "engine/display_fx.hpp"
 #include "rt/enhanced_cells.hpp"
 #include "rt/prgops.hpp"
-#include "rt/stubfn.h"
+#include "rt/prim.hpp"
 
 extern "C" {
 // state cells of the wipe (S_31 code hunk, S_33 BSS; the labels are the original's)
@@ -33,17 +33,6 @@ extern volatile ULONG prgDrawScreen;    // the draw screen (LAB_056C)
 }
 
 namespace {
-
-// Registers of a call into the asm: D0..D3, A0, A1 loaded, everything the C++ ABI wants kept is kept by the helper.
-struct AsmRegs {
-	ULONG ulFn, ulD0, ulD1, ulD2, ulD3, ulA0, ulA1;
-};
-extern "C" void rtWipeAsmCall(const AsmRegs *pRegs);
-
-void callAsm(void (*pfn)(), ULONG ulD0, ULONG ulD1, ULONG ulD2, ULONG ulD3, ULONG ulA0, ULONG ulA1) {
-	const AsmRegs sRegs = {reinterpret_cast<ULONG>(pfn), ulD0, ulD1, ulD2, ulD3, ulA0, ulA1};
-	rtWipeAsmCall(&sRegs);
-}
 
 constexpr ULONG PLANE_BYTES = 8000;          // one plane of the pictures
 
@@ -64,7 +53,7 @@ void wipeTile(WORD wX, WORD wY, UWORD uwTile, ULONG ulPicture, ULONG ulDst) {
 	ULONG ulSrc = ulPicture + sTile.srcOffset;
 	ULONG ulDest = ulDst + sTile.dstOffset;
 	for(UBYTE ubPlane = 0; ubPlane < planes(); ++ubPlane) {
-		callAsm(rt_prg_copy_rect, 0x24, 0x24, 2, sTile.height, ulSrc, ulDest);
+		rtCopyRect(ulSrc, ulDest, 0x24, 0x24, 2, sTile.height);   // LAB_04E1: src, dst, modulos, 2 words wide, height rows
 		ulSrc += PLANE_BYTES;
 		ulDest += PLANE_BYTES;
 	}
@@ -100,7 +89,13 @@ static void shift(bool isDescending) {
 	ULONG ulSrc = isDescending ? ulBase : ulMoved;
 	ULONG ulDst = isDescending ? ulMoved : ulBase;
 	for(UBYTE ubPlane = 0; ubPlane < planes(); ++ubPlane) {
-		callAsm(isDescending ? rt_prg_copy_rect_desc : rt_prg_copy_rect, 0, 0, 0x14, static_cast<UWORD>(200 - uwStep), ulSrc, ulDst);
+		const ULONG ulRows = static_cast<UWORD>(200 - uwStep);
+		if(isDescending) {
+			rtCopyRectDesc(ulSrc, ulDst, 0, 0, 0x14, ulRows);   // LAB_04E2
+		}
+		else {
+			rtCopyRect(ulSrc, ulDst, 0, 0, 0x14, ulRows);       // LAB_04E1
+		}
 		ulSrc += PLANE_BYTES;
 		ulDst += PLANE_BYTES;
 	}
@@ -171,19 +166,3 @@ RT_USED void rtPrgWipeRowsC(void) {
 RT_USED void rtPrgWipeRetreatC(void) {
 	rt::wipeRetreat();
 }
-
-asm(R"(
-	.text
-
-| rtWipeAsmCall(const AsmRegs *): load D0-D3/A0/A1 from the block, JSR the routine, keep every register the C ABI keeps.
-	.globl rtWipeAsmCall
-rtWipeAsmCall:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a6
-	move.l (%a6),%a2
-	movem.l 4(%a6),%d0-%d3/%a0-%a1
-	jsr (%a2)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-)");
-

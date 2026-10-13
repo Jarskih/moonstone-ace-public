@@ -25,7 +25,13 @@ if HAVE_EMU:
 
 SOURCES = ('src/rt/display_ops.cpp', 'src/rt/palette_glue.cpp', 'src/rt/mog_display.cpp', 'src/rt/input.cpp', 'src/engine/input.cpp',
            'src/rt/irq.cpp', 'src/rt/sprites.cpp', 'src/engine/display_fx.cpp', 'src/engine/pad.cpp', 'src/game/party.cpp',
-           'tests/display_emu_support.cpp')
+           'tests/display_emu_support.cpp',
+           # ROADMAP 11.10: the register shims and the Amiga platform halves that moved out of the files above
+           'src/rt/amiga/display_ops_entries.cpp', 'src/rt/amiga/mog_display_entries.cpp', 'src/rt/amiga/palette_glue_entries.cpp', 'src/rt/amiga/input_entries.cpp', 'src/rt/amiga/sprites_entries.cpp',
+           'src/rt/amiga/platform_display.cpp', 'src/rt/amiga/platform_input.cpp', 'src/rt/amiga/platform_timer.cpp', 'src/rt/amiga/platform_audio.cpp',
+           'src/rt/amiga/display_hw.cpp', 'src/rt/amiga/blit.cpp',
+           # ROADMAP 12.4: the deterministic mode's key queue and hooks that input.cpp / display_ops.cpp call (the mode is off here)
+           'src/rt/net_tick.cpp', 'src/engine/nettick.cpp')
 
 MARK_SET, MARK_RAMP, MARK_SFX, MARK_LIVE, MARK_RESTORE, MARK_ENHCLEAR = 0x0201, 0x0202, 0x0203, 0x0204, 0x0205, 0x0206
 EVENT_LONGS = {0x0101: 1, 0x0102: 1, 0x0103: 0, 0x0104: 0, 0x0105: 1, MARK_SET: 3, MARK_RAMP: 4, MARK_SFX: 0, MARK_LIVE: 1,
@@ -109,6 +115,8 @@ def setup_mog(h):
         (A('LAB_03EE'), reg_stub(MARK_LIVE, ['a0'])),
         (A('LAB_0426') + 2, reg_stub(MARK_RESTORE, ['d0'])),
         ('_ZN2rt15enhPaletteClearEv', c_stub(MARK_ENHCLEAR, [])),
+        ('rtSetPlanes', c_stub(MARK_RESTORE, [1])),      # rt::setDrawTarget (11.10: a typed call; the C++ side of LAB_0426+2 above): logs the screen base
+        ('_ZN2rt17partyColoursApplyEPtm', asm('rts')),   # Moonstone 2's second knight colours: not under test (rt/knight_colours.cpp)
     ])
 
 
@@ -119,6 +127,8 @@ def setup_program(h):
         ('rtPaletteRampAdd', c_stub(MARK_RAMP, [2, 3, 4, 5], ret='ramp')),
         ('_ZN2rt10sfxStopAllEv', c_stub(MARK_SFX, [])),
         ('_ZN2rt15enhPaletteClearEv', c_stub(MARK_ENHCLEAR, [])),
+        ('rtSetPlanes', c_stub(MARK_RESTORE, [1])),
+        ('_ZN2rt17partyColoursApplyEPtm', asm('rts')),
     ])
 
 
@@ -146,6 +156,40 @@ def beam():
 
 def hwlog(r):
     return [(a - TD.CUSTOM, s, v) for a, s, v in r.h.hwlog if TD.CUSTOM <= a < TD.CUSTOM + 0x1000]
+
+
+def blit_ops(log):
+    """The blits a hardware log starts, as (BLTCON0, BLTCON1, masks, modulos, the pointers of the enabled channels, BLTSIZE), one per
+    BLTSIZE write.  The register WRITES differ on purpose: the original asm loads the pointers once and lets the blitter's own pointer
+    advance carry the next plane (the planes are contiguous), rt::platform::blitRun (src/rt/amiga/blit.cpp, ROADMAP 11.1b) loads every
+    register for every blit.  The fake chip set has no blitter, so the advance is modelled here: after a blit each enabled channel's
+    pointer is moved by rows * (words * 2 + modulo).  What must agree is the sequence of blits."""
+    reg = {}
+    ops = []
+    for off, size, val in log:
+        if size == 4:
+            reg[off], reg[off + 2] = val >> 16, val & 0xFFFF
+        else:
+            reg[off] = val
+        if off != 0x58:
+            continue
+        con0, size_w = reg.get(0x40, 0), val
+        rows, words = (size_w >> 6) or 1024, (size_w & 63) or 64
+        ops.append((con0, reg.get(0x42, 0), reg.get(0x44, 0), reg.get(0x46, 0), tuple(reg.get(m, 0) for m in (0x64, 0x62, 0x60, 0x66)),
+                    tuple(((reg.get(p, 0) << 16) | reg.get(p + 2, 0)) if con0 & bit else 0
+                          for p, bit in ((0x50, 0x800), (0x4C, 0x400), (0x48, 0x200), (0x54, 0x100))), size_w))
+        for p, m, bit in ((0x50, 0x64, 0x800), (0x4C, 0x62, 0x400), (0x48, 0x60, 0x200), (0x54, 0x66, 0x100)):
+            if con0 & bit:
+                mod = reg.get(m, 0)
+                mod -= 0x10000 if mod & 0x8000 else 0
+                adv = (((reg.get(p, 0) << 16) | reg.get(p + 2, 0)) + rows * (words * 2 + mod)) & 0xFFFFFFFF
+                reg[p], reg[p + 2] = adv >> 16, adv & 0xFFFF
+    return ops
+
+
+def not_blit(log):
+    """The hardware writes that are not blitter registers (BLTxxx = $040..$05F plus the modulos $060..$066 and BLTSIZE)."""
+    return [e for e in log if not 0x040 <= e[0] <= 0x066]
 
 
 SCR = (TI.H.SCRATCH_BASE if HAVE_EMU else 0)        # 0x800000, 4 KiB
@@ -250,8 +294,8 @@ class PaletteGlueEmuTest(unittest.TestCase):
                     self.assertEqual(cells_s[0], cells_o[0], tag)
                     self.assertEqual(cells_s[1], cells_o[1], tag)
                     self.assertEqual(cells_s[2], cells_o[2], tag)
-                    blit_o = [e for e in cells_o[3] if 0x040 <= e[0] < 0x060]     # BLTxxx: the background copy to both screens
-                    blit_s = [e for e in cells_s[3] if 0x040 <= e[0] < 0x060]
+                    blit_o = blit_ops(cells_o[3])     # BLTxxx: the background copy to both screens
+                    blit_s = blit_ops(cells_s[3])
                     self.assertEqual(blit_s, blit_o, tag)
                     self.same_regs(ro, rs, regs, skip=(0, 1), skip_a=(0, 1, 2))   # the original's scratch registers
                     tables[(scene, region)] = cells_o[0]
@@ -263,12 +307,19 @@ class PaletteGlueEmuTest(unittest.TestCase):
         rng = random.Random(4)
         for busy in (0, 1):
             for i in range(3):
-                patches = [(CELL_BUSY, be32(busy)), (r.A('LAB_08D9'), bytes(rng.getrandbits(8) for _ in range(64)))]
+                live = SCR + 0xA00        # the live palette the C++ copies into (LAB_0E93 points at it), poisoned first
+                pal = bytes(rng.getrandbits(8) for _ in range(64))
+                patches = [(CELL_BUSY, be32(busy)), (r.A('LAB_08D9'), pal), (r.A('LAB_0E93'), be32(live)), (live, bytes([0xEE]) * 64)]
                 regs = self.regs(rng)
                 ro = r.run(r.A('LAB_0412'), regs, patches, {TD.VHPOSR: beam()})
                 ev_o, slot_o, hw_o = events(r), r.mem(r.A('LAB_0414'), 4), [e for e in hwlog(r) if e[0] >= 0x180]
+                self.assertEqual(ev_o[0], (MARK_LIVE, r.A('LAB_08D9')), 'the original calls LAB_03EE (stubbed here: logs the table)')
+                self.assertEqual(r.mem(live, 64), bytes([0xEE]) * 64)
                 rs = r.run(r.syms['rt_mog_fight_palette_init'], regs, patches, {TD.VHPOSR: beam()})
-                self.assertEqual(events(r), ev_o, busy)
+                # 11.10: the C++ copies the table to the live palette itself (rtPalCopyLive_mog, same file: no stub in between), so
+                # instead of the LAB_03EE log entry the live palette must hold the scene palette
+                self.assertEqual(events(r), ev_o[1:], busy)
+                self.assertEqual(r.mem(live, 64), pal, 'table -> live palette (LAB_03EE)')
                 self.assertEqual(r.mem(r.A('LAB_0414'), 4), slot_o)
                 self.assertEqual([e for e in hwlog(r) if e[0] >= 0x180], hw_o, 'colour registers')
                 self.assertEqual(slot_o, be32(14 if busy else SLOT_VALUE))
@@ -372,7 +423,8 @@ class PaletteGlueEmuTest(unittest.TestCase):
             ro = r.run(r.A('LAB_0419'), regs, patches)
             hw_o = hwlog(r)
             rs = r.run(r.syms['rt_mog_blit_screen'], regs, patches)
-            self.assertEqual(hwlog(r), hw_o, i)
+            self.assertEqual(blit_ops(hwlog(r)), blit_ops(hw_o), i)
+            self.assertEqual(not_blit(hwlog(r)), not_blit(hw_o), i)
             self.assertEqual([e for e in hw_o if e[0] == 0x058], [(0x058, 2, 0x3214)] * 5)
             self.same_regs(ro, rs, regs, skip=(0,))
             self.assertEqual(rs.regs['d'][0], regs['d'][0])
@@ -382,7 +434,8 @@ class PaletteGlueEmuTest(unittest.TestCase):
             ro = r.run(r.A('LAB_0418'), regs, patches)
             hw_o = hwlog(r)
             rs = r.run(r.syms['rt_mog_blit_both'], regs, patches)
-            self.assertEqual(hwlog(r), hw_o, i)
+            self.assertEqual(blit_ops(hwlog(r)), blit_ops(hw_o), i)
+            self.assertEqual(not_blit(hwlog(r)), not_blit(hw_o), i)
             self.assertEqual(len([e for e in hw_o if e[0] == 0x058]), 10)
             self.same_regs(ro, rs, regs, skip=(0,), skip_a=(0, 1))
 

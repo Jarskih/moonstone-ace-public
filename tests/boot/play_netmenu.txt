@@ -1,0 +1,173 @@
+# Multiplayer screen (ROADMAP 12.8a, tests/test_net_menu.py is the logic test) and the lobby = the knight screen (NETPLAY.md 4.2b, tests/test_lobby_screen.py
+# is the logic test): the main menu's MULTIPLAYER row opens the screen, the name and the address are edited, the join page shows every status (no stack,
+# connecting, no answer, wrong version, connected), the fake host seats the joining player (poke netseated) and the LOBBY opens as a client, the host's
+# start message (poke netstarted) ends it; then HOST GAME goes straight into the lobby with faked players (poke netfake / netpeers / netjoin /
+# netseated / netstarted, rt/net_stub.cpp): the host picks a portrait, the name, the controller, START leaves the lobby, Esc goes back through the
+# Multiplayer screen to the title menu, and a normal game still starts from LOCAL (Select Knight -> knight -> name -> map).
+# The lobby shots (play-netmenu-lobby-*) are new in the lobby flow: no reference yet, the integrator blesses them (docs/AUTOPLAY.md).
+# net.ini is written to PROGDIR (name, address, port): the backspaces clear whatever an earlier run saved.
+# shotcmp-tol play-netmenu-title 0.5
+# shotcmp-tol play-netmenu-title-multi 0.5
+# shotcmp-tol play-netmenu-main 0.5
+# shotcmp-tol play-netmenu-name 0.5
+# shotcmp-tol play-netmenu-join 0.5
+# shotcmp-tol play-netmenu-join-address 0.5
+# shotcmp-tol play-netmenu-join-nostack 0.5
+# shotcmp-tol play-netmenu-join-wait 0.5
+# shotcmp-tol play-netmenu-join-noanswer 0.5
+# shotcmp-tol play-netmenu-join-version 0.5
+# shotcmp-tol play-netmenu-join-connected 0.5
+# shotcmp-tol play-netmenu-title-started 0.5
+# shotcmp-tol play-netmenu-lobby-client 0.5
+# shotcmp-tol play-netmenu-lobby-empty 0.5
+# shotcmp-tol play-netmenu-lobby-1 0.5
+# shotcmp-tol play-netmenu-lobby-3 0.5
+# shotcmp-tol play-netmenu-lobby-name 0.5
+# shotcmp-tol play-netmenu-lobby-control 0.5
+# shotcmp-tol play-netmenu-lobby-control2 0.5
+# shotcmp-tol play-netmenu-lobby-picked 0.5
+# shotcmp-tol play-netmenu-lobby-start 0.5
+# shotcmp-tol play-netmenu-lobby-again 0.5
+# shotcmp-tol play-netmenu-back-main 0.5
+# shotcmp-tol play-netmenu-title-back 0.5
+# shotcmp-tol play-netmenu-knight 1.8
+# shotcmp-tol play-netmenu-name-entry 1.5
+# shotcmp-tol play-netmenu-map 1.0
+# shotdiff play-netmenu-title play-netmenu-title-multi 0.2
+# shotdiff play-netmenu-main play-netmenu-name 0.2
+# shotdiff play-netmenu-join-nostack play-netmenu-join-wait 0.2
+# shotdiff play-netmenu-join-wait play-netmenu-join-noanswer 0.2
+# shotdiff play-netmenu-lobby-empty play-netmenu-lobby-1 0.2
+# shotdiff play-netmenu-lobby-1 play-netmenu-lobby-3 0.2
+# shotdiff play-netmenu-lobby-3 play-netmenu-lobby-name 0.2
+# shotdiff play-netmenu-lobby-control play-netmenu-lobby-control2 0.2
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 60 shot play-netmenu-title
+# the main menu (owner 2026-10-11): down to the MULTIPLAYER row, fire: the Multiplayer screen (a 1-frame pulse is held until
+# the menu reads it, then released at once: one row, never two)
+frame 70 joy1 down pulse 1
+frame 230 shot play-netmenu-title-multi
+frame 240 joy1 fire pulse
+frame 390 shot play-netmenu-main
+# NAME (HOST, JOIN, FIND, NAME, PUBLIC, BACK): down x3, clear it (16 backspaces), type BOB, Return = next row (PUBLIC)
+frame 400 joy1 down pulse
+frame 430 joy1 down pulse
+frame 460 joy1 down pulse
+frame 480 key BACKSPACE tap
+frame 500 key BACKSPACE tap
+frame 520 key BACKSPACE tap
+frame 540 key BACKSPACE tap
+frame 560 key BACKSPACE tap
+frame 580 key BACKSPACE tap
+frame 600 key BACKSPACE tap
+frame 620 key BACKSPACE tap
+frame 640 key BACKSPACE tap
+frame 660 key BACKSPACE tap
+frame 680 key BACKSPACE tap
+frame 700 key BACKSPACE tap
+frame 720 key BACKSPACE tap
+frame 740 key BACKSPACE tap
+frame 760 key BACKSPACE tap
+frame 780 key BACKSPACE tap
+frame 810 type BOB
+frame 910 shot play-netmenu-name
+frame 920 key RETURN tap
+# PUBLIC -> up x3 (NAME, FIND) = JOIN GAME, fire: the join page (cursor on ADDRESS)
+frame 950 joy1 up pulse
+frame 980 joy1 up pulse
+frame 1010 joy1 up pulse
+frame 1040 joy1 fire pulse
+frame 1130 shot play-netmenu-join
+frame 1150 key BACKSPACE tap
+frame 1170 key BACKSPACE tap
+frame 1190 key BACKSPACE tap
+frame 1210 key BACKSPACE tap
+frame 1230 key BACKSPACE tap
+frame 1250 key BACKSPACE tap
+frame 1270 key BACKSPACE tap
+frame 1290 key BACKSPACE tap
+frame 1310 key BACKSPACE tap
+frame 1330 key BACKSPACE tap
+frame 1350 key BACKSPACE tap
+frame 1370 key BACKSPACE tap
+frame 1390 key BACKSPACE tap
+frame 1410 key BACKSPACE tap
+frame 1440 type 192
+frame 1540 key PERIOD tap
+frame 1570 type 168
+frame 1670 key PERIOD tap
+frame 1700 type 0
+frame 1740 key PERIOD tap
+frame 1770 type 7
+frame 1810 shot play-netmenu-join-address
+frame 1820 key RETURN tap
+frame 1850 key RETURN tap
+# CONNECT without a stack
+frame 1880 joy1 fire pulse
+frame 1970 shot play-netmenu-join-nostack
+frame 1980 poke netfake 1
+frame 1981 poke netjoin 3
+frame 1991 joy1 fire pulse
+frame 2081 shot play-netmenu-join-wait
+frame 2091 poke netjoin 1
+frame 2181 shot play-netmenu-join-noanswer
+frame 2191 poke netjoin 2
+frame 2201 joy1 fire pulse
+frame 2291 shot play-netmenu-join-version
+frame 2301 poke netjoin 0
+frame 2311 joy1 fire pulse
+frame 2401 shot play-netmenu-join-connected
+# the fake host seats us: the lobby opens as a client (the host has picked portrait 0; WAITING FOR HOST where START is)
+frame 2411 poke netseated 1
+frame 2611 shot play-netmenu-lobby-client
+# the host's start message: the lobby ends, the (fake) session does not begin, back to the title menu
+frame 2621 poke netstarted 1
+frame 2821 shot play-netmenu-title-started
+# the host side: Multiplayer, HOST GAME = straight into the lobby (the knight screen)
+frame 2831 joy1 fire pulse
+frame 2981 shot play-netmenu-main-saved
+frame 2991 joy1 fire pulse
+frame 3141 shot play-netmenu-lobby-empty
+frame 3151 poke netpeers 1
+frame 3211 shot play-netmenu-lobby-1
+frame 3221 poke netpeers 3
+frame 3281 shot play-netmenu-lobby-3
+# the host's own pick: the selector stands on portrait 0 (the fake players hold 3, 2 and 1); fire, the name (fire keeps it), the controller
+# (right = Joystick 2, fire takes it); START is enabled when all four have picked
+frame 3291 joy1 fire pulse 8
+frame 3351 shot play-netmenu-lobby-name
+frame 3361 joy1 fire pulse 8
+frame 3421 shot play-netmenu-lobby-control
+frame 3431 joy1 right pulse 4
+frame 3461 shot play-netmenu-lobby-control2
+frame 3471 joy1 fire pulse 8
+frame 3531 shot play-netmenu-lobby-picked
+# START: down to it, fire; the fake session does not begin: back at the title menu
+frame 3541 joy1 down pulse 4
+frame 3571 shot play-netmenu-lobby-start
+frame 3581 joy1 fire pulse 8
+frame 3881 shot play-netmenu-title-host
+# again: HOST GAME, then Esc leaves the lobby (the Multiplayer screen again), Esc leaves that too
+frame 3891 poke netpeers 0
+frame 3901 joy1 fire pulse
+frame 4051 joy1 fire pulse
+frame 4201 shot play-netmenu-lobby-again
+frame 4211 key ESC tap
+frame 4361 shot play-netmenu-back-main
+frame 4371 key ESC tap
+frame 4571 shot play-netmenu-title-back
+# a normal game: up = LOCAL, fire, down x3 = Select Knight (Mode and the empty line in between), the knight screen, the name, the map
+frame 4581 joy1 up pulse
+frame 4611 joy1 fire pulse
+frame 4671 joy1 down pulse
+frame 4701 joy1 down pulse
+frame 4731 joy1 down pulse
+frame 4781 joy1 fire pulse
+frame 5181 shot play-netmenu-knight
+frame 5191 joy1 fire pulse
+frame 5491 shot play-netmenu-name-entry
+frame 5501 joy1 fire pulse
+frame 6101 shot play-netmenu-map
+frame 6111 quit

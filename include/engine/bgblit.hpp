@@ -82,9 +82,9 @@ struct BgSink {
 void bgDrawTile(BgClipState &st, int16_t x, int16_t y, uint8_t tile, uint32_t sheet, uint32_t dest, uint32_t mask, uint32_t planes,
                 const BgSink &sink);
 
-// SECSTRT_12: walks the script ('script' = the LAB_0A83 buffer, 6-byte big-endian-word entries read as native words) and draws
-// every entry.  sheetFg = LAB_05C1, sheetMain = LAB_0D92 (also the source of kind 4 and every other kind), dest = LAB_05C0.
-void bgCompose(BgClipState &st, const uint16_t *script, uint32_t sheetFg, uint32_t sheetMain, uint32_t dest, uint32_t mask,
+// SECSTRT_12: walks the script ('script' = the LAB_0A83 buffer: 6-byte entries of big-endian words, file data read with
+// engine/endian.hpp, hence a void pointer; ROADMAP 11.3) and draws every entry.  sheetFg = LAB_05C1, sheetMain = LAB_0D92 (also the source of kind 4 and every other kind), dest = LAB_05C0.
+void bgCompose(BgClipState &st, const void *script, uint32_t sheetFg, uint32_t sheetMain, uint32_t dest, uint32_t mask,
                uint32_t planes, const BgSink &sink);
 
 }  // namespace ms

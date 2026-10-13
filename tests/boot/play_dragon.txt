@@ -12,9 +12,12 @@
 # shotcmp-tol play-dragon-close 100
 # shotcmp-tol play-dragon-lost 100
 # shotcmp-tol play-dragon-map-after 5
-# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
-frame 300 key SPACE tap
+# --- boot to the map: intro skip, main menu LOCAL, Select Knight, first knight, keep the preset name (fire = OK) ---
+# the intro skip is event-driven (2026-10-11): the intro opens its first picture (data/mindscape) once it runs, i.e. the skip is armed
+wait file mindscape max 900
+frame 20 key SPACE tap
 wait input 10 max 3000
+frame 40 joy1 fire pulse
 frame 100 joy1 down pulse
 frame 130 joy1 down pulse
 frame 160 joy1 down pulse

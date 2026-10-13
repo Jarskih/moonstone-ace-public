@@ -3,6 +3,8 @@
 #pragma once
 #include <ace/types.h>
 
+#include "engine/nettick.hpp"
+
 namespace rt {
 
 // Addresses of the active overlay's input/timing cells in the original DATA/BSS (program S_16/S_17, mog S_21/S_22; the two
@@ -37,12 +39,24 @@ const IrqCells *inputCells();
 // One VBL sample of the mouse pointer into the active overlay's cells (program LAB_034D / mog LAB_0B71).
 void inputPointerTick(const IrqCells &sCells);
 
+// The mouse pointer step with given counter/button readings (inputPointerTick = one VBL sample of the hardware; the deterministic
+// mode calls it with the latched ones, ROADMAP 12.4).
+void inputPointerStep(const IrqCells &sCells, UWORD uwJoy0Dat, bool isLeftDown);
+
+// Deterministic mode (rt/net_tick): fill a LocalFrame from the hardware (both joysticks, the autoplay override, JOY0DAT, the
+// button) and the queued key events; apply a frame to the game: the mouse step and the key events into the key tables.
+void inputCaptureLocal(ms::LocalFrame &sFrame);
+void inputApplyLocal(const ms::LocalFrame &sFrame);
+
+// The hardware right now, read directly (not through the tick's latch): true while a joystick fire button (either port), the left mouse
+// button or Esc is down.  The waiting box of a stalled network tick (ROADMAP 12.11) asks it while the lockstep input is frozen.
+bool inputConfirmDown();
+
 // First reading of the mouse counters at install (the two MOVE.B JOY0DAT stores before the vector pokes).
 void inputPointerInit(const IrqCells &sCells);
 
-// Level-2 CIA-A serial ("keyboard") callback for ACE's systemSetCiaInt. Runs ACE's own handler (SDR
-// read, handshake, g_sKeyManager state) and feeds the game's tables with the same bytes the original wrote.
-void inputKeyIsr(volatile void *pCustom, volatile void *pData);
+// (The level-2 CIA-A serial callback for ACE's systemSetCiaInt is the Amiga platform's now: src/rt/amiga/platform_input.cpp, which hands
+// the game one key event at a time, rt::platform::inputSetKeyHandler; ROADMAP 11.10.)
 
 // Deliver a key exactly as the keyboard ISR does after ACE's handler (counters, Space/Return skip latch, the game's
 // translation and down tables). Raw Amiga key code. For scripted input (rt/autoplay); callable from the VBL interrupt.

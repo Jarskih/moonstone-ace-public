@@ -167,7 +167,7 @@ class Hunk9(unittest.TestCase):
         with open(os.path.join(ROOT, 'src', 'rt', 'hunk9.cpp')) as f:
             txt = f.read()
         # 7.1q: the chain is C++ (rtTitleStep): the stub's return chain, the dummy long into LAB_0714, then the menu LAB_00B4+12 = rtSceneMenuRun
-        for call in ('rt_mog_creature_clear', 'rt_mog_joy_read', 'rt_mog_draw_buf_clear', 'mogMenuPopCell = 0', 'rtSceneMenuRun();'):
+        for call in ('rtCreatureClear', 'rtMogJoyReadC', 'rtDrawBufClear', 'mogMenuPopCell = 0', 'rtSceneMenuRun();'):   # 11.1d: the primitives are called as C++ (src/rt/prim.hpp)
             self.assertIn(call, txt)
 
 

@@ -3,30 +3,17 @@
 #include "engine/loaders.hpp"
 
 #include "engine/lzss.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
 namespace {
 
-inline uint16_t rd16(const uint8_t *p) {
-	return static_cast<uint16_t>((p[0] << 8) | p[1]);
-}
-
-inline uint32_t rd32(const uint8_t *p) {
-	return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) | (static_cast<uint32_t>(p[2]) << 8) | p[3];
-}
-
-inline void wr32(uint8_t *p, uint32_t ul) {
-	p[0] = static_cast<uint8_t>(ul >> 24);
-	p[1] = static_cast<uint8_t>(ul >> 16);
-	p[2] = static_cast<uint8_t>(ul >> 8);
-	p[3] = static_cast<uint8_t>(ul);
-}
 
 // What the six-byte header says; false if the packed size is absurd.
 bool parseHeader(const uint8_t *pHdr, bool isEnhanced, PicInfo &o) {
-	o.uwPlanes = rd16(pHdr);
-	o.ulPacked = rd32(pHdr + 2);
+	o.uwPlanes = be::ld16(pHdr);
+	o.ulPacked = be::ld32(pHdr + 2);
 	o.ulPalBytes = picPaletteBytes(o.uwPlanes, isEnhanced);
 	o.ulCellWords = o.uwPlanes == 4 ? 16 : 32;
 	return o.ulPacked <= kPicMaxPacked;
@@ -48,7 +35,7 @@ bool picParseHeader(const uint8_t *pHdr, bool isEnhanced, PicInfo &o) {
 void picParsePalette(const uint8_t *pPal, PicInfo &o) {
 	const uint32_t ulWords = o.ulPalBytes / 2;
 	for(uint32_t i = 0; i < ulWords; ++i) {
-		o.auwRaw[i] = rd16(pPal + 2 * i);
+		o.auwRaw[i] = be::ld16(pPal + 2 * i);
 	}
 	for(uint32_t i = 0; i < o.ulCellWords; ++i) {
 		uint16_t uwW = o.auwRaw[i];
@@ -109,23 +96,23 @@ uint32_t picRegistryWords(const PicInfo &o, uint16_t auwOut[64]) {
 // ---- cels ----------------------------------------------------------------------------------------------------------------------
 
 uint32_t celSizeEstimate(const uint8_t *pHdr10) {
-	const uint32_t ulBits = rd32(pHdr10 + 6);
-	const uint32_t ulCount = rd16(pHdr10);
+	const uint32_t ulBits = be::ld32(pHdr10 + 6);
+	const uint32_t ulCount = be::ld16(pHdr10);
 	return (ulBits >> 3) + 0x168 + ulCount * kCelEntryBytes + kCelHeaderBytes;
 }
 
 bool celReadStream(const Reader &sRead, uint8_t *pBuf, uint32_t ulBufAddr, uint8_t *pScratch, uint32_t ulScratchCap, CelInfo &o) {
 	sRead.pfnRead(sRead.pCtx, pBuf, kCelHeaderBytes);
-	o.uwCount = rd16(pBuf);
-	o.ulPacked = rd32(pBuf + 2);
-	o.ulBits = rd32(pBuf + 6);
+	o.uwCount = be::ld16(pBuf);
+	o.ulPacked = be::ld32(pBuf + 2);
+	o.ulBits = be::ld32(pBuf + 6);
 	o.ulTotal = 0;
 	if(o.ulPacked > ulScratchCap) {
 		return false;
 	}
 	const uint32_t ulTable = o.uwCount * kCelEntryBytes;
 	sRead.pfnRead(sRead.pCtx, pBuf + kCelHeaderBytes, ulTable);
-	wr32(pBuf + 2, ulBufAddr + kCelHeaderBytes + ulTable);
+	be::st32(pBuf + 2, ulBufAddr + kCelHeaderBytes + ulTable);
 	sRead.pfnRead(sRead.pCtx, pScratch, o.ulPacked);
 	return true;
 }
@@ -141,7 +128,7 @@ uint32_t celDecode(uint8_t *pBuf, const uint8_t *pScratch, CelInfo &o) {
 
 uint32_t blobLoad(const Reader &sRead, uint8_t *pScratch, uint8_t *pDst) {
 	sRead.pfnRead(sRead.pCtx, pScratch, 4);
-	const uint32_t ulPacked = rd32(pScratch);
+	const uint32_t ulPacked = be::ld32(pScratch);
 	if(ulPacked > kBlobMaxPacked) {
 		return 0;
 	}

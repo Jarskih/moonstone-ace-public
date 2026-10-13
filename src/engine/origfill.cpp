@@ -1,5 +1,6 @@
 // engine/origfill - stream an original hunk executable once, copy the fill runs out of its hunks, check its CRC-32 (ROADMAP 10.2a; contract in include/engine/origfill.hpp).
 #include "engine/origfill.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
@@ -46,7 +47,7 @@ public:
 		if(!p) {
 			return false;
 		}
-		ulOut = (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
+		ulOut = be::ld32(p);
 		return true;
 	}
 
@@ -106,7 +107,7 @@ void copyRuns(const OrigFillTable *pTables, unsigned uTables, uint16_t uwHunk, u
 	for(unsigned t = 0; t < uTables; ++t) {
 		for(uint32_t i = 0; i < pTables[t].ulCount; ++i) {
 			const OrigFillRun &r = pTables[t].pRuns[i];
-			if(r.uwHunk != uwHunk || !r.ulSize) {
+			if(r.ubHunk != uwHunk || !r.ulSize) {
 				continue;
 			}
 			const uint32_t ulBeg = r.ulSrc > ulOff ? r.ulSrc : ulOff;
@@ -118,12 +119,37 @@ void copyRuns(const OrigFillTable *pTables, unsigned uTables, uint16_t uwHunk, u
 	}
 }
 
+// The copied runs hold big-endian bytes; the native-integer runs (ubUnit 2 / 4) are put into this CPU's order.  Nothing to do on a
+// big-endian CPU.
+void swapNativeRuns(const OrigFillTable *pTables, unsigned uTables) {
+#if !MS_BIG_ENDIAN
+	for(unsigned t = 0; t < uTables; ++t) {
+		for(uint32_t i = 0; i < pTables[t].ulCount; ++i) {
+			const OrigFillRun &r = pTables[t].pRuns[i];
+			if(!be::kHostIsBig && r.ubUnit > 1) {
+				for(uint32_t o = 0; o + r.ubUnit <= r.ulSize; o += r.ubUnit) {
+					uint8_t *p = r.pDst + o;
+					for(uint32_t a = 0, b = r.ubUnit - 1u; a < b; ++a, --b) {
+						const uint8_t ub = p[a];
+						p[a] = p[b];
+						p[b] = ub;
+					}
+				}
+			}
+		}
+	}
+#else
+	(void)pTables;
+	(void)uTables;
+#endif
+}
+
 // Every run must lie inside its hunk (a facts/version mismatch would otherwise go unnoticed).
 bool runsFit(const OrigFillTable *pTables, unsigned uTables, uint16_t uwHunk, uint32_t ulHunkSize) {
 	for(unsigned t = 0; t < uTables; ++t) {
 		for(uint32_t i = 0; i < pTables[t].ulCount; ++i) {
 			const OrigFillRun &r = pTables[t].pRuns[i];
-			if(r.uwHunk == uwHunk && r.ulSize && r.ulSrc + r.ulSize > ulHunkSize) {
+			if(r.ubHunk == uwHunk && r.ulSize && r.ulSrc + r.ulSize > ulHunkSize) {
 				return false;
 			}
 		}
@@ -263,7 +289,11 @@ OrigFillResult origFill(OrigReadFn fnRead, void *pCtx, uint32_t ulSize, uint32_t
 	if(s.consumed() != ulSize) {
 		return ORIG_LONG;
 	}
-	return s.crc() == ulCrc ? ORIG_OK : ORIG_CRC;
+	if(s.crc() != ulCrc) {
+		return ORIG_CRC;
+	}
+	swapNativeRuns(pTables, uTables);
+	return ORIG_OK;
 }
 
 const char *origFillText(OrigFillResult eResult) {

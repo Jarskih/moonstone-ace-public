@@ -99,4 +99,12 @@ rt_sfx_stop_all:
 	move.w %d0,6(%sp)
 	movem.l (%sp)+,%d0-%d1/%a0-%a1
 	rts
+
+	| rtSynthStartC(seq, channel): src/rt/sfx.cpp calls the synth start as a C function since ROADMAP 11.1d; the test enters the ORIGINAL
+	| LAB_0F8C (rt_synth_start is defined to its address at link time) with D0 = sequence, D1 = channel, as the old rtSfxSynth trampoline did
+	.globl rtSynthStartC
+rtSynthStartC:
+	move.l 4(%sp),%d0
+	move.l 8(%sp),%d1
+	jmp rt_synth_start
 )");

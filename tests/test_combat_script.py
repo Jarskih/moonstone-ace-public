@@ -161,6 +161,22 @@ def s16(v):
     return v - 0x10000 if v & 0x8000 else v
 
 
+# ROADMAP 11.3: an owner offset of a script has the 68k (big-endian) meaning; the owner record is native (little-endian here), so
+# byte i of a cell of width w sits at cell + w - 1 - i (include/game/record.hpp kKnightCells, written out here independently).
+_CELLS = ([(0, 4), (4, 2), (6, 2), (8, 2), (10, 1), (11, 1), (12, 1), (13, 1)] + [(o, 4) for o in range(14, 58, 4)] +
+          [(58, 2), (60, 2), (62, 2), (64, 2), (66, 2), (68, 2), (70, 1), (71, 1), (72, 1), (73, 1), (74, 2), (76, 1), (77, 1), (78, 2),
+           (80, 2), (82, 1), (83, 1), (84, 2), (86, 1), (87, 1), (88, 4), (92, 4), (96, 4), (100, 4), (104, 1), (105, 1), (106, 1),
+           (107, 1), (108, 4), (112, 2), (114, 2), (116, 2), (118, 2), (120, 2), (122, 2), (124, 2), (126, 2), (128, 2), (130, 1), (131, 1)])
+_OMAP = {}
+for _o, _w in _CELLS:
+    for _i in range(_w):
+        _OMAP[_o + _i] = _o + _w - 1 - _i
+
+
+def omap(off):
+    return _OMAP.get(off, off)
+
+
 class Mem:
     """BE accessors (script/cel/list bytes) and LE accessors (job, work, owner structs)."""
 
@@ -538,15 +554,12 @@ class Model:
     def h0374(self, a1, a6):
         m = self.m
         a5 = m.fl(a1 + 24)
-        addr = a5 + s16(m.w(a6 + 2))
+        off = s16(m.w(a6 + 2))
         d1 = m.l(a6 + 4)
         b1 = m.b(a6 + 1)
-        if b1 & 1:
-            m.m[addr] = d1 & 0xFF
-        elif b1 & 2:
-            m.sfw(addr, d1 & 0xFFFF)
-        else:
-            m.sfl(addr, d1)
+        n = 1 if b1 & 1 else 2 if b1 & 2 else 4
+        for i in range(n):                           # big-endian bytes of the value, at the 68k offsets of the native record
+            m.m[a5 + omap(off + i)] = (d1 >> (8 * (n - 1 - i))) & 0xFF
         self.adv(a1, 8)
 
     def h0372(self, a1, a6):
@@ -608,13 +621,10 @@ class Model:
     def owner_test(self, a1, a6):
         m = self.m
         a5 = m.fl(a1 + 24)
-        addr = a5 + s16(m.w(a6 + 2))
+        off = s16(m.w(a6 + 2))
         b1 = m.b(a6 + 1)
-        if b1 & 1:
-            return m.fb(addr) != 0
-        if b1 & 2:
-            return m.fw(addr) != 0
-        return m.fl(addr) != 0
+        n = 1 if b1 & 1 else 2 if b1 & 2 else 4
+        return any(m.m[a5 + omap(off + i)] for i in range(n))
 
     def h0393(self, a1, a6):
         if not self.owner_test(a1, a6):

@@ -20,6 +20,7 @@ count like LAB_0AA2, the death fade (LAB_0D8A / LAB_03EE) counts like LAB_0427.
 
 Needs: unicorn, the m68k toolchain of AGENTS.md, build/reasm/mog (py tools/reassemble.py).  Skipped otherwise.
 """
+from tests.fastmem import xlat
 import os
 import random
 import struct
@@ -45,7 +46,7 @@ A = TC.A
 LOG = 0x19F000                         # test arena: call counters of the stubs (inside the DATA region of the harness)
 LOG_SOUNDS, LOG_LAST, LOG_FX = LOG, LOG + 2, LOG + 4
 
-SOURCES = ('src/game/creatures.cpp', 'src/game/fighters.cpp', 'src/game/fight_creatures.cpp', 'src/game/fight_ops.cpp',
+SOURCES = ('src/game/roster.cpp', 'src/rt/fight_roster.cpp', 'src/rt/combat_pool.cpp', 'src/game/creatures.cpp', 'src/game/fighters.cpp', 'src/game/fight_creatures.cpp', 'src/game/fight_ops.cpp',
            'src/rt/fighters.cpp', 'src/engine/util.cpp', 'src/game/rules/damage.cpp') + tuple('src/game/rules/' + n + '.cpp' for n in ['ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight', 'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker']) + (GAMEDATA_REL,)
 SHIMS = {'01CA': 'rt_fighter_knight', '0226': 'rt_fighter_flyer', '0236': 'rt_fighter_brawler', '0251': 'rt_fighter_caster',
          '027A': 'rt_fighter_dragon', '0298': 'rt_fighter_dragon_part', '029F': 'rt_fighter_drake', '02CB': 'rt_fighter_dagger',
@@ -154,7 +155,9 @@ def build_blob():
                 '  *(volatile UWORD *)0x%X = *(volatile UWORD *)0x%X + 1; *(volatile UWORD *)0x%X = uwSeq; return 0; }\n'
                 '  void sfxStartFixed(UBYTE ubChannel, UWORD uwSeq) {\n'
                 '  *(volatile UWORD *)0x%X = *(volatile UWORD *)0x%X + 1; *(volatile UWORD *)0x%X = uwSeq; }\n'
-                '  UBYTE sfxRelease(UBYTE) { return 0; } }\n'
+                '  UBYTE sfxRelease(UBYTE) { return 0; }\n'
+                '  // ROADMAP 12.4 / 8.4b: the deterministic mode is off (the beam is read from VHPOSR as before); the second knight\'s colours are not under test\n'
+                '  bool netDeterministic() { return false; } UWORD netBeam() { return 0; } void partyColoursEnd() {} }\n'
                 '// ROADMAP 7.1p: the tags rtFightOpRun runs in rt/fighters.cpp (fight died / end, pause all, kill current, the ritual sounds): not exercised here\n'
                 'extern "C" { void rtFightDied() {} void rtFightEnd() {} void rtFightPauseAll() {} void rtFightKillCurrent() {}\n'
                 '  unsigned long rtRngPercent(unsigned long *) { return 0; } }\n'
@@ -255,10 +258,8 @@ class FightersEmuTest(unittest.TestCase):
         # ROADMAP 7.1p: the C++ stores the address of its handler tag (rtFighterTag + n) where the original stores the label of the handler body
         out = []
         for part in snap:
-            for lab, n in TAG_INDEX.items():
-                part = part.replace(struct.pack('>I', self.syms['rtFighterTag'] + n),
-                                    struct.pack('>I', A(lab[4:] if lab.startswith('LAB_') else lab)))
-            out.append(part)
+            out.append(xlat(part, [(struct.pack('>I', self.syms['rtFighterTag'] + n), struct.pack('>I', A(lab[4:] if lab.startswith('LAB_') else lab)))
+                                   for lab, n in TAG_INDEX.items()]))
         return tuple(out)
 
     def run_both(self, w, regs, extra, orig_label, shim):

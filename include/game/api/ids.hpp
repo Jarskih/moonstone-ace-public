@@ -23,8 +23,8 @@ constexpr uint8_t KNIGHT_DRAGON = raw(KnightIdx::Dragon);
 // A lair is one of LAIR_COUNT (24) overworld encounters; the index is the position in the lair pool.
 typedef uint8_t LairIdx;
 
-// The three trainable character stats (Knight +70 / +71 / +72; LAB_0013, LAB_0019, LAB_021B).
-enum class Stat : uint8_t { Strength, Constitution, Endurance };
+// The original three trainable stats, plus the optional Dexterity mod stat at Knight +87.
+enum class Stat : uint8_t { Strength, Constitution, Endurance, Dexterity };
 
 // An inventory slot, named by its byte offset in Inventory (the offsets the transfer table LAB_0028 lists).  The count of
 // a slot is the byte at this EVEN offset.  Roles of the unnamed slots are not established (knight.hpp).

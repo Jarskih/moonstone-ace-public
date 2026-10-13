@@ -28,17 +28,47 @@ namespace ms { namespace game {
 // The kinds of ShopWish::uwKind (the values the asm keeps in LAB_08F8).
 enum : uint16_t { WISH_LIFE = 0x49, WISH_DAGGERS = 0x4C, WISH_SWORD = 0x58, WISH_ARMOUR = 0x5C };
 
+// Moonstone 2 co-op on the map (ROADMAP 8.3a / 8.3, docs/MOONSTONE2.md 2.2, 2.3): who is in the party and who leads it.  Not an
+// original cell: src/rt/party.cpp owns the game's one (set up at a new co-op game), the host tests their own.  ubActive == 0 is the
+// classic game: every function then takes its original path and the fields below are not read.
+struct PartyMap {
+	uint8_t ubActive;          // 1 = co-op map rules
+	uint8_t ubSize;            // party members: records 0..ubSize-1 (1..4)
+	uint8_t ubLeader;          // record index of the leader: carries the party token, steers with its pad; rotates each round
+	uint8_t ubBk;              // fight extras: pool records 5..5+ubBk-1 (= the party size); the map's black knights are the knight records ubSize..3
+};
+
+// The record indices of the generalised set.  0..3 the knights' slots (LAB_0613..0616), 4 the dragon (LAB_0617, hard-wired as
+// mogKnights[4] in the runtime: it never moves), 5..8 the co-op black-knight pool (not in the original).
+enum : int { REC_DRAGON = 4, REC_BK0 = 5, REC_BK_POOL = 4, REC_MAX = 9 };
+
 // Record set: the five Knight records (LAB_0613.., four knights then the dragon) with their inventories.  The asm keeps
 // pointers into it (current knight LAB_0633, engaged opponent Knight +100, arrival list entries); ulBase is the 68k
 // address of aRec[0] so the pure code can turn such a value back into an index (0..4) and back.
+// ROADMAP 8.3a: in co-op the set goes on past the dragon with the black-knight pool (records 5..8, an array of its own with its
+// own base address).  rec(i) / addr(i) / index() cover both ranges; aRec[i] is still the classic record i < 5.  A set built
+// with only the first three members (the classic and the host tests' form) has no pool and is classic.
 struct RecordSet {
 	Knight *aRec;              // 5 records
 	Inventory *aInv;           // 5 inventories, aInv[i] belongs to aRec[i] (Knight +96)
 	uint32_t ulBase;           // address of aRec[0] in the game's address space
-	uint32_t addr(int i) const { return ulBase + 132u * (uint32_t)i; }
+	Knight *aPool = 0;         // co-op: the black-knight pool, records 5..8 (0 = none)
+	Inventory *aPoolInv = 0;   // its inventories
+	uint32_t ulPoolBase = 0;   // address of aPool[0]
+	PartyMap *pParty = 0;      // the party (0 or ubActive == 0: classic)
+	bool coop() const { return pParty && pParty->ubActive && aPool; }
+	int count() const { return coop() ? REC_BK0 + pParty->ubBk : 5; }   // records in play, the dragon included
+	Knight &rec(int i) const { return i < REC_BK0 ? aRec[i] : aPool[i - REC_BK0]; }
+	Inventory &inv(int i) const { return i < REC_BK0 ? aInv[i] : aPoolInv[i - REC_BK0]; }
+	uint32_t addr(int i) const {
+		return i < REC_BK0 ? ulBase + 132u * (uint32_t)i : ulPoolBase + 132u * (uint32_t)(i - REC_BK0);
+	}
 	int index(uint32_t ulAddr) const {   // -1 when the address is not a record start
 		const uint32_t d = ulAddr - ulBase;
-		return (ulAddr >= ulBase && d % 132u == 0 && d / 132u < 5u) ? (int)(d / 132u) : -1;
+		if (ulAddr >= ulBase && d % 132u == 0 && d / 132u < 5u) return (int)(d / 132u);
+		if (!coop()) return -1;
+		const uint32_t p = ulAddr - ulPoolBase;
+		return (ulAddr >= ulPoolBase && p % 132u == 0 && p / 132u < pParty->ubBk) ? REC_BK0 + (int)(p / 132u) : -1;
 	}
 };
 

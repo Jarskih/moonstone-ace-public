@@ -24,8 +24,9 @@ BINARY = {'prg': 'program', 'mog': 'mog'}
 
 def load(path=None):
     import yaml
+    import yamlfast
     with open(path or PATH, encoding='utf-8') as f:
-        doc = yaml.safe_load(f) or {}
+        doc = yamlfast.safe_load(f) or {}
     out = {}
     for binary, cells in doc.items():
         if binary not in PREFIX:

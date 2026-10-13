@@ -128,4 +128,12 @@ uint32_t mainRngSeed(uint16_t uwVhposr, const uint32_t aulSeeds[4]);
 // the map's cells (src/rt/flow.cpp, ROADMAP 9.2a).
 void mainRun(MainScene eFirst, const MainEnv &env, const MainOps &ops);
 
+// Hooks of the network layer's rejoin (ROADMAP M12, docs/NETPLAY.md 4.5).  A rejoining machine builds the knights of the CONFIG as a new game does, and the
+// host's world is then written over them: g_pfnRejoinApply runs right after the arena set-up of the campaign (LAB_01BE), g_pfnRejoinGo right after the
+// map scene's set-up (SECSTRT_36), where the lockstep starts on the host's tick.  Both are installed by the network layer only while a rejoin is under way
+// (constant-initialised null, header only, like g_pfnTickIdle).
+inline void (*g_pfnRejoinApply)() = nullptr;
+inline void (*g_pfnRejoinGo)() = nullptr;
+
 }}  // namespace ms::game
+

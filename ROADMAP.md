@@ -12,6 +12,47 @@ Status: `[x]` done · `[~]` in progress · `[ ]` todo.
 
 ## Where we are (2026-10-07)
 
+### v0.2.0 acceptance follow-up (2026-10-13)
+
+- Saved batch evidence is ahead of the summary: `build/batch6_direct.log` (71 common hashes, direct UDP + rejoin),
+  `build/batch6_tcp.log` (69, TCP + rejoin), `build/batch6_quad.log` (38 equal across four nodes),
+  `build/batch7_classic.log` (59) and `build/batch8_relay.log` (relay + UDP, NETPAIR PASS).
+  These are recorded runs, not a blanket closure of all M12 acceptance criteria.
+- The live public service passes `py tools/netserver/selftest.py --server moonstone.shatteredallegiance.com --port 6510`:
+  direct, relay, UDP relay, rejoin-flagged Playing game, and wrong-build rejection. Local and live-service selftests both pass.
+- Fresh classic protocol run **passed**: `build/accept-classic-diag.log`, real speed, both quit markers,
+  62 equal common hashes through tick 3100, 17 matching tick-pokes, UDP active on both with no fallback. Map turns, next day,
+  guest-controlled lair fight and return to map were exercised. On rerun with the loot-ready barrier and the lobby input fix,
+  NETPAIR PASS again: 58 matching hashes through tick 2900, both quit, 15 matching tick-pokes, UDP active; screenshot
+  `build/shots/netpair-cj-loot.png` confirms the completed loot screen. `screen ready 2` is logged after redraw/palette, not at the early scene-ID store.
+- A rerun with only a 240 s autoplay timeout ended early during the second map turn (tick 1272), then the runner closed the
+  host; this was an undersized test timeout, not a diagnosed network freeze. Two subsequent runs with the documented 600 s
+  allowance passed: one had 60 common hashes through tick 3000, the latest 62 common hashes through tick 3100, both quit
+  markers, 17 matching tick-pokes, and UDP active without fallback. `screen_ready_2` appeared in both windows; map, fight and
+  loot screenshots are valid. Logs `build/uaeshot-114.log` through `build/uaeshot-117.log` (summary in tool output for runs 114/115
+  and 116/117).
+  The first repeat reached both quit markers with all 60 common hashes equal,
+  but `uaeshot.ps1` missed the host's quit because WinUAE split its serial capture into 12-character chunks. The runner
+  now reconstructs those lines for shot / shot-end / quit detection; verified against the captured log (13 shots, one quit).
+  A repeat with that reader recovered the markers normally but stopped progressing on both nodes after tick ~580,
+  with 11 matching hashes through tick 550, no desync, and VBL/autoplay still running. The hash barrier and subsequent
+  turn wait timed out. Latest diagnostic logs: `build/uaeshot-94.log`, `build/uaeshot-95.log`; screenshot `build/shots/autoplay-end.png`.
+   Repeats also froze in the lobby, and a guest froze at tick 5 inside the node pump with no socket call active; a later run
+   stopped progressing in its lockstep wait at tick 2045. The extended two-window town visit exposed and fixed deterministic
+   tick starvation in the cursor-polled town loop (no beam wait). Two full-duration post-fix town runs passed; keep monitoring
+   the older failure signature during the broader network matrix. Latest town run: `build/uaeshot-138.log` / `uaeshot-139.log`,
+   NETPAIR PASS through tick 3950, 79 common hashes, 21 tick-pokes; Town A and Next Day screenshots checked.
+- The on-screen ping is application PING/PONG RTT, including socket-service scheduling, measured with the emulated clock,
+  not an OS/network-only ping. Debug autoplay fight shot `build/shots/netpair-cj-fight.png` showed 94 ms / 0% loss on localhost;
+  map PERF lines in the repeat show roughly 8-9 updates/s and 62-120 ms RTT. Screenshot capture freezes a guest for 400 VBLs.
+  More frequent transport servicing during frame waits is a candidate improvement; it has not been implemented or measured here.
+- `check.py --quick`: **GREEN**, 151 modules / 1358 tests (35 mutation tests skipped); resource verification, symbols,
+  status ladder and survey passed. The four m68k test rigs now define `BARTMAN_GCC` as the real build does; the SDL smoke test
+  builds `build-sdl-test` so a running preview cannot lock its link output. All five previously failing modules passed (55 tests).
+  The receive diagnostics passed the focused network/structural checks (38 tests), and the loot readiness change passed
+  `test_bootcheck`, `test_combat`, `test_loot`, `test_netsession` (42 tests). Amiga Release and autoplay builds link.
+  Logs: `build/testrun/<module>.log`, `build/accept-classic-diag.log`.
+
 - **The game is entirely C++ and links no asm** (7.1r, `db7dd9f`): `py tools/asm_remaining.py` reports 0 live units for program and mog,
   no vasm step, no `asm/*.o` in the link map. Entries are `rtGameRun` -> `rt_prg_main` / `rt_mog_entry`. Release LTO exe **470,524 B**
   (732,764 B at the first C++ link, 406 KB in the asm era). **75 test modules** in `tests/`; `integrate.py --boot` (headless
@@ -25,7 +66,7 @@ Status: `[x]` done · `[~]` in progress · `[ ]` todo.
   2. **2.1** exit path (C7), **2.11** memory budget/arena failure on screen, **2.10** parity screenshots against the original disks.
   3. **7.1s** alias renames and patch-machinery removal, **7.2** 50 Hz per scene on stock and owner config, **7.3** Release/ADF/HD
      install, **7.4** full playthrough, **H4** floppy config.
-  4. Backlog: enhanced display 4.8a/4.8c-e. After M7: **M8** (Moonstone 2).
+  4. Backlog: enhanced display 4.8a/4.8c-e. After M7: **M8** (Moonstone 2); **M11** PC version on SDL3 (owner 2026-10-09; SDL3 since 2026-10-10).
 - Docs for modders: `docs/MODULES.md`, `docs/LABEL_INDEX.md` (generated), `docs/MODDING.md` (7.5).
 - Measured earlier and still the basis of the engine layout: 99 of program's 223 routines (15.5 KB) were instruction-identical to mog
   routines (trackdisk, IRQ, file cache, IMAGEXCEL, custom-chip init); they now exist once in `src/engine`.
@@ -517,6 +558,21 @@ defaults). The built-in defaults reproduce the original exactly (parity tests); 
   (9.6g); later a dedicated "beamer" AI with a line hit test. Original art only (name it e.g. "Gazer" in any public example).
   WIP: branch wt-beholder, kit build/kits/beholder.
 
+
+- [ ] **9.9** Options screen for mods (owner 2026-10-10): a title-menu **Options** item opens a screen that lists the mod packs
+  (folders in `PROGDIR:mods_examples/` and the player's own packs in a `packs/` drawer) with On / Off, and the main settings of
+  the enabled packs and the base rules (e.g. Dexterity on/off, wave scaling) as left/right choices; the choice is saved in
+  `PROGDIR:mods/options.ini`, and on leaving the screen the data is rebuilt (defaults + enabled packs in order, the same loader
+  as at start-up, `rt::modsLoad`, under its own OS guard) before the next game starts. Changes apply to the next game only, never
+  inside a running one; in a network game the host's mod set is the one played (the data checksum and rule bits in HELLO
+  already refuse a mismatch, so clients are told which mods the host uses). Conflicting packs (the same key set twice) are
+  shown on the screen, the later pack wins. Files set up by hand before launch keep working as today - M
+  > Built: pack rows in the small font, 8 per page; DEXTERITY OFF/ON and MONSTER SCALING NONE/LIMITED/FULL show the value in
+  > effect; setting-only packs are hidden and an old `options.ini` converts them to settings; switching a pack on turns a
+  > conflicting pack off ("X TURNED OFF") instead of the CONFLICT note. Examples cheap_shops and cave_troll removed (owner).
+  > Open: the `play_options` boot run with screenshot.
+  > 2026-10-11 (owner): the Options screen is the SETTINGS row of the new main menu, not a title-menu item (`poke menuact 2`, `play_options`); leaving it returns to the main menu.
+
 ## M8: Moonstone 2 (co-op party of four knights)  `[ ]`
 
 Decided 2026-10-06 by the owner, to start after M7 (all C++ first). Aim: up to four human knights play together as a party.
@@ -538,19 +594,88 @@ behind a build/game option so the original single-player rules stay intact for p
   and keyboard sets (arrows+RCtrl, WASD+LAlt); a per-knight control choice on the knight screen - M
   > 2 knights done 2026-10-07: `include/game/party.hpp` (`g_party`, classic when inactive), `include/engine/pad.hpp` (Joystick 1, Joystick 2
   > = mouse port, Keys arrows + Ctrl/RShift, Keys WASD + Alt), title menu Players -> "Coop 2", a Control line per knight on Select
-  > Knight, input routed per current knight on map/fights/loot; `tests/test_coop.py`, `play_coop.txt`. Open: 4-player adapter (pinout),
-  > per-fighter pads in fights (8.4b).
-- [ ] **8.3** Party on the map: one party token (or knights in turn, per 8.1), encounters and place visits take the whole party - M
-- [ ] **8.3a** Knight record pool and turn slots for a party of 4 plus black knights (records after `mogKnights[4]`, the dragon, which is hard-wired) - M
-- [ ] **8.4** Co-op fights: up to four player knights on one side of the arena against the enemies; fighter slots, AI targeting,
+  > Knight, input routed per current knight on map/fights/loot; `tests/test_coop.py`, `play_coop.txt`. Open: per-fighter pads in
+  > fights (8.4b). The 4-player adapter moved to 8.2a (backlog, owner 2026-10-09).
+  > 2026-10-09 (owner: finish co-op for 2 to 4 knights): title menu Players 4 -> "Coop 2" -> "Coop 3" -> "Coop 4" (`PARTY_COOP_MAX` 4); the knight screen offers each knight the first free controller in the order Joystick 1, Joystick 2, Keys arrows, Keys WASD and cycles only the free ones, so no two knights share a pad; both keyboard sets held at once checked against a keyboard-matrix ghosting model (`tests/test_keyghost.py`, `docs/MOONSTONE2.md` 3.2: no phantom is E / Space / Esc / Return; the real A1200 matrix is for the owner to check, 8.7). `tests/test_coop.py` (Coop 2..4 menu steps, four-knight and three-knight pad binding), boot `tests/boot/play_coop4.txt` (`build/shots/play-coop4-*`).
+  > Emulator pass 2026-10-10 (branch wt-coop_pass, Debug `build-autoplay`, WinUAE instance 90): `play_coop.txt` runs to quit; Players -> "Coop 2", both knights' Control lines (Joystick 1 / Joystick 2 / Keys arrows), the leader's own pad steers (joy1 ignored while knight 2 leads; the arrow keys move it), the dumps show `leader` / `pad` rotating (`build/shots/play-coop-players.png`, `play-coop-pad2.png`, `play-coop-walk2.png`). The MISSED `joy1` pulses of the earlier report did not repeat in `play_coop`; they come from a boot where the title menu is not ready when the script presses (seen once in `play_coop_valley`: the run then started a practice fight and its numbers were discarded; rerun was clean): a host-load flake of the fixed delays, not a game bug. `play_coop4.txt` (4 knights, four controllers) passes: leader 1, 2, 3, 4 each steering with its own pad, the others ignored; the script no longer waits for a black-knight turn (a party of 4 has no black knight on the map).
+  > 2026-10-11 (owner, title menu rework): Players is the count only (1..4, `menuSetPlayers`, the original), a separate **Mode** row (directly under Players, then an empty line, then Practice / Select Knight) is Classic / Coop with no number; the "Coop 2..4" steps and
+  > `pfnDrawPartyText` are gone. Coop with one player makes two, in co-op Players stays within 2..`PARTY_COOP_MAX`, back to Classic keeps the count. The Gore row of the title menu is removed
+  > (gore always on, see 12.3). The title menu is the LOCAL row of the new main menu (LOCAL / MULTIPLAYER / SETTINGS, `SceneMainMenu`), with a Back row and Esc; `tests/test_main_menu.py`,
+  > `tests/test_coop.py`; scripts `play_coop*.mk`, `play_coop_mode.txt` and the `@PRE` prefix navigate the new rows (Players, Mode, Practice, Select Knight: down x3 to Select Knight).
+- [ ] **8.2a** *(backlog 2026-10-09: owner moved it out of the co-op work; 2 knights use ports 0/1 and the keyboard sets)* Parallel-port
+  4-player adapter (ports 3/4, as Dyna Blaster used): pure PRB/PRA decoder with host tests, guarded parallel-port DDR use only while a
+  knight picks Joystick 3/4, "Joystick 3/4" on the knight Control line, a raw-bits diagnostics view for the owner's pinout check on the
+  A1200, autoplay joy3/joy4 injection (MOONSTONE2.md 3.2, open question 11) - M
+- [x] **8.3** Party on the map: one party token (or knights in turn, per 8.1), encounters and place visits take the whole party - M
+  > Map part done 2026-10-09 (merged onto 8.2 + RAII 9.2b): the party is ONE token at the first player's home (`rt/party.cpp`, `rt/party_start.cpp`, `game/rules/party`), the leader rotates each round and steers with its own pad, Space shows one status sheet per member (`statusParty`, `ms::scopeExit` gives back LAB_0633 / ActiveKnights +0), each sheet closes with its owner's fire (TURN focus reads the member's pad). Screens: `tests/boot/play_coop.txt` (menu-driven, `build/shots/play-coop-status1/status2/end`) and `play_coop_map.txt` (poke-driven, `play-coop-map-status1/status2/end`). Open: encounters / place visits with the whole party (8.4, 8.5).
+  > 2026-10-09 N = 2..4: the leader rotates through every member (`play_coop4`: leader 1, 2, 3, 4, each steering the token with its own controller, the other three held and ignored), `statusParty` shows N sheets (each closed with its owner's pad), (the roster strip `mapDrawRoster` of that day was removed on the owner's request 2026-10-09: ONE player-coloured token on the map).
+  > Verified 2026-10-10: `play_coop.txt`, `play_coop_map.txt` (one token, leader rotation, status sheets per member in the member's colour: `play-coop-status1/2.png`, `play-coop-map-leader2.png`) and `play_coop4.txt` pass. **Owner change 2026-10-09 (done 2026-10-10): the roster strip (`drawRoster`, the helmets along the top edge) is gone, the map shows ONE player-coloured token (the leader's)**; the black knights are the original AI knights as tokens of their own (see 8.3a). Unit tests `tests/test_party.py` rewritten for it (`draw_no_roster`).
+- [x] **8.3a** Knight record pool and turn slots for a party of 4 plus black knights (records after `mogKnights[4]`, the dragon, which is hard-wired) - M
+  > Done 2026-10-09: party records 0..n-1, black-knight group records 5.. (`poke dump 1` logs `party size/leader/bk/port/pad`), turn slots and leader rotation per round; `tests/test_party.py`, `play_coop.txt`, `play_coop_map.txt` (fixed for the 8.2 controller lines of the knight screen).
+  > 2026-10-09 N = 3, 4: the pool already held four black-knight records (`REC_BK_POOL` 4 after the dragon, `mogKnights[0..4]` unmoved); `tests/test_party.py` `n3_*` / `n4_*` (start, token, leader 0..N-1 twice, BK upkeep, budget minimum, dead skipped, frogs, mirrors, scan, BK engagement follows the leader); the fixed-4 loops are audited in `docs/MOONSTONE2.md` 6.2 (loot's `lootNextKnight` is left to 8.5, fights' `knightsRecalcAll` after a settled fight covers records 0..3 only: the black-knight pool records need their own recalc in 8.4b).
+  > Owner change 2026-10-09, done 2026-10-10 (replaces the single BK group token): the knight records the party does not use (records 2, 3 for two knights; none for four) stay the ORIGINAL AI black knights (kind 4, original lives / stats / names, normal `LAB_01AE` start spots 160,20 and 160,180, each its own token and own turn slot, moving with the original AI: `partySlotCount` = 1 + (4 - party size), `partySlotRecord`; `partyAiPickOpponent` picks the party token for each; `partyRotateLeader` re-engages them with the new leader). The pool records 5.. are now FIGHT EXTRAS only (never drawn / scheduled / scanned): in a duel the engaged map knight is foe 0 (`FightRoster::ulDuelFoe`, set by `fightMeet`; `fight_seed.cpp`) and extras fill up to the party size; after a won fight the extras hand their belongings to the engaged knight (`partyBkPotFill(rs, iPot)`). Verified `play_coop_map.txt` (the two black knights wander on their own: dumps `knight2/3` move, `play-coop-map-leader2.png` shows one party token + two dark tokens) and `play_coop_bk.txt` (below).
+- [~] **8.4** Co-op fights: up to four player knights on one side of the arena against the enemies; fighter slots, AI targeting,
   hit tests and the UI panels for four; when the party meets black knights there are as many black knights as player knights - L
+  > 2 knights done 2026-10-09 with 8.4b (lair creatures and the 2-vs-2 black knights, scaling, end / settle rules, a colour of its own for the second knight: `src/rt/knight_colours.cpp`, the knight cels remapped once at fight start into free palette entries of the arena picture, `engine/celremap.cpp`, `tests/test_celremap.py`; the log line `knight colours: knight 2 uses palette entries ...`). Left: 3/4 knights tuning.
+  > 2026-10-09 (branch wt-8_4h, code written, **emulator pass pending**, so [~] not [x]): the valley guardian and the dragon are party fights (`PartyFightScope` + `PlaceOps::pfnPartyFightOpen/Close/ValleySettle` in `game/placevisit.cpp`, `rt/party_fight.cpp`; `game/roster_scope.hpp` is the one roster guard; the guardian grabs keep their knight: `heldOf`; the dragon's walk keeps the handler's target). Valley: when the whole party LOSES every fallen knight pays `valleyDefeat` (2 lives + a stat point, `partyValleyPenalty`, loss-only since 2026-10-10), a won fight costs a fallen knight only the normal life, win keeps the 8.5 victory, the whole party down = temple screen. Dragon: `fightDragon` with `RosterScope`, per-knight settle, a lost party is robbed knight by knight, progress for the knights still standing. Colours: the second knight's own colour now also in the duel ($0C) and dragon ($14) scenes (KN5 29..31 counts as used in the dragon / balok / troll arenas; a dragon picture with only two free entries, bg2 / bg5a, falls back to the shared colour; the valley picture may too). HUD: the only per-fighter indicator is the low-hp palette pulse; knight 2 pulses its own three entries (`rosterWarnEntries`; the 6 ramp slots are then full, so the duel's opponent warning gives way), knights 3/4 have none (no colour of their own). Black knights: `rosterFoeSlot` spreads N of them (x staggered, depth $4B..$80) through `FightOps::spawnAtDepth`. Host tests: `tests/test_coop_fights.py`. Emulator pass: `tests/boot/play_coop_valley.txt` (`play-cvalley-*`; dump of both knights' lives / hp after the fight), `play_coop_dragon.txt` (`play-cdragon-*`), `play_coop_bk.txt` (placement), `play_coop_fight.txt`; look for the log lines `knight colours: ...`.
+  > Emulator pass 2026-10-10 (Debug autoplay): **lair** (`play_coop_fight.txt`, `play_coop_town.txt`): both knights drawn, own colours (`knight colours: knight 2 uses palette entries 31 30 29`), ratmen enter and fight, the lair is cleared, scene 2 loot (`build/shots/play-coop-fight-mash.png`, `play-coop-town-arena.png`). The `wait-timeout var scene=other` of the earlier report was the fixed boot delays (host load) plus, in `play_coop_town`, the old town-menu timing: the run now ends with `AUTOPLAY quit`. **Black knights** (`play_coop_bk.txt`): 2 knights vs the engaged AI knight record + 1 extra, `fight roster on=1 party=2 foes=2`, defeat bits 0x30 (both foes down), the loser keeps the stats and loses a life, the pot's gold 30 lands on the defeated record, meeting screen `play-coop-bk-fight-meet.png` shows `SIR BALAIN` (the original name). **Valley** (`play_coop_valley.txt`, first run): `roster on=1 party=2`, knight 2 (hp 12) fell and the party won: keys 0, moonstone 1 each, knight 2 lost the normal 1 life only (5 -> 4): **the guardian's penalty is now loss-only** (`partyValleyPenalty` returns 0 unless the whole party lost; `tests/test_coop_fights.py` `valley_won_pays_nothing` / `valley_lost_pays`). **Dragon** (`play_coop_dragon.txt`, first run, script fixed: a party's Space shows two status sheets, the second is closed with joy0): both knights vs the dragon (`roster on=1 party=2`); the dragon picture has no free palette entries, so `knight colours: only 0 free entries, the knights share a colour` (both knights blue, expected, MOONSTONE2 6.3); the autopilot party LOST (both down, lives 3, temple screen): the dragon is deadly for mash play, as in the classic `play_dragon` (`play-dragon-lost`). Still open: 3/4 knights tuning, the dragon win path (loot screen with two knights) was not reached by the autopilot.
 - [x] **8.4a** Perf probe first: draw/update cost per fighter (beam lines) to size a 4+4 fight on stock and fast-RAM machines (linear estimate ~2040 of 1872 lines on stock) - S
   > Done 2026-10-07 (`docs/PERF.md` "Fight frame split", `tools/perfx.py --model`, `tests/boot/perf_*.txt`): cel draws are 85-90% of a fight frame; per fighter ~460 beam lines (knight) / ~388 (creature) on stock, ~250-275 with fast RAM. Predicted 4 knights + 4 creatures: 4.4 fps stock, 7.0 fps owner; 2 knights + 4 creatures fits better. Levers: halve cel draws + skip unchanged sprites -> 10 fps; job table 10 -> 16, rect cap 45 -> 64. Owner 2026-10-07: 2-knight co-op is an acceptable scope if 4 is too much.
-- [ ] **8.4b** Fight-engine generalisation: N fighters, per-fighter pad (Knight+11 port pick), creature targeting beyond the first fighter, team-aware contact, more job slots/dirty rects, per-knight script/damage table copies - L
-- [ ] **8.5** Co-op lairs, loot and towns: lair fights with the party, loot shared/split per 8.1, town screens per knight - M
-- [ ] **8.6** (stretch) Golden-Axe style lairs: after a wave is killed the knights walk right, the arena scrolls to the next
-  section and the next wave enters; ends with the lair's guardian. Needs a scrolling arena (ACE scroll buffer) and wave tables - L
+- [x] **8.4b** Fight-engine generalisation: N fighters, per-fighter pad (Knight+11 port pick), creature targeting beyond the first fighter, team-aware contact, more job slots/dirty rects, per-knight script/damage table copies - L
+  > Done 2026-10-09 (branch wt-8_4b; 2 knights first, the engine is N-generic up to 4): `include/game/roster.hpp` / `src/game/roster.cpp` (`FightRoster`: party fighters, foe knights, teams, sticky nearest-living targeting, settle bits; pure, host test `tests/test_roster.py`), opened for the length of a fight by `RosterScope` in `src/game/combat.cpp` (`fightCreature` for the lair, `fightMeet` for the black knights; seeded from the co-op party by `src/rt/fight_seed.cpp`). Per-knight pad: every member is port 1 and `rt/input.cpp` picks the pad of the running handler's record (focus TURN), keyboard pads stay held across the fight frame (`opKeyReset` keeps the key-down flags in a party fight). Creature targeting: the ten handler heads call `targetFor` (nearest living knight, sticky, the knight it just hit / that hit it; grabs keep their knight), the `*e.pFirst` reads become `firstOf` / `heldOf`, finishing blows call `knockOut` / `endIfPartyDown`; classic = the original line (`FighterEnv::pRoster` null / inactive). Team-aware contact + movement: `contactScan` skips allies (no friendly fire, daggers carry `Knight::ubTeam`), `blockedMask` lets allies pass. The script ops LAB_0005 / 0006 / 000A / 000D of a party knight's script settle that knight (`fightOpPartyRun`: the creatures are released when the LAST knight has entered, the fight ends when the whole party / the whole foe side is down). Job table and dirty rects as parameters: `game::g_combatLimits` 10 / 45 classic, 16 jobs / 64 rects in a party fight, the arrays switched by `src/rt/combat_pool.cpp` (docs/PERF.md). `poke fightdump 1` logs roster, fighters, jobs, creatures; `poke lair_left N`, `warp_knight 5..8`. The lair creatures were frozen at first (the enter script of EACH knight toggles the creature pause: two knights = paused again) - fixed, see above. Screens: `tests/boot/play_coop_fight.txt` (`build/shots/play-coop-fight-{arena,moved,mash,loot,end}.png`, 2 knights vs ratmen: both drawn, each moved by its own pad, wave total x2 / alive +1, loot screen after the clear).
+  > Black knights (slice 3, 2026-10-09): `tests/boot/play_coop_bk.txt` (`play-coop-bk-fight-*.png`): the party token meets the BK group, N knights fight N black knights (AI handler, own target slot, sticky), the fight ends when a side is down, losers lose a life (`rosterSettle`), a lost party is robbed by BK 0 (`settleFight` + the BK record is recalculated: `settleFight` covers records 0..3 only), a won fight ends on the meeting screen; loot per knight is 8.5.
+  > Open: the valley guardian and the dragon stay one knight; low-HP warnings only for the first fighter; no HUD per knight; 3/4 knights: placement / pools / scaling (`coopTotalFactor` ...) are N-generic and `tests/boot/play_coop_fight4.txt` runs four (ratmen wave x4: 3.4-4 fps on the debug build, not measured exact), but nothing beyond that is tuned.
+  > 2026-10-10 hurt frames (branch kcol_hurt, host-tested, **emulator shot pending**): knight 2 turned into knight 1's colour during the ratmen's struck / cursed reactions (LAB_085E / 085F switch the job to the creature cel list and draw the knight out of RATMEN2) and the Be's grip, KN4 / KN5 and creature jobs holding the knight were not copied either. Every cel set of the knight and creature lists with class-colour pixels is now copied (`celSkinCandidates`, `rosterDrawSkin`, `rt/knight_colours.cpp`; docs/MOONSTONE2.md 4.5), tests `tests/test_skin_cover.py`. Shot: `tests/boot/play_coop_fight.txt` (lair 0 ratmen), look at knight 2 when a ratman casts the curse / strike 8 on it.
+  > 2026-10-11 death of one party knight (owner report from a network co-op game: when one knight was killed the other disappeared, the dead one took the other's colour and the fight ended; branch worktree-agent-a50a994d8fb1ffbbb): the finishing sequences of the creatures (the ratmen's squeeze `LAB_0869`, spear `081C`, flyer `0849` / `084E`, Be's carry `0895` / `0896`, snatcher `08A1` / `08A2`, dragon part `0884`) run on the CREATURE's job and end with `LAB_000D` (the current knight is dead) and `LAB_0006` (the fight is over): in a party fight `LAB_000D` marked the LEADER dead whoever was struck and `LAB_0006` ended the fight unconditionally, so one dead knight took the survivor with it and the fight ended with a knight standing. Now: `rosterScriptVictim` / `rosterScriptEndsFight` (game/roster.hpp, used by `fightOpPartyRun`): a creature's `LAB_000D` marks the knight it holds; its `LAB_0006` ends the fight only when every party knight is down (a creature that is itself down, a boss's death script, still ends it); the ratmen's squeeze lets go of the dead knight while another stands (`casterDropVictim`: the knight's own job plays the fall in its own colours). Second bug found by the emulator pass: after its death script (the corpse is drawn into the background, then `done`) the handler stood the fallen knight up again on its pad's input (a ghost beside its corpse, `fighterKnight` / `partyKnightStaysDown`: the job now ends). Co-op death rule (docs/MOONSTONE2.md 2.4 / 6.3): a fallen knight is out of the fight, the others fight on, the fight ends when the creatures are gone or every party knight is down, the fallen knight loses its life at the end as before. Tests: `tests/test_coop_script_ops.py` (mutation-proven), `tests/test_roster.py`; boot `tests/boot/play_coop_death.txt` (`build/shots/play-coop-death-*`, the `fightop` log lines). The colour: in the runs the dead knight's corpse and its own death animation were drawn in its own colours; a held / carried victim is drawn by the CREATURE's job from the creature's copy of the cel set (`rosterDrawSkin`), which is a best-effort chip copy (`knight colours: no N bytes ... keeps the shared colour` in the log): with too little chip memory that figure takes the shared colour; the squeeze now ends with the knight's own job. Not run in the emulator: spear / flyer / snatcher / drake / dragon-part kills with a surviving knight (their victims' jobs are removed: no corpse). Open: the squeeze is broken by fire + down on port 1 (`casterSlam` reads the raw second joystick), i.e. by knight 1's pad whoever is held, not by the held knight's own pad.
+  > Owner 2026-10-09: optimise **without removing detail** (no dropped shadow/part cels, no enemy cap): 8.4c-8.4f, plus the
+  > extra-half-brite shadows 8.4g. Estimate for 4 + 4 (8.4a model, rough): 8.4c-e give ~6.5 fps stock / ~10 fps owner (8.4f, frame
+  > skip, cut by the owner). Each task proves pixel identity (frame hashes on/off over the perf scripts) and reports PERFX before/after.
+  > Emulator pass 2026-10-10: see 8.4. fps (docs/PERF.md "Co-op fights", cycle-exact WinUAE): 2 knights vs a ratmen wave (lair 0, 7-9 fighters) 4.6-5.0 fps stock / 8-9 fps owner; 2 knights vs 2 black knights 6.2-7.6 fps stock / 9.6-10 fps owner (classic fights 10.0 fps).
+- [ ] **8.4c** Blitter nasty (`BLTPRI` in `DMACON`) during the cel draw pass only, restored after; quick measurement first (perf_duel,
+  perf_lair0 on stock and owner configs), keep it only if it gains - S
+- [ ] **8.4d** Precomputed cel masks: build each cel's mask once at cel load (chip, ~+1/5 of the cel data) instead of the OR blits per
+  draw (`src/engine/blit.cpp:171-181`); chip budget check on stock (docs/MEMORY.md), fall back to per-draw masks when chip is short - M
+- [ ] **8.4e** Skip unchanged fighters: no restore and no draw for a job whose cel frame, position and z are the same as on BOTH buffers'
+  last draw and whose rectangle overlaps no changed one; same pixels by construction - M
+- [x] **8.4f** ~~Frame skip for co-op fights~~ CUT (owner 2026-10-09: "no frame skips, will make game harder"): a big fight plays slower
+  rather than dropping frames, as the original did; speed comes from 8.4c-e only
+- [ ] **8.4g** Extra-half-brite shadows (owner 2026-10-09: "sounds good"). First confirm which cels are shadows (MOONSTONE2.md 4.6
+  only says "body, shadow / weapon parts"; a per-cel draw log of perf_duel settles it). Then: a shadow becomes "set the dark plane under
+  the shadow mask" (1 plane, real see-through darkening) instead of a full cookie-cut cel; every other cel and the background restore also
+  clear/restore the dark plane, so it is a looks gain, roughly cost-neutral (to be measured). Plain mode: 6 planes with EHB (32 colours +
+  their automatic half-bright copies; art unchanged). Enhanced mode already uses the 6th plane for 64 real colours (KILLEHB,
+  `src/rt/display_ace.cpp:181`): there a 7th plane with colours 64-127 programmed as darkened copies of 0-63 (palette fades must write
+  both banks). Chip: +1 plane per screen buffer (~8 KB each). Shots before/after in `build/shots/` - M
+- [~] **8.5** Co-op lairs, loot and towns: lair fights with the party, loot shared/split per 8.1, town screens per knight - M
+  > Done 2026-10-09 (the non-fight part, branch wt-8_5; the fights are 8.4/8.4b), for the 2-knight party (owner 2026-10-09: focus on 2 knights; Coop 3/4 stays in the menu, the code is N-generic and the host test also runs N = 3, 4): **loot is copied, not split** (`game/party_loot.hpp`, `rt/party_loot.cpp`): when the screen's knight takes an item, a key / moonstone, the gold pile, an armour or a sword from a lair / the dragon / the black knights' pot, every other living member gets the same take once ("replay on a snapshot of the pile": the original `lootMove` / `exchangeGold` / `exchangeArmour` / `exchangeSword` run on each member and a scratch copy, so caps and quirks apply per knight; gold copies kept, no price scaling; no click record is added, the 100-record pool is untouched). The black knights' pot: the BK records 6.. hand their belongings to record 5 before the meeting screen (`partyBkPotFill`). Exchange screens' "next knight" cycles through the party's members only (`lootNextMember`). **Shop queue**: a town (A / B), a home village (castle blessing + temple sheet) and the wizard run once per living member, leader first then record order, each with its OWN pad / gold / inventory (`rt::ShopVisit` guard gives `LAB_0633` / `ActiveKnights +0` back; `PlaceOps::pfnNextShopper`); the turn is spent once. **Valley**: the victory (+3 progress, keys taken) and the guardian's moonstone go to every living member; **Stonehenge / ending**: the first member (leader first) holding the stone of the moon phase is the visiting knight, its ending plays (owner decision 2026-10-09: the stone owner's ending only; MOONSTONE2 section 7 Q8). **Lives**: a member with no lives is out (no shop turn, no copies, never the leader, no budget); the party is over when all are (`partyAllDown`, N-generic). Tests: `tests/test_coop_loot.py` (N = 2, 3, 4: copies, gold caps, ring/sword, pot, queue order for every leader, dead members, next-member, stone owner, lives); boot `tests/boot/play_coop_town.txt` (`build/shots/play-coop-town-*`: knight 1's town screen, then knight 2's own town screen answering only joystick 2 (`dump` shows `cur=1`), the lair loot screen of knight 2 with both knights' gold +25 in the dump: 50 -> 75 and 120 -> 145). Open: lair / valley / dragon FIGHTS with the party (8.4), the valley defeat applies to the leader only until the fight reports who is down (8.4b), the loot a black-knight win takes from a LOSING party (`settleFight` in a BK fight, 8.4) and a boot script for the valley / Stonehenge party paths (unit-tested only).
+  > Emulator pass 2026-10-10: `play_coop_town.txt` runs to quit: the party visits town A (each member's own turn with its own pad: joy1 does nothing on knight 2's screen), the round ends, knight 2 leads the lair fight, the creature loot screen: one click on the gold pile gives BOTH knights the pile (dump: knight 1 50 -> 75, knight 2 120 -> 145), a knight that went down in the fight lost its normal life (5 -> 4). The valley victory / Stonehenge ending were not run by an emulator script.
+  > Owner change 2026-10-10 (branch wt-8_5b): the fixed per-knight turn queue is gone.  A town, a home village (blessing + temple sheet) and the wizard run ONCE with the leader active; players switch between the living members with the arrows in the corner box (see 8.5a) and ONE Exit leaves for the whole party (the turn is spent once).  `PlaceOps::pfnNextShopper` became `pfnTurnSwitch(iDir)` (`rt::shopSwitch`), `shopQueueAdvance` became the circular `shopQueueStep(q, +1 / -1)`; the village blesses every living member (`pvCastle` over `rt::shopMembers`), the wizard shows Math once.  The switch sets LAB_0633, ActiveKnights +0 (so the pad choice) and LAB_068B (the sheet's knight); gold / inventory / shops follow.  `play_coop_town.mk` shows it: a click on `>` makes knight 2 active, joy1 does nothing, joy0 moves the cursor, its Exit ends the visit.  The other co-op scripts that walk a village / wizard visit were not re-run.
+- [~] **8.5a** Co-op: whose turn it is on the place screens (owner 2026-10-09: the town screen looked the same for every knight) - S
+  > Written 2026-10-09 (branch wt-8_5a), host-tested, build-autoplay compiles; the boot run is left to the merged batch.  Three cues inside the shop queue, co-op only (classic byte-identical: every hook is null or inert without a `rt::ShopVisit` of a co-op game): (1) banner `SIR <NAME>'S TURN` (`ms::game::turnBannerText`, `include/game/party_turn.hpp`) in a parchment box at the top of the picture, shown once per member turn after the town fades in (`PlaceOps::pfnTurnMark` MARK_BANNER) and at the first draw of a shop / temple sheet when the town did not show it (village, wizard: `ScreenOps::turnBanner`), until the first pad input (a press still held does not count) or 75 frames, then the picture is restored (`rt_mog_blit_both` / `rtScreenRedraw`); (2) the knight's name (without `SIR `, 8 chars) on the town menu between `Visit` and `Merchant`, drawn into the clean background (MARK_NAME) so every redraw keeps it; (3) pointer colour: sprite colours 128..143 (BPLCON4 sprite bank 0x88, BPLCON3 bank 4) filled with the class colour (`turnPointerRgb`) at the brightness of the picture palette's 16..31; `rt::PointerTint` inside `ShopVisit` gives BPLCON4 back.  Code: `src/rt/party_turn.cpp`.  Tests: `tests/test_party_turn.py`.  Boot: `tests/boot/play_coop_town.txt` shots `play-coop-town-k1-banner`, `-k1`, `-k2-banner`, `-k2` (name + pointer afterwards; the pointer was seen blue for knight 1 and red for knight 2 in a first run; the banner was first printed in the large title font, fixed by selecting the small menu font, NOT yet re-verified).  Open: verify shots, the wizard's Math speech and the dice / healer / mystic screens print no name.
+  > Owner changes 2026-10-09, done 2026-10-10: (a) the town menu name is gone; the active knight's TOKEN (its bright map sprite) and NAME (without `SIR `) stand in the UPPER-LEFT corner for the whole turn: town pictures in the BIG title font on a parchment box (colour read from the menu), drawn into the clean background; the black shop / temple / wizard sheets get the same corner in the small white font on a black box after every redraw (`ScreenOps::turnCorner`); (b) the banner `SIR <NAME>'S TURN` is the big font on a parchment box over the picture (small centred text on the sheets); (c) the mouse pointer keeps its normal colours: `rt::PointerTint`, the BPLCON4 / bank-4 registers and `turnPointerRgb` are removed. Bug found by the pass: the name buffers store a space as `_` (`SIR_GODBER`), so the banner printed `SIR SIR GODBER` and the corner name did not drop `SIR`; both now accept `_`. The first (small-font) banner / name versions overflowed their box / overlapped `Visit` / `Merchant`. Verified (`play_coop_town.txt`: `play-coop-town-k1-banner.png`, `-k1.png`, `-k2-banner.png`, `-k2.png`): banner legible, corner fits, no overlap, restored on redraws; the temple sheet shows the small corner (`play-cdragon-end.png`). Not shown: the creature loot screens (the map cel table is not guaranteed there), smith / market / dice / healer sheets were not looked at in a shot.
+  > Owner changes 2026-10-10 (branch wt-8_5b): (a) the corner NAME is plain black text in the town menu's own small font (the font glyphs are drawn, then every non-parchment pixel of the text rectangle becomes colour 0; `blackenText`), no knight colour, no big title font; only the TOKEN keeps the knight's colour; the parchment box shrank to fit (126 x 20); on the black sheets the name keeps the sheet's own small white font; (b) the turn banner is the same plain black small text on its parchment box (banner box 20 high); (c) `<` and `>` arrows (5 x 9 px triangles, hit rectangles 12 px wide, full box height) in the corner box switch to the previous / next living member (only drawn with two or more): town screens through synthetic hit records with button ids 6 / 7 (`TB_PREV` / `TB_NEXT`, `rt::turnArrowHit` called first by the click hit test) and the sheets (smith / market / temple / wizard) through `sClick` -> `rt::turnArrowClick` (switch, `rtScreenRedraw`, the new knight's banner).  The arrows are live from the drawing of a corner until `MARK_LEAVE` (the town is left for a shop / Exit) or the end of the visit, so the healer / dice / mystic screens never see them.  Verified: `play_coop_town.txt` (instance 93): `play-coop-town-k1.png`, `-k1-banner.png`, `-k2.png`, `-k2-banner.png`.
+- [ ] **8.6** *(backlog 2026-10-09: owner, after the 2-4 knight co-op)* Golden-Axe style lairs: after a wave is killed the knights walk
+  right, the arena scrolls to the next section and the next wave enters; ends with the lair's guardian. Needs a scrolling arena (ACE
+  scroll buffer) and wave tables - L
+  > Owner 2026-10-09: the lair guardian starts as a RECOLOURED, stronger version of the lair's toughest creature: same cel set, its
+  > own colour triplet (a boss palette per creature type, as data), more hit points (same damage as the creature: owner, no harder
+  > hits), a name for the boss bar (8.11a).
+  > Scaled-up cels were rejected (blocky, 4x chip memory and blit time per frame); new boss art (like 9.8d) may follow for a few lairs.
+- [ ] **8.6b** Lair guardians in today's (non-scrolling) lairs, before 8.6 (owner 2026-10-09): when a lair's last creature of
+  its population falls, its guardian enters as the final enemy - a recoloured version of the lair's creature (same cel set, a boss
+  colour triplet per creature type as data), more hit points (default x3, tunable in `creatures.ini`), the same damage (owner: "they
+  are already deadly"), a name for the boss bar (8.11a). Works in classic and co-op behind a mod switch (classic parity untouched
+  when off); the lair's existing treasure stays the reward. Starts after the co-op fights (8.4b) are merged, since it touches
+  the lair fight start/end - M
+- [ ] **8.6a** *(backlog 2026-10-09: owner)* Parallax background for the scrolling lairs of 8.6: the far layers (sky, distant trees,
+  hills) scroll slower than the arena floor, e.g. AGA dual playfield or copper-split bands per layer; layer art split from the
+  arena pictures (or redrawn by the owner); cost measured on the owner's A1200 and stock (docs/PERF.md) - L
 - [ ] **8.7** Balance and playtest of the co-op mode on the owner's A1200 (68020 + 8 MB fast) - M
+- [x] **8.2b** Explicit title-menu Mode selector, imported from the public checkout: Classic / Co-op 2, left/right or fire;
+  the Players shortcut retains Co-op 3/4. Mode and Multiplayer share a compact six-row layout when both are enabled.
+- [x] **8.8a** Optional Dexterity stat, imported from the public checkout: 1-5, trainable on the knight sheet, configured by
+  `[dexterity]` in `rules.ini`; shortens terminal counted melee recovery holds. Byte +87 stores Dexterity; sticky enemy
+  targets use +131 (shared with dagger-only team metadata), retaining the 132-byte record layout.
 - [ ] **8.8** New weapon types (owner request 2026-10-06): weapons become data (reach, damage, speed, the attack moves they allow,
   the knight cel set they use) instead of the original's fixed sword/item cases; then melee weapons with longer reach - poleaxe,
   spear - each with its own attack animation frames (new knight cels, drawn by the owner or derived from existing frames), hit
@@ -564,6 +689,12 @@ behind a build/game option so the original single-player rules stay intact for p
   its existing moves (walk, its attacks, dagger throw where it has one); its stats/hit points come from `creatureTypeDef` (7.1n2).
   Outside fights: a party member slot with a creature portrait, what it can buy/use in towns, how it levels up. Balance per creature - L
   > Correction (8.1 note): `creatureTypeDef` is the 24-row lair table; creature stats live in the per-creature `init0169`..`init019F` (arena.cpp).
+- [ ] **8.11** *(backlog 2026-10-09: owner)* Enemy health bars in fights: a small bar above (or below) each enemy fighter showing its
+  hit points against its starting maximum, drawn with the fighter (dirty-rect aware, no extra palette entries beyond one or two free
+  ones), hidden when the enemy is down; an option (mod/settings switch) so the classic look stays available - S
+- [ ] **8.11a** *(backlog 2026-10-09: owner)* Boss health bar: one wide bar with the boss's name along the top or bottom edge of the
+  arena for the big single enemies (the dragon in the Valley of the Gods, the lair guardians of 8.6, other bosses), shown while the
+  boss fight runs, sharing the drawing and the on/off switch of 8.11 - S
 
 ## M10: Publishable repository (no original data)  `[ ]`
 
@@ -573,7 +704,7 @@ extracted from the user's own Amiga disks (the three ADFs) at setup/build time.
 - [x] **10.1** Audit: list every tracked file derived from the original (disassembly, reassembled `asm/*.s` + patches, `src/lifted`,
   embedded byte tables in src/tests, shots, fixtures) and every build input that comes from it (`build/reasm`, `build/disks`); doc
   `docs/PUBLISHING.md` - S
-- [ ] **10.2** Build from the ADFs only: `py tools/setup.py <A.adf> <B.adf> <C.adf>` extracts the disks, produces whatever the build
+- [x] **10.2** Build from the ADFs only: `py tools/setup.py <A.adf> <B.adf> <C.adf>` extracts the disks, produces whatever the build
   needs from the original binaries (hunks, labels by offset from our own facts, not the IRA listing), generates the data, builds and
   hdinstalls; `asm/*.s` + patches and the reference listing become generated from the disks; tests needing originals skip cleanly - L
   > Owner 2026-10-07 (target changed): the GAME loads the original data at start-up instead of compiling it in, so the build and the
@@ -583,6 +714,15 @@ extracted from the user's own Amiga disks (the three ADFs) at setup/build time.
   > 10.2c the build needs no original file (gen_data emits layouts/sizes only). The "build from the ADFs" pipeline above is CUT
   > (owner 2026-10-07): setup.py is only a developer helper that extracts the ADFs for the tests that compare against the originals.
   > Proof: the start-up-filled hunks equal today's compiled-in data byte for byte; boot regression + play scripts green.
+  > Done 2026-10-12 as the one command for a PUBLIC clone: `py tools/setup.py <A.adf B.adf C.adf | folder>` (images found by content, any names
+  > and order; wrong/duplicate/missing/bad-dump disks stop with the file, the SHA-1 found and the expected one from `KNOWN_DUMPS` / `tools/facts`;
+  > `--allow-unknown-dump`) -> toolchain check that lists each missing piece with how to get it (`--fetch-deps` clones the pinned
+  > bartman_gcc_support) -> `build/adf`, `build/disks`, `build/reasm` stand-ins -> configure + build Release (gen_data/gen_moddata run in the
+  > build) + `hdinstall` -> `build/hd` + `build/moonstone-ace-hd.uae` and the WinUAE command; `--dry-run` lists the steps and writes nothing.
+  > `tests/test_setup.py` (synthetic OFS images). Proof: `export_public.py` into a temp folder (leak scan clean), `setup.py <ADF folder>
+  > --fetch-deps` there built the Release exe (859,064 bytes, same size as the checkout's build of the same commit; 29 bytes differ: 27 in
+  > HUNK_SYMBOL names, 2 in an 8-byte tail data hunk of linker padding) and staged `build/hd` (152 data files). Open: the ace/ submodule
+  > and the cross-toolchain clone of the real public repository; the Amiga compiler itself still comes from the VS Code extension.
 - [x] **10.3** Leak scan test: every tracked file is compared against the extracted original files (long byte runs, decoded pictures,
   text strings); runs in `integrate.py` so nothing original slips back in - M
 - [~] **10.4** Clean export: `tools/export_public.py` writes `moonstone-ace` (+ `ace` as a submodule) into a fresh repository with
@@ -590,14 +730,388 @@ extracted from the user's own Amiga disks (the three ADFs) at setup/build time.
   > Owner 2026-10-07: the public repo is `D:\moonstone-ace-public` (created, `ace/` a git submodule pinned at 9e6ce06 from
   > AmigaPorts/ACE; layout = moonstone-ace contents at the root + `ace/`). Once it builds from the ADFs only, development MIGRATES
   > there (worktrees, agents, integrate); D:\Amiga stays as the private archive (moonshard, IRA listing, history with originals).
-- [ ] **10.6** Ready-to-play Amiga releases (owner 2026-10-07: easy play), built by one target, no original data inside (needs 10.2a/b):
+- [~] **10.6** Ready-to-play Amiga releases (owner 2026-10-07: easy play), built by one target, no original data inside (needs 10.2a/b):
   (a) bootable "Moonstone ACE" ADF (exe + startup-sequence) that plays from the original disks: one-drive A1200s get an in-game
   "insert Moonstone disk B" prompt (volume-name lookup, no hidden DOS requesters while the game owns the display), extra drives
   are used without swapping (closes H4 for 2 MB chip); (b) HD archive (.lha) with icon: drop the ADFs or the disk files into its
   `disks/` drawer and double-click; (c) a WinUAE-ready zip (A1200 config + the game; the user adds the ADFs). Checked on the
   owner's A1200 + ACA-1232 and on a stock A1200 config - M
   > Owner 2026-10-07: HD only ("nobody uses floppy"): (b) the HD archive, then (c); (a) the boot floppy is dropped, and so is H4.
+  > Done in code 2026-10-12 (open: an owner trial on the A1200 / ACA-1232 and a stock A1200, a Workbench icon, an `.lha`): `py tools/package.py [--amiga]`
+  > writes `build/release/moonstone-ace-<ver>-amiga.zip` (a .zip: no lha tool on the build machine): the `Moonstone/` drawer (Release exe, `s/startup-sequence`,
+  > `disks/` for the ADFs, `mods/defaults`, `mods_examples`), README.txt, `moonstone-ace-a1200.uae` + `start-winuae.bat` (WinUAE: 68020, 2 MB chip + 8 MB fast,
+  > bsdsocket on), docs, SHA256SUMS.txt. Version from `include/engine/version.hpp`; a guard (names, types, hashes, floppy magic, `leakscan`) fails the packaging
+  > when anything original is in it; `tests/test_package.py`. No boot .adf (dropped above; H4). BUILD.md "Release packages". Release notes:
+  > `docs/RELEASE_NOTES_TEMPLATE.md`, draft `docs/RELEASE_NOTES_0.2.0_DRAFT.md`.
+- [ ] **10.7** THEA1200 support (owner 2026-10-10; Retro Games Ltd's full-size A1200, ARM Linux running a modified Amiberry,
+  Workbench 3.1, AGA, adjustable CPU speed, USB sticks as drives, USB gamepad, LAN + WiFi on the box): the HD archive of 10.6 installs
+  from a USB stick through Workbench, the gamepad works as joystick 1, co-op with USB pads / keyboard sets, and network play
+  (M12) when its Amiberry exposes bsdsocket.library [unknown]. **WinUAE only for now (owner: no device yet)**: `thea1200.uae`
+  approximates it (68020 fastest, 2 MB chip + 8 MB fast, bsdsocket emulation); its numbers are guesses until the device's A1200
+  profile is known - M
 - [ ] **10.5** Owner decision before pushing: licence, and the legal question of publishing a translation of the original program - S
+
+## M11: PC version (SDL3)  `[ ]`
+
+Owner 2026-10-09: a PC build of the same game on SDL3 (SDL2 at first; SDL3 3.4.18 since owner 2026-10-10), next to the Amiga build (which stays the primary target and is not
+changed in behaviour). Survey 2026-10-09: `src/engine` (6.6k lines) and `src/game` (12k lines) have no ACE, custom-chip or
+AmigaOS dependency and already compile with host `clang++` for the tests; the port is the L0 platform layer `src/rt` (59 files
+include ACE, 21 write custom-chip registers, ~45 inline-asm sites, 18 of them in `engine_blit.cpp`).
+Approach: a **"virtual Amiga" backend** behind the existing rt interfaces (chip RAM as a byte array, planar framebuffer, software
+blitter, copper-to-palette, Paula mixer), so the code above L0 runs unchanged and PC frames can be compared with WinUAE frames
+from the same autoplay/play scripts. A native renderer (indexed SDL textures, no planar memory) is a later option, not this milestone.
+Windows first (`build-sdl/`, `-DMS_PLATFORM=SDL`); Linux/macOS come cheaply afterwards. Data as on the Amiga: read from the user's
+ADFs (10.2a/b), nothing original in the PC build either.
+
+- [x] **11.1** Platform split: list every `src/rt` file as platform-neutral / Amiga-only / needs both, and move Amiga-only code
+  behind `src/rt/amiga/` + a small platform interface (`include/rt/platform/*.hpp`: display, blit, audio, timer, input, files,
+  log); Amiga build unchanged (boot regression + Release size checked) - M
+  > Done 2026-10-10: inventory in `docs/PC_PORT.md` (`src/rt`: 14 neutral, 31 neutral behind 68k register-ABI shims, 19 both,
+  > 11 Amiga-only, 1 retired); ACE-free interfaces `include/rt/platform/{display,blit,audio,timer,input,files,log,system}.hpp`
+  > (54 functions, `tests/test_platform_headers.py`); `crash`, `serlog`, `display_ace` moved to `src/rt/amiga/`; Amiga Debug and
+  > Release equal in symbols and sizes. The real blocker is the register-ABI layer (64 asm blocks with 213 entry labels in 47
+  > files, 19 `jsr (An)` helpers, 306 `RT_FN`), not the Amiga-only files; true inline asm is only 9 sites.
+- [ ] **11.1a** Move the remaining Amiga-only files to `src/rt/amiga/` (`audio`, `irq` Amiga half, `palette_aga`, `prg_copy`, `text`,
+  `system`, `display`, `asmcall`, `guards.hpp`, `copper_stub.hpp`, `serlog_logwrite.hpp` with its CMake `-include`) - S
+- [ ] **11.1b** Amiga implementations of the 8 platform interfaces as thin wrappers; route callers through them, one interface per
+  merge, Release size checked - M
+- [ ] **11.1c** Split the 19 "both" files into neutral core + platform seam (`display_ops`, `engine_blit`, `files`, `input`, `irq`,
+  `game`, `sprites`, `synth`, `enhanced`, `perf`, `autoplay`, `mog_display`, `arena_bg`, `palette_glue`, `prg_ops`, `modload`,
+  `origload`, `knight_colours`, `adfdisks`) - M
+- [~] **11.1d** Replace register-ABI shims and `jsr (An)` helpers with typed C call tables; the Amiga shims generated from the same
+  table so the Amiga image is unchanged. Largest item, unblocks 11.4 - L
+  > Part 1 done 2026-10-10 (`docs/PC_PORT.md` 6.1): shim asm blocks moved unchanged to `src/rt/amiga/<file>_entries.cpp`, C++
+  > callers call bodies through `src/rt/prim.hpp` instead of `RT_FN` + `jsr (An)` helpers, trampolines/inline `jsr` became C++.
+  > Host-clean rt files 17 -> 38, 11.1d stubs 26 -> 8, `RT_FN` 306 -> 236; Amiga Release `.text` -336 B, Debug -1118 B; unicorn
+  > tests prove the typed hosts (`test_engine_scenes`, `test_prog_main_emu`, `test_wipe`, `test_combat_load`). Open (part 2): the
+  > mog scene cluster (`arena`, `combat`, `combat_ui`, `creatures`, `fighters`, `screens`, `overworld`, `loot`, `mainloop`,
+  > `combat_script`: 8 stubs, 236 `RT_FN`, 8 register-block helpers, handler tables like `LAB_08C8` need typed tables). Its
+  > emulator tests (`test_places_emu`, `test_boot_map_emu`, `test_mainloop_emu`, `test_creatures_emu`, `test_fighters_emu`, ...)
+  > skip or fail to set up in worktrees: repair them first as the safety net.
+- [x] **11.1e** Host `ace/types.h` shim + ratchet test compiling the host-clean rt files with host clang - S
+- [x] **11.2** Pointers held as 32-bit 68k addresses (`state_bind.hpp`, `Knight::ulInventory`, `mogHeapTable`, ...): decide
+  between a 32-bit PC build (`-m32`, quick) and base-relative offsets/handles (portable, continues 9.3d); first PC builds may use
+  `-m32` - S (decision) + M (if offsets)
+  > Decided 2026-10-10: **`-m32` first** (i686, clang `--target=i686-pc-windows-msvc`; hello world and SDL2 2.32.10 `lib/x86`
+  > link and run here). Survey (`docs/PC_PORT.md`): 702 pointer cells in 93 generated data objects, 374 `const char *` in
+  > `owned_data.hpp`, 13 pointer fields in `Knight`, 47 pointer-like `uint32_t` in `include/game`, `state_bind.hpp` 8 cells +
+  > `mogHeapTable[25]`, 113 `(uintptr_t)` lines, 98 `jobAddr`/`jobPtr`. Known cost: i686 COFF prefixes C symbols with `_`, so
+  > `gen_data.py`'s `.set` aliases need the prefix on that target. Base-relative offsets stay the later 64-bit path (9.3d).
+- [x] **11.3** Byte order: owned data images and the slot types (`ByteSlot` "in the HIGH byte", `WordSlot`) assume big-endian;
+  big-endian accessors or byte-swapped images from `gen_data.py`/the 10.2a start-up loader; proof: unicorn/oracle tests and the
+  pure rule host tests pass on little-endian with the same results - M
+  > Done 2026-10-10 (`docs/PC_ENDIAN.md`): `include/engine/endian.hpp` (`be::ld16/ld32/st16/st32`, shared by the 15 files that had
+  > local helpers), `include/game/record.hpp` (68k byte offsets into a `Knight` mapped to native fields), slot value views in
+  > `world.hpp`; real LE bugs fixed in `game/arena.cpp` (obstacle table) and `engine/bgblit.cpp` (tile script); data-image fill
+  > swaps 16/32-bit units on LE (`OrigFillRun::ubUnit`, `tools/data_units.yaml` from `tools/endian_scan.py`; a separate LE fill
+  > table, the Amiga table unchanged). Proof: `tests/test_endian.py` (9 mutations caught), `gen_data.endian_fill_check()` against
+  > the real executables. Open: `curated:` units for native tables reached only by address (palettes `LAB_08D1..08D5` etc., check
+  > at 11.10), `src/rt` wide-pointer casts into chip RAM (~150 in 39 files, with 11.1c/11.6), state-hash byte order (12.x).
+- [x] **11.4** CMake SDL target `build-sdl/` (vendored SDL, Windows host toolchain), links engine + game + an empty
+  platform; inline asm replaced by the C paths or `#ifdef`ed - S
+  > Done 2026-10-10 (with 11.1e): `-DMS_PLATFORM=SDL` (`cmake/sdl.cmake`, `cmake/toolchains/pc-i686-clang.cmake`: clang i686 +
+  > MSVC link.exe, SDL2 2.32.10 x86 from git-ignored `tools/sdl2/`) builds `build-sdl/moonstone.exe` (~390 KB + SDL2.dll) from
+  > `src/engine`, `src/game`, `gen_data.py --target pc32` (LE fill, COFF `_` aliases), the 17 host-clean rt files
+  > (`src/rt/host_clean.txt`, ratchet `tests/test_host_rt.py` with the `include/host/ace/types.h` shim) and `src/rt/sdl/` (guards
+  > for SDL init/window/renderer, 50 Hz loop, stderr + `moonstone.log`, `--smoke N`; `tests/test_sdl_build.py`). Everything else
+  > is an `MS_STUB` with `TODO(11.x)` in `src/rt/sdl/`: 68 sites (11.1d 26, 11.9 15, 11.6 10, 11.5 7, 11.8 7, 11.7 2, 11.1c 1)
+  > plus the 11.1c data objects and the 11.6 chip block. `rtGameRun` is not entered yet. Workarounds: link.exe (lld-link 11 vs
+  > the new CRT), `/MANIFEST:NO` (no rc.exe on PATH).
+  > 2026-10-10 (owner): SDL2 replaced by **SDL3 3.4.18** (`tools/sdl3`, git-ignored; `MS_SDL3_DIR`, `SDL3.dll`); `src/rt/sdl`
+  > ported (guards, `SDL_Gamepad`, per-window relative mouse, `SDL_RenderTexture` nearest, `SDL_EVENT_*`, `bool` returns; dummy
+  > drivers `SDL_VIDEO_DRIVER`/`SDL_AUDIO_DRIVER`). Audio uses SDL3's push model (`SDL_OpenAudioDeviceStream` +
+  > `SDL_PutAudioStreamData` per vblank from the game thread); the hand-written SPSC ring and callback are gone, prefill and caps
+  > kept. `--dump-audio` and `--dump-frame` byte-identical to the SDL2 build; `fitRect` kept over SDL's integer-scale presentation
+  > (that would letterbox the 6:5 picture). No SDL2 left in the build.
+- [x] **11.5** Timing/IRQ: 50 Hz vblank tick and CIA timers driven by SDL (`irq.cpp` contract from `docs/IRQ.md`), frame pacing - S
+  > Done 2026-10-10: `rt/sdl/timer` (single-threaded model documented in `timer.hpp`): the 50 Hz vblank is delivered by
+  > `timerPump` at the game's wait points (`timerWaitBeam`, `timerWaitFrame`) on SDL performance counters, resync after >3 late
+  > frames; blitter-done raised synchronously at the end of each blit; `MasterIrqOff` holds requests pending (collapsed like
+  > INTREQ) until the next pump; beam from time since the boundary, a virtual counter under `--fast`. No CIA timers (ptplayer is
+  > 11.8). Proof: `timerSelfTest` under `--smoke`. Open: `irqLevel3` needs its VERTB/BLIT work split on PC; game quit polling.
+- [ ] **11.6** Display: planar chip-RAM framebuffer -> RGB each frame, AGA palette, copper lists interpreted as per-line palette and
+  bitplane-pointer changes, hardware sprites, wipes; window scaling (integer + aspect) - L (split when started: 11.6a framebuffer +
+  palette, 11.6b copper, 11.6c sprites, 11.6d wipes/enhanced 64-colour mode)
+  - [x] **11.6a** framebuffer + palette. Done 2026-10-10: `engine/planar` (1..8 planes, modulos, any width, bounds-checked;
+    OCS 12-bit, AGA hi/lo, EHB; `fitRect` integer scale with 6:5 aspect); `rt/sdl/chip` (2 MB chip array + allocator, softblit
+    bound to it); `rt/sdl/display` converts the shown screen per frame into a streaming texture; `--fast`, `--dump-frame`.
+    `tests/test_planar.py`: independent model, 26 mutations, pixel-exact smoke frame. Open: `rt_screen_work` still outside the
+    chip array (`stubs.cpp` alias), `displayWaitFrames` stub
+  - [x] **11.6b** copper: per-line palette and bitplane-pointer changes (`displaySetWindow`). Done 2026-10-10: `engine/copper`
+    (MOVE/WAIT/SKIP over big-endian chip RAM on a PAL beam clock, surveyed register subset, the rest refused with a status) and
+    `engine/dispframe` (per-line frame: copper, sprite DMA, `planar::rowIndices`, DIW window, modulos, EHB, AGA banks);
+    `rt/sdl/display` renders through it. The game itself changes nothing mid-frame (survey: `docs/PC_PORT.md` "Copper and
+    sprite usage"). `tests/test_copper.py`: independent models, 67 mutations, `--smoke-copper` frame pixel-exact. Open
+    (11.10): the 4-clock instruction model and effective-line rule are assumptions, compare with WinUAE
+  - [x] **11.6c** hardware sprites (`displaySetSprite`, `displaySpritesEnable`). Done 2026-10-10: `engine/sprites` (sprite
+    DMA per line, 16/32/64 wide, attached pairs, BPLCON4 banks, BPLCON2 priority). The game uses only sprites 0/1 (cursor, 16
+    wide, BPLCON2 $24). Open (11.10): with BPLCON4 = 0 the cursor takes palette 1..3 (bank 0); verify the HSTART origin and
+    attached-pair bank against a WinUAE cursor shot
+  - [ ] **11.6d** wipes, enhanced 64-colour mode (`rtEnhPlanesStub`)
+- [x] **11.7** Software blitter for the minterm/shift/mask/fill cases the game uses (`engine_blit.cpp`, IMAGEXCEL, text), with host
+  tests comparing against recorded blits from the Amiga build - M
+  > Done 2026-10-10: `engine/softblit` (`ms::softblit::run`), word-exact software blitter over big-endian chip bytes for the
+  > surveyed set (`docs/PC_PORT.md` "Blitter usage": A/B/C/D, all minterms, A/B shift 0..15 ascending, first/last A masks, modulos,
+  > descending without shift, BLTSIZE 0 = max, pointer run-on); line/fill/descending-shift refused loudly. `rt/sdl/blit.cpp`
+  > runs on it (synchronous). `tests/test_softblit.py`: independent Python model, 1,320 random ops, 140 planner-derived blits,
+  > real `.cel` pixel compare, 25 mutations caught. Open: 11.6 binds `chipView()` to the chip RAM array; the 11.1c/11.9 direct
+  > blitter writers (`displayBlitScreen`, `prgCopyScreen`, arena `hwBlit`) must build `BlitOp`s and go through `blitRun`.
+- [x] **11.8** Audio: 4-channel Paula mixer (period, volume, loops, the synth's DMA tricks) into an SDL audio callback; A/B listening
+  against WinUAE (as 2.6/4.6) - M
+  > Done 2026-10-10 (code; A/B listening open): `engine/paula` (pure: DMA states, LC/LEN latched at reload, start and reload
+  > raise the channel interrupt, hold on DMA off, 0,3 left / 1,2 right + separation, exact box-filter resampling, optional
+  > low-pass) and `engine/modplay` (ProTracker replayer replacing ptplayer on PC; excluded from the Amiga image). `rt/sdl/audio`:
+  > the model runs on the game thread in virtual time (960 frames per vblank, AUDx handler at chip time), finished samples
+  > reach the SDL callback through a lock-free SPSC ring; `--dump-audio` writes the deterministic WAV. Usage survey in
+  > `docs/PC_PORT.md` "Paula usage". `tests/test_paula.py`: independent Python models, real synth's 167 sequences, exe WAV
+  > sample-exact, 38 mutations. Open: owner A/B listening vs WinUAE (music, mog banks, filter) once 11.1d wires the callers.
+- [x] **11.9** Input (SDL keyboard + joystick/gamepad mapped to the Amiga keys/ports), files (stdio + the 10.2b ADF reader),
+  crash/serlog to stderr and a log file - S
+  > Done 2026-10-10: `engine/pcinput` (pure: SDL scancode -> Amiga raw key, no repeat as on the Amiga, focus loss releases
+  > keys, keyboard joystick, `joyEncode`, pad sticks, JOY0DAT mouse counters scaled to 320x200) and `rt/sdl/{input,files,
+  > gamedata,crash}`. Port 1 = cursor keys + RCtrl/Space or pad 1; pad 2 replaces the mouse in port 0. `PROGDIR:` reads the user
+  > dir (SDL pref path) then the exe dir, writes only the user dir; game data searched as on the Amiga (`data/`, exe dir, disks
+  > drawer, then ADFs through `engine/ofs`). Unhandled-exception filter writes `crash.log` + message box; clean exit on Ctrl+C.
+  > Proof: `tests/test_pc_input.py` (26 mutations), `tests/test_pc_files.py` (22 mutations, real ADFs vs `adfx`). Open: the 4
+  > input stubs in `stubs.cpp` go with the `rt/input.cpp` split (11.1c/d); owner trial of pads and mouse feel.
+- [x] **11.10** First light: boots to the title screen in an SDL window; `build/shots/` PC shot next to the WinUAE shot - S
+  > Done 2026-10-11: `build-sdl/moonstone.exe` boots the real game from the user's ADFs (`disks/` next to the exe or `--disks DIR`;
+  > the owner's copies in git-ignored `moonstone-ace/disks/`) to the title menu (program -> mog -> Title); `--skip-intro`,
+  > `--pattern`, clean exit on window close. Title dump equals the WinUAE shot `play-options-title.png` (0.000 % of the pixels at
+  > even columns/rows; WinUAE's scaler blends the others); `tests/test_pc_firstlight.py`. Chip RAM is a COFF section group
+  > (generated chip objects, pool, work block). 15 more rt files host-clean (display_ops, sprites, mog_display, prg_ops, prg_copy,
+  > engine_blit, input, introskip, soundbank, synth, enhanced, origload, mainloop, arena, combat_ui) with Amiga platform halves
+  > in `src/rt/amiga/`; PC twins `sdl/{game,rt_files,irq,music,modload,reg_entries}` (TODO 11.1c). Stubs 71 -> 20 (+13 unwired
+  > register entries of the mog cluster). Amiga Release `.text` +394 B. Open: the game beyond the title needs the rest of the mog
+  > cluster (11.1d part 2: overworld, combat, screens, loot, creatures, fighters, combat_script, arena_bg); 11.6c cursor bank;
+  > audio A/B listening; the disk scan does not find the ADFs in a folder with many other files (e.g. `moonshard/`).
+- [ ] **11.11** Parity: `integrate.py --boot` and the play scripts run headless on the PC build (autoplay, no window); frame hashes
+  or shots compared with the WinUAE run at checkpoints - M
+- [~] **11.12** Release: Windows zip (exe + SDL3.dll, user adds the ADFs to `disks/`), README section; fits M10's no-originals
+  rule and the leak scan - S
+  > Done 2026-10-12 as a **preview** (`py tools/package.py --pc`): `moonstone-ace-<ver>-windows-preview.zip` = moonstone.exe, SDL3.dll + licence, README, `disks/`,
+  > mods_examples, SHA256SUMS.txt. The PC build only reaches the title menu (11.1d), so the file name and README say "preview"; flip `PC_PREVIEW` in
+  > `tools/package.py` (or `--pc-final`) when it plays a whole game. Needs the 32-bit VC++ runtime on the player's PC (stated in the README). Open: the final zip.
+- [ ] **11.13** Modern C++ PC layer (owner 2026-10-11): rewrite `src/rt/sdl/` as C++23 with the standard library per
+  `docs/PC_PORT.md` "Modern C++ in PC-only files" (`std::unique_ptr` deleters for SDL handles, rule of zero/five, `std::span`,
+  `std::filesystem`, no raw new/delete), `-std=c++23` for PC-only files only; toolchain cleanup now that clang is 23.1.3 (drop
+  the forced MSVC link.exe and `/MANIFEST:NO` if lld-link works). Behaviour unchanged: dumps byte-identical, all PC tests pass - M
+
+## M12: Network play (bsdsocket.library)  `[ ]`
+
+Owner 2026-10-10: multiplayer over TCP/IP through `bsdsocket.library`, in normal (classic: hot-seat knights, human duels,
+Practice) and co-op mode (M8). Design note `docs/NETPLAY.md`. Model: **deterministic lockstep on the input**: every machine
+runs the whole game, only input frames travel (a few bytes per machine per poll); the tick is the game's input poll; star
+topology over TCP (`TCP_NODELAY`), the host relays. Classic single-machine play stays bit-identical (every hook inert without
+a session). Main risks: the game runs with the OS off (ACE `systemUnuse`), and the game is not yet deterministic across
+machines (beam-position seed, VBL tick counters, interrupt-time input).
+Owner decisions 2026-10-10 (NETPLAY.md section 6): LAN **and** internet; 2 machines first, code N-generic up to 4; local and
+remote players mixed; drops as recommended (classic knight -> AI knight, co-op member -> host's controller); cross-play with the
+PC build (M11). The owner has no network card (players asked for the feature): target the generic `bsdsocket.library` API (Roadshow,
+AmiTCP, Genesis, Miami), develop on WinUAE's bsdsocket emulation, real hardware from players.
+Release plan (owner 2026-10-11): **v0.2.0** = network play as built (lobby, direct + relay, co-op and classic, drops, rejoin
+12.15a, the ending) plus UDP input with history (NETPLAY.md 2.2), after a 4-player co-op test in WinUAE. **v0.3.0** = the PC
+build as a network node (12.14), the LAN game browser (12.16) and late join of a new player (12.15); backlog until v0.2.0 is out.
+When v0.2.0 is done: branch `release/0.2` from `moonstone-ace` (v0.2 fixes go there and are merged back; v0.3.0 continues on
+`moonstone-ace`), and v0.2.0 goes to the published repository github.com/Jarskih/moonstone-ace-public through `tools/export_public.py`
+(10.4: no original data) with the tag `v0.2.0` and the GitHub release there (owner 2026-10-11).
+**v0.4.0** (owner 2026-10-12: "Moonstone 2 gameplay + easy to play everywhere"): lair guardians 8.6b with the boss health bar
+8.11a and enemy health bars 8.11; weapons as data 8.8 and bows 8.9; tables to data 9.5 with the monster editor 9.8; ready-to-play
+releases 10.6 incl. the PC release zip 11.12; THEA1200 10.7 / 12.20 (WinUAE); scrolling Golden-Axe lairs 8.6 with parallax 8.6a
+(owner 2026-10-12: moved into v0.4.0). Extras if they fit: playable monsters 8.10,
+extra-half-brite shadows 8.4g, the 64-colour art option 4.8a, the 4-player adapter 8.2a, fight speed-ups 8.4c-8.4e.
+Later (v0.5+): the Beholder 9.8d.
+
+- [x] **12.1** Design note `docs/NETPLAY.md`: lockstep model, determinism sources with file:line, transport and the OS
+  problem, who controls what per screen in both modes, session/protocol, code layout, owner questions (section 6) - S
+- [x] **12.2** Spike: open `bsdsocket.library` from the game and echo TCP frames with a host peer, (A) inside a `systemUse`
+  window per tick vs (B) OS alive for the session; measure the window cost per tick on stock and owner configs (WinUAE
+  bsdsocket emulation; no owner hardware, so the real-card cost comes later from 12.13); decide A or B - M
+  > Spike 2026-10-10 (branch wt-12_2, not merged): Roadshow SDK LVOs as inline-asm stubs (`src/rt/bsdsocket_calls.hpp`), `rt/net`
+  > guards (`SocketLib`, `Socket`, `NetWindow`), `ReadArgs` in `main()` (default port 6502), `tools/netpeer.py`, `tools/netspike.py` (the spike scripts were removed 2026-10-11, replaced by `tools/netpair.py`).
+  > Host and join both work against a PC peer under `bsdsocket_emu=true` (also on `thea1200.uae`; without it the game says "no
+  > TCP/IP stack running" and plays on). **Option A costs ~2 frames (40 ms) per window on every config**: ACE's `systemUse` and
+  > `systemOsDisable` each wait for a VBL. **Option B** (OS kept alive) boots to the map with identical shots, no per-tick cost.
+  > Menus busy-poll (~14 polls per frame), so at most one window per frame (12.4's `netTick`). Next: a lean window without
+  > ACE's VBL waits (A2) and B in a fight, then decide.
+  > **Decided 2026-10-10 (merged, wt-12_2): A2 is the default.** `LeanNetWindow` (no `systemUse`): swaps the OS's level 1-6
+  > vectors (read at session start) in over ACE's, enables SOFTINT / PORTS / EXTER, restores vectors and INTENA exactly on exit.
+  > Cost 3-8 beam lines per window (ACE window: ~66 lines and a VBL wait); fights stay at 10.0 fps (ACE window 8.2-8.4 fps).
+  > Levels 1, 2, 3, 6 only hung in 3 of ~7 runs (cause unknown), all six levels never did. B (OS held for the session) also keeps
+  > 10.0 fps and is the fallback if a real card loses interrupts between windows (12.13: untested, WinUAE only). `netFrame()`
+  > sits at the end of `displayWaitBeamRaw` for now; 12.8b moves it onto the `netTick` frame hook.
+- [x] **12.3** Determinism audit: every non-deterministic input to game state (RNG seed from `VHPOSR`, `cbBeam`, the VBL
+  tick counters `LAB_0379` / `LAB_0B9D`, VBL hooks, keyboard ISR, mouse counters, wall-time waits) and every input read site
+  (stick, keys, last-key cell, mouse), each with file:line, added to NETPLAY.md 1.1 - S
+  > Done 2026-10-10 (NETPLAY.md 1.1a-c, 1.2; code reading only): logic advances per loop iteration everywhere EXCEPT the
+  > joystick-cursor screens (loot, shops, temple, stat sheets, donation, wizard): `cursorTick` moves the cursor in the VBL
+  > interrupt (`src/rt/combat_ui.cpp:1029-1065`). Beam reads into state: the RNG seed and the flyer's lane wobble
+  > (`src/game/fighters.cpp:495-496`). "Tick = poll" does not hold (0..n polls per frame, key loops without polls): the tick
+  > becomes a frame boundary (`netTick()` in the frame wait). The only seeding is at `mog` entry, so a session needs its own
+  > SEED at start. Rule variants (gore, mods, enhanced fallback) go into the handshake. Open: `$88 00` scan of knight / effect /
+  > map scripts, key loss during `systemUse` windows.
+  > 2026-10-11 (owner): the title menu has no Gore option any more, gore is always on (`LAB_06DA` = 0 = the cell's start value, `MENU_GORE_ON`). `NET_RULE_GORE` (HELLO rules bit 1) stays and is
+  > now always set (it used to be set when the cell was non-zero, i.e. gore OFF, which was never the default); the HELLO format is unchanged.
+- [x] **12.4** Deterministic mode (runtime flag, off = bit-identical): **the host sends the random seed to the clients**
+  (only the host's `rtMogRngSeed` reads `VHPOSR`; a client's blocks at that tick for the host's `SEED` message and writes it
+  into `mogRandomSeed`, at session start and at every seeding event, NETPLAY.md 4.1), `netTick()` at the frame boundary latching
+  all input (polls, keys, cursor) for the tick, the cursor hook run per tick from the main thread (owner: cursor speed), the
+  flyer wobble (`cbBeam`) from the tick, the logical tick counter advanced at the boundary, a `$88 00` scan test of every
+  script set - M
+  > Written 2026-10-10 (branch wt-12_4, merged; host-tested, Debug links; emulator proof is part of the batch run): NETPLAY.md 1.3.
+  > `engine/nettick` (key queue, local frame, latch, `cursorStep`, `tickIdle`), `rt/net_tick` (flag, `netTick`, frame hook seam
+  > `netSetFrameHook`, seed API `netSeedProvide` / `netSetSeedHook` / `netSeedAtTick`, pacing counter). `netTick` runs in
+  > `displayWaitBeam` (1 VBL) and at the end of `rtMogFrameWait` (the loop's remaining logical budget); spin loops call
+  > `ms::tickIdle()`. In the mode the VBL no longer touches `mogFrame`; the cursor steps 2 px x VBLs per tick (`kCursorPixelsPerVbl`);
+  > `cbBeam` uses the logical clock. Only the mog overlay (not intro / ending). `fightscript.py loops`: no `loop random` anywhere.
+  > Autoplay: `poke netdet 1`, `play_net_lair`, `play_net_coop`. Open for the batch run: flag OFF boot regression; play_lair x3
+  > vs play_net_lair x3 (the agent saw a hung post-victory fight and stray key events on its instance, cause unknown).
+- [x] **12.5** State hash (`engine/statehash`, addresses normalised) logged every 50 polls under `MS_AUTOPLAY`. **Gate**: the
+  same play scripts (classic + co-op) on cycle-exact stock A1200 and on the owner config give identical hash logs - M
+- [x] **12.6** Lockstep core `engine/netplay` (pure): input frame, tick ring, input delay, the merge (game state -> owner of
+  port 1 / port 0 / keyboard / mouse; co-op member -> `(node, pad)`); host tests incl. simulated 2- and 4-node runs with
+  random latency - M
+- [x] **12.7** Protocol `engine/netproto` (pure, versioned, host-tested) + transport `rt/net` (RAII guards `SocketLib`,
+  `Socket`, `NetWindow`; non-blocking TCP behind `netOpen/Send/Recv/Close`) + `tools/netpeer.py` (a Python node) - M
+  > 12.6 done and the pure half of 12.7, 2026-10-10 (branch wt-12_6): `include/engine/netplay.hpp` / `src/engine/netplay.cpp`
+  > (11-byte input frame, 16-tick ring per node, delay 0..8, drops, the merge of NETPLAY.md 3.1 / 3.2), `include/engine/netproto.hpp` /
+  > `src/engine/netproto.cpp` (game + lobby messages incl. the new DROP, stream framer), `include/engine/statehash.hpp` (CRC-32);
+  > `tests/test_netplay.py` (every merge row, 120 simulated 2-4 node star runs with random latency and a drop), `tests/test_netproto.py`
+  > (round trips, prefixes, corruption, fuzz, chunked framer, checked against a Python encoder); three mutations caught. Message
+  > table in NETPLAY.md 4. Open in 12.7: the transport `rt/net` (12.2 spike) and `tools/netpeer.py`.
+- [x] **12.8** Session (the handshake also compares rule options: gore, mods, enhanced art in use, 12.3): one Amiga hosts, the other joins with the host's IP address (player request 2026-10-10). CLI through
+  `ReadArgs()` in `main()` before `rt::systemCreate()` (template `HOST/S,JOIN/K,PORT/K/N,NAME/K,DELAY/K/N`:
+  `moonstone HOST`, `moonstone JOIN 192.168.1.20`), the same keywords as icon tool types for Workbench starts, `PROGDIR:net.ini`
+  for defaults; handshake (protocol version, exe build hash, data checksum, the host's first seed, mode, knight-to-node table),
+  "waiting for players" / "connecting" screens - M
+- [x] **12.8a** Multiplayer screen (owner 2026-10-10: a new menu screen with Join and Host buttons): a "Multiplayer" item on the
+  title menu opens it; buttons **Host game** (listen, then a lobby list of the joined players' names; the host's fire starts the
+  session), **Join game** (address editor: digits and `.`, the port on its own line, since bold.f has no `:` glyph; Connect),
+  Name, Back; later **Find game** (12.16 / 12.18). Joystick moves and fires, the keyboard types. The typed address and name are
+  saved to `net.ini`. After the start every node returns to the title menu in lockstep (the host's menu, NETPLAY.md 3.1).
+  Pure state machine (host-tested) + drawing in the game's font; behind a seam until the transport (12.2 / 12.7) is merged - M
+  > Written 2026-10-10 (branch wt-12_8a, host-tested, Debug + Release link; the end-of-batch emulator run is pending): `game/net_menu`
+  > (pure state machine: pages main / join / lobby, field filters, net.ini load/save in place), `rt/net_stub` (the `NetSeam`
+  > the transport replaces: host / join / poll / start / close; autoplay pokes `netfake` `netpeers` `netjoin` `netstarted`), the
+  > title list drawn from a RAM copy with Multiplayer as the 5th, last item (Practice / Select Knight 14 lines higher; the
+  > original data untouched); `tests/test_net_menu.py` (170 checks), `tests/boot/play_netmenu.txt`. Font limits: no '/' (status
+  > "NO TCP IP STACK") and no '-' (host names with a hyphen cannot be typed). At the batch run: re-promote `reg-menu`,
+  > `reg-menu-knight`, `reg-menu-practice`; check the typing fix (the last run lost keys) and two "pulse MISSED" notes.
+  > Lobby = knight screen (owner 2026-10-10, NETPLAY.md 4.2b, merged fa8d64f): HOST GAME goes straight into the lobby; PLAYERS n OF 4,
+  > MODE line (host only, CO-OP default), one coloured selector per seat, each player picks a portrait, names it and (co-op) a
+  > controller; START (host, greyed until everyone has picked) goes to the map on every machine at the same tick, joined players
+  > see WAITING FOR HOST. Protocol 4: LOBBY_PICK (12), LOBBY_STATE (13), one portrait per node in CONFIG; the lobby server was
+  > redeployed with protocol 4 (selftest PASS). `engine/netroom`, `game/scene_lobby`, `game/net_knights`, `rt/lobby_draw`.
+  > Open: the net_pair and play_netmenu lobby shots blessed on the batch run; SceneKnights' network branches are dead now.
+  > 2026-10-11 (owner): the Multiplayer screen is no longer an item of the title menu but the MULTIPLAYER row of the new main menu (LOCAL / MULTIPLAYER / SETTINGS, first screen after the intro and
+  > after a game over); leaving the screen returns to the main menu. `runNetScreen` is unchanged. `poke menuact 1` still opens it (docs/AUTOPLAY.md). A running network game shows the title menu alone.
+- [x] **12.8b** First light (owner 2026-10-10: two players on this PC): two WinUAE windows (bsdsocket emulation) play one game,
+  `moonstone HOST` / `moonstone JOIN 127.0.0.1`; co-op with 2 knights (one per window) through the title menu, the map and a lair
+  fight with matching state hashes; needs 12.4, the 12.2 window decision and the rt wiring (`netTick` -> transport -> `netplay`
+  merge, the host's SEED / CONFIG); shots of both windows in `build/shots/` - M
+  > Done 2026-10-11: `py tools/netpair.py --lobby 199.247.20.74` NETPAIR PASS: lobby (HOST -> knight screen -> START), co-op map,
+  > leader rotation, lair fight, loot, 68 of 68 state hashes equal, the drop check (WAITING FOR GUEST, CONTINUE WITHOUT) and the
+  > dashboard listing Co-op -> Playing. Shots `build/shots/netpair-h-*`, `netpair-j-*`.
+- [x] **12.9** Normal mode over the network: each node picks its own knights on the knight screen; map turns, towns and loot
+  steered by the current knight's node while the others watch; human duel and Practice across two nodes (port 1 / port 0
+  words from the two nodes); a "waiting for <name>" cue - M
+  > Accepted 2026-10-13: classic two-window NETPAIR PASS through tick 3950, 79 common hashes, both quit, 21 matching tick-pokes,
+  > UDP active without fallback. Own knight selection, host/guest map turns, next day, guest-only lair fight/loot, guest-owned Town A
+  > entry and exit, next day and return to the map exercised. Screenshots: `netpair-cj-map.png`, `netpair-cj-fight.png`,
+  > `netpair-cj-loot.png`, `netpair-cj-town.png`, `netpair-cj-town-nextday.png`, `netpair-cj-town-map.png`.
+  > `test_netplay` verifies the human-duel and Practice port 1 / port 0 merge from distinct nodes (`tests/netplay_driver.cpp`);
+  > town loop tick starvation is fixed by `PlaceOps::pfnIdle`, with `test_places_emu` and `test_overworld` passing. Earlier
+  > tick-2045 / lobby stalls were not reproduced in two full-duration post-fix town runs; retain monitoring in release matrix.
+- [x] **12.10** Co-op over the network: `PartyConfig` binding `(node, pad)` (`aubNode[]` next to `aubPad[]`), remote members
+  on the knight screen, per-fighter pads from their nodes in fights, mixed local + remote players, the shop queue - M
+- [x] **12.11** Drops and desync: stall cue, timeout, drop applied on every node at one tick (classic: the knight becomes an AI
+  knight, co-op: its member goes to the host's controller, owner 2026-10-10), hash mismatch stops with a state dump on each node - M
+- [x] **12.12** Test harness: two WinUAE instances with bsdsocket emulation on localhost, one autoplay script per node, an
+  `integrate.py --net` leg; `netpeer.py` replaying a recorded input log against one instance - M
+- [ ] **12.13** *(owner 2026-10-10: WinUAE only for now, real Amigas later)* Real hardware and internet: players' A1200s (PCMCIA Ethernet / WiFi, Plipbox or serial PPP; the owner has no card)
+  against WinUAE, then two Amigas; input delay adapting to the measured round trip; LAN and internet sessions (host's router
+  forwards one TCP port); fps in fights; UDP with redundant frames only if TCP stalls - M
+- [x] **12.13a** Relay for internet play without port forwarding: a small relay (`tools/netserver/`, with the 12.17 lobby; later
+  the PC build) that every node connects out to; the host role stays with an Amiga or PC node, the relay only forwards - S
+  > Game side written 2026-10-11 (branch worktree-agent-aa0f1b8dd731e9100, host-tested, Debug + Release + PC builds; the two-window result is below):
+  > `engine/netrelay` (the host's idle relay connection: RELAY_HELLO, PING, and the hand-over of a paired client with its first bytes to a free game
+  > link, so the node cannot tell the pipe from a direct TCP link; up to three clients, any mix of direct and relayed), `rt/net_relay`, `NetTransport::
+  > relayHandOver` + byte pushback, `netSessionJoinRelay` (connect to the lobby, RELAY_HELLO(client) first, then HELLO), a lobby keepalive PING every 30 s
+  > (the server drops a quiet pipe after 120 s). No wire change, protocol stays 4, the deployed server needs no redeploy (new `--no-connect-back` flag is
+  > for tests only). `tests/test_netrelay.py`: fake connections + mutations, and end to end against the real server (host + two clients through the
+  > relay, 60 lockstep ticks with equal frames, direct listing keeps the relay out, re-listing moves the idle connection, ten quiet minutes).
+  > `py tools/netpair.py --relay` (local lobby server without connect-back, guest uses FIND GAME) runs `tests/boot/net_relay_{host,join}.txt`. NETPLAY.md 4.4.
+  > Two-window runs 2026-10-11 (`py tools/netpair.py --relay`, shared machine at 1000-1800% CPU load): run 1 was killed by another session's `uaeshot.ps1` (instance 0
+  > kills every WinUAE); run 2: host listed via relay (`lobby status 3`, `relay state 4`, local dashboard "Relay"), the guest's FIND GAME listed the game
+  > (`find status 2 games 1`), `join via relay`, the lobby opened on both, both picked, START, 33 of 33 state hashes equal (tick 1600) through the relay, then a
+  > desync at tick 1650: the logical clock differed by 4 (the two nodes' `netTick` ring shows different wait sites from tick 1637 on, a timing-dependent wait in
+  > the fight loop, NETPLAY.md 1.1a: the same class as the earlier loaded-machine desyncs of net_pair, not a transport difference - the bytes are identical);
+  > run 3: the emulated clock ran so slow that the host's REFRESH (every 30 emulated seconds) missed the server's 75 real seconds, the listing was re-registered
+  > with a new id and the guest's JOIN_REQ for the old id answered GAME NOT FOUND (shown correctly on screen; `netpair --relay` now starts its local server with
+  > `--refresh-timeout 600`). **No clean NETPAIR PASS for --relay yet and the direct run was not made** (run budget used, machine saturated): re-run both on a
+  > quiet machine: `py tools/netpair.py --relay --build build-autoplay` and `py tools/netpair.py --build build-autoplay --lobby 199.247.20.74 --timeout 1500`.
+  > Shots `build/shots/netpair-j-find.png` (the browser), `netpair-h-listed.png`.
+- [ ] **12.14** *(after M11; owner 2026-10-10: wanted)* PC build (M11) as a node (player, host or relay): BSD sockets /
+  Winsock behind the same transport; needs logic parity on little-endian (11.3) and the 12.5 hash gate across Amiga and PC - M
+- [ ] **12.16** LAN game browser: hosts announce by UDP broadcast (name, mode, players, build hash, port), a "Find game" title
+  entry lists them and joins with fire; no server needed (NETPLAY.md 5a) - M
+- [x] **12.17** Lobby server for public games (`tools/netserver/`, Python; one process with the 12.13a relay): register /
+  refresh / list / unlist; the lobby takes the host's public IP + port from its connection and hands it to a client that joins;
+  same build hash only, connect-back test for open ports, abuse limits; host tests with fake nodes - M
+  > Done 2026-10-10 (branch wt-12_17) with the server half of 12.13a and the files of 12.19: `tools/netserver/` (asyncio, standard
+  > library only, port 6510; `server.py`, Python codec `netproto.py` mirroring the C++ check for check, systemd unit, Dockerfile,
+  > README with the owner's deployment steps), `tests/test_netserver.py` (34 tests, fake nodes and clock). Protocol v2: a readable
+  > game version (`include/engine/version.hpp`, u16 major.minor, 1.0 for now) in HELLO, BYE, the listing, JOIN_REQ / JOIN_REPLY;
+  > new REGISTER_REPLY (41) and RELAY_HELLO (40). Open: the game side of the relay (12.13a), the deployment and host name (12.19).
+- [x] **12.18** Internet game browser: "Public: yes / no" for hosts, the "Find game" screen's internet list (name, mode, players,
+  ping), join direct (the lobby passes the host's IP to the joiner only) or through the relay; lobby address built in,
+  overridable in `net.ini` - M
+  > Host half done 2026-10-10 (above). Client half written 2026-10-11: a FIND GAME row on the Multiplayer screen opens the list (`game/net_find`,
+  > `engine/netbrowse`, `rt/net_find`): LIST_REQ to the lobby of net.ini / the built-in server, one row per open game (name, COOP / CLASSIC, "n OF 4",
+  > OPEN / FULL, another build or version dimmed), fire joins (JOIN_REQ; JOIN_REPLY direct = the typed-address path, relay = `netSessionJoinRelay`),
+  > REFRESH / BACK, status line (NO TCP IP STACK, SERVER NOT FOUND, SERVER NOT ANSWERING, NO OPEN GAMES FOUND, GAME FULL, GAME NOT FOUND, OTHER VERSION
+  > with "HOST RUNS 1.2 YOU HAVE 1.3", NO ANSWER ...). The server lists open games only, so there is no PLAYING row (a ping column is not built: no
+  > wire field for it). `tests/test_net_find.py` (322 checks + mutations), `tests/test_netrelay.py`. NETPLAY.md 4.4. Open: the dimmed-row colour
+  > (palette entry 3 of the title picture) and the layout are unchecked on screen beyond `netpair-j-find.png`; `play_netmenu.txt` was re-timed for the
+  > extra row (its shots need re-blessing, `reg-` references for the Multiplayer main page changed).
+- [x] **12.19** Server operation: `tools/netserver/` (lobby 12.17 + relay 12.13a in one Python process, standard library only,
+  one TCP port) packaged as a service (systemd unit / container), counts-only logging, a host name built into the game,
+  bandwidth measured per relayed game; **the owner runs it on their own server** (2026-10-10; the host name to build in is
+  still open, NETPLAY.md Q8). Direct internet play by IP needs no server; the server is for the public browser and for players
+  who cannot forward a port - S
+- [ ] **12.20** THEA1200 as a network node (10.7): a session between two `thea1200.uae` WinUAE instances and against the
+  owner config, through WinUAE's bsdsocket emulation; on the device itself once one is available - S
+- [ ] **12.15** *(later)* Resync and late join via a full-state snapshot (a serializer of the RAM state; shares work with a
+  save game) - L
+- [~] **12.15a** Rejoin (owner 2026-10-11; the part of 12.15 that is needed first: a dropped player comes back, no general late join). A dropped
+  player reconnects at any time - also after the host chose CONTINUE WITHOUT and plays on alone - and ENTERS at the next map turn, never mid-fight: the host
+  freezes the lockstep at the turn, sends the world (`game/net_world`: the `net_hash` state plus an audit of the cross-turn state it does not cover - market,
+  gift cycles, dragon, terrain, map modes, spawn counters, black-knight pool, party map), chunked with a CRC, both sides compare a hash of the loaded world,
+  and the knight goes back to its player with the host's hp / gold / items / position (the rejoiner's local game is discarded); a mismatch aborts cleanly
+  and the host continues alone.  Every node gets a random token in CONFIG; a reconnect with that token reclaims exactly that seat; a wrong token or no
+  dropped seat is refused with a reason the Multiplayer screen shows (new REJOIN GAME row).  Protocol 5 (`NET_PROTO_VERSION` 5, relay range 1..20, server
+  `_join` answers a Playing game for the rejoin flag): **the public server must be redeployed**.  Classic and co-op, 2..4 nodes, several rejoins per game,
+  a second drop of the same player; a host that drops itself still ends the clients' session as before (no rejoin to a client).  `docs/NETPLAY.md` 4.5.
+   > Code and host tests 2026-10-11 (branch worktree-agent-ad2aeacc797b2e6b5): `engine/netrejoin` + `engine/netsnap` + `game/net_world` + `game/net_rejoin`
+   > (pure), `rt/net_rejoin` + `rt/net_world` (sequence and cells), `tests/test_netsession.py` (real nodes over byte pipes, ~20 new mutations),
+   > `test_networld`, `test_netproto`, `test_netserver`, `test_net_menu`; Debug and Release builds link. Emulator runs pass: `build/batch6_direct.log`
+   > passes direct rejoin, `build/batch8_relay.log` passes relay rejoin, and `build/batch6_quad.log` passes three different guests rejoining in a 4-node game.
+    > `batch6_direct` also drops that guest a second time after its return. Host-self-drop and a second return of the same seat remain to verify.
+    > The live service's Playing/rejoin selftest passes (2026-10-13).
+- [x] **12.21** UDP input with history (owner 2026-10-10 "udp sending history sounds good", 2026-10-11 "do it now"; `docs/NETPLAY.md` 2.2 / 2.2a): the per-tick traffic (the client's
+  INPUT, the host's merged TICK) travels as datagrams that repeat every tick the peer has not acknowledged (up to 8), so a lost datagram costs nothing instead of a TCP
+  retransmit hitch; TCP stays for setup and the rare messages and takes over silently: no two-way probe handshake in 3 s -> TCP, acks stalled 250 ms -> the unacked ticks also go
+  over TCP once, 5 s -> the link reverts to TCP for the session; a rejoiner is TCP.  Same port numbers as TCP (game port, relay 6510); the relay server forwards the datagrams by
+  relay session + token.  Protocol 6 (`NET_PROTO_VERSION` 6, INPUT_UDP 21 / TICK_UDP 22): **the public server must be redeployed and UDP 6510 opened**.  `TCP` on the command line /
+  `net.ini` `udp = no` force TCP.  Log lines `net: udp: probe sent / ok / fallback to tcp (reason)`, the session counters and a `PERFU` line.
+   > Code and host tests 2026-10-11 (branch worktree-agent-a4e1e3e031736ce77): `engine/netudp` (pure) + `engine/netnode` + `engine/netproto`, `rt/net` (UDP socket) + `rt/net_session`
+   > (glue, logs), `tools/netserver` (UDP relay, selftest leg, README), `tests/test_netudp.py` (planner, handshake, lossy channel, 24 mutations), `tests/test_netsession.py` section
+   > `nudp` (real nodes over a lossy fake datagram network: every 2nd datagram lost, bursts, 30% loss + duplicates + reordering, outages, black holes, one direction dead, strays,
+   > conflicts, drop and rejoin scenarios under UDP; 14 mutations), `test_netproto`, `test_netserver`; Debug, Release and autoplay builds link. Emulator runs pass:
+    > `build/batch6_direct.log` (71 hashes, UDP + rejoin), `build/batch6_tcp.log` (69, forced TCP A/B), `build/batch8_relay.log` (67, UDP relay + rejoin),
+    > and `build/batch6_quad.log` (38 equal hashes across four nodes). The live endpoint's `selftest.py --server moonstone.shatteredallegiance.com`
+    > passes direct, relay, UDP relay, Playing/rejoin, and other-build rejection. Lean windows cost roughly 3-8 beam lines in WinUAE (12.2 / NETPLAY 2.1);
+    > real hardware remains unmeasured under 12.13.
 
 ## Risks and open questions
 - **Cracked reference.** All parity targets are the Crystal crack, not a retail disk; hunk 9 (1.4a) and any crack-side patches are unknowable beyond what the listings show. Record this in the README's status table.

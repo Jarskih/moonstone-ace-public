@@ -7,10 +7,9 @@ check the serial log, remove the folder again.
         menu, the log must name `mods/rules.ini:5: [limits] gold_cap = 99999` and the values must stay the original ones
   good  tests/boot/mods/good/rules.ini (gold_cap = 300, scaling = none): the logged values must show them
   smith tests/boot/mods/smith/{items.ini,shops.ini} (ROADMAP 9.5b: the smith's prices halved): both applied, the log lists the changed rows
-  no_scaling limited_scaling cheap_shops tough_dragon cave_troll
+   no_scaling limited_scaling tough_dragon dexterity
         the example mods of mods_examples/<name>/ (ROADMAP 9.7), copied into mods/: the log shows their values; the first two use the
-        lair script of `waves`, cheap_shops that of `smith`, tough_dragon tests/boot/mods_dragon.txt (the dragon fight set-up logs
-        `dragon fight hp ..`), cave_troll tests/boot/mods_cave_troll.txt (the arena logs `creature row 10 like 7 hp 60`)
+        lair script of `waves`, tough_dragon tests/boot/mods_dragon.txt (the dragon fight set-up logs `dragon fight hp ..`)
   none  an empty mods folder (only defaults/): the logged values are the defaults
   waves    tests/boot/mods/waves/rules.ini ([waves] scaling = none) + tests/boot/mods_waves.txt (lair 0 with a strong knight):
            the log line `waves: scaling=1 ... level=0` shows the unscaled counts (ROADMAP 9.5a)
@@ -29,7 +28,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import integrate as I  # noqa: E402
 
-EXAMPLES = ('no_scaling', 'limited_scaling', 'cheap_shops', 'tough_dragon', 'cave_troll')
+EXAMPLES = ('no_scaling', 'limited_scaling', 'tough_dragon', 'dexterity')
 DEFAULT_VALUES = ['values [waves] scaling=original', 'values [limits] gold_cap=150 dagger_cap=10']
 EXPECT = {
     'bad': (['mods/rules.ini:5: [limits] gold_cap = 99999: ', '(file ignored)', 'mods/typo.ini', 'done applied 0 skipped 1 unknown 1',
@@ -49,14 +48,11 @@ EXPECT = {
                     'mods_waves_reached_arena'], ['mods/rules.ini:', 'waves: scaling=0']),
     'limited_scaling': (['done applied 1 skipped 0 unknown 0', 'values [waves] scaling=limited', 'waves: scaling=2 coop=0', 'total=14 alive=2 level=3', 'mods_waves_reached_arena'],
                         ['mods/rules.ini:', 'waves: scaling=0', 'waves: scaling=1']),
-    'cheap_shops': (['done applied 2 skipped 0 unknown 0', 'values [armour mail]', ' price=15', 'values [armour battle]', ' price=37',
-                     'values [weapon claymore]', ' price=12', 'values [smith] dagger_price=1', 'values [healer] heal_price=5 life_price=8', 'values [market] sell_shift=1',
-                     'mods_smith_reached_menu'], ['mods/items.ini:', 'mods/shops.ini:']),
     'tough_dragon': (['done applied 1 skipped 0 unknown 0', 'values [creature dragon]', 'hp=250', 'dragon fight hp 250 hpmax 250 reach 60 dmg 20 60 20 60',
                       'mods_dragon_fight'], ['mods/creatures.ini:']),
-    'cave_troll': (['done applied 3 skipped 0 unknown 0', 'creature row 10 like 7 hp 60 hpmax 60', 'mods_troll_arena'],
-                   ['mods/creatures.ini:', 'mods/arenas.ini:', 'mods/lairs.ini:']),
     'none': (['holds no data file', 'done applied 0 skipped 0 unknown 0'] + DEFAULT_VALUES, []),
+    'dexterity': (['done applied 1 skipped 0 unknown 0', 'values [dexterity] enabled=1 starting=1 recovery_frames_per_point=1',
+                   'dexterity_trained'], ['mods/rules.ini:', 'AUTOPLAY wait-timeout', 'FAILED', 'MISSED']),
 }
 
 
@@ -84,8 +80,9 @@ def main():
         for f in os.listdir(src):
             shutil.copyfile(os.path.join(src, f), os.path.join(mods, f))
     script = os.path.join(I.ROOT, 'tests', 'boot', 'mods_%s.txt' % {'good': 'good', 'smith': 'smith', 'waves': 'waves', 'plain': 'waves', 'defaults': 'waves',
-                                                                                      'no_scaling': 'waves', 'limited_scaling': 'waves', 'cheap_shops': 'smith',
-                                                                                      'tough_dragon': 'dragon', 'cave_troll': 'cave_troll'}.get(case, 'bad'))
+                                                                                      'no_scaling': 'waves', 'limited_scaling': 'waves',
+                                                                                       'tough_dragon': 'dragon',
+                                                                                       'dexterity': 'dexterity'}.get(case, 'bad'))
     if case == 'none':   # the plain regression script boots too; only the log is of interest
         script = os.path.join(I.ROOT, 'tests', 'boot', 'mods_none.txt')
         open(script, 'w').write('wait log done_applied_0_skipped_0 max 3000\nframe 300 quit\n')

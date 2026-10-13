@@ -8,7 +8,7 @@
 #if __has_include(<ace/managers/log.h>)
 #include <ace/managers/log.h>
 #if defined(MS_AUTOPLAY) && MS_AUTOPLAY && !defined(ACE_DEBUG)
-#include "rt/serlog.hpp"
+#include "rt/amiga/serlog.hpp"
 #undef logWrite
 #define logWrite(...) ::rt::serLogf(__VA_ARGS__)
 #endif

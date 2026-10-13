@@ -101,6 +101,8 @@ struct PlaceCells {
 	uint32_t ulE3Addr;         // address of LAB_05E3
 };
 
+enum PlaceMark { MARK_NAME, MARK_BANNER, MARK_LEAVE };   // MARK_LEAVE: the town screen is left for a shop / exit (the corner arrows stop)
+
 struct PlaceOps {
 	void *pCtx;
 	PlaceRet (*pfnCall)(void *pCtx, PlaceCall eCall, uint32_t ulD0, uint32_t ulD1, uint32_t ulA0, uint32_t ulA1);
@@ -117,6 +119,20 @@ struct PlaceOps {
 	void (*pfnSceneSetup)(void *pCtx);             // SECSTRT_36 (rtOwSceneSetup)
 	void (*pfnColourStop)(void *pCtx);             // LAB_0DC8
 	const GameData *pData;                         // the place rows of places.ini (nullptr: the original node numbers)
+	// Moonstone 2 (ROADMAP 8.5, game/party_loot.hpp ShopQueue): the corner arrow of the town screen was clicked; the screens now belong
+	// to the previous (iDir < 0) / next member.  One Exit ends the visit for the whole party (owner 2026-10-10).  nullptr = classic.
+	void (*pfnTurnSwitch)(void *pCtx, int iDir);
+	// Moonstone 2 (ROADMAP 8.5a, game/party_turn.hpp): whose turn it is on the town screen.  MARK_NAME while the clean picture is built
+	// (the knight's name goes onto the menu), MARK_BANNER once the picture is faded in (the pointer takes the knight's colour; the first
+	// draw of a turn shows "SIR <NAME>'S TURN" until the first input).  nullptr = classic.
+	void (*pfnTurnMark)(void *pCtx, PlaceMark eMark, bool bTownA);
+	// Moonstone 2 (ROADMAP 8.4): the valley guardian fought by the whole party.  Open seeds and opens the fight roster (true = a party
+	// fight runs), Close gives it back, Settle (while it is open, after the fight) charges every fallen member the guardian's penalty
+	// and says whether the whole party lost.  nullptr = classic.
+	bool (*pfnPartyFightOpen)(void *pCtx);
+	void (*pfnPartyFightClose)(void *pCtx);
+	bool (*pfnPartyValleySettle)(void *pCtx);
+	void (*pfnIdle)(void *pCtx);                      // deterministic mode: one lockstep tick in the cursor-polled town loop
 };
 
 // The two town screens' button layouts (LAB_009B: town A / node $19, LAB_009C: town B / node $1A).

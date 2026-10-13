@@ -31,6 +31,7 @@ void progressAward(Knight &k, uint16_t uwPoints);
 bool progressCanAfford(const Knight &k, uint16_t uwCost);
 
 // LAB_0544 stat branch: byte slot (offset into the Knight record: $46 strength, $47 constitution, $48 endurance) += 1;
+// the optional $57 Dexterity slot is checked for enablement, affordability and its cap of 5 before any writes.
 // constitution also +10 hp; progress (+78) -= cost (LAB_06DE = 3, word wrap); then LAB_0013 and LAB_0019.
 void templeBuyStat(Knight &k, const Inventory &inv, uint16_t slot, uint16_t cost);
 

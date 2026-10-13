@@ -1,0 +1,31 @@
+# systemd unit for the Moonstone lobby server + relay (ROADMAP 12.19).  See README.md.
+#   sudo install -d /opt/moonstone-netserver
+#   sudo install -m 644 server.py netproto.py dashboard.py dashboard.html /opt/moonstone-netserver/
+#   sudo install -m 644 moonstone-netserver.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now moonstone-netserver
+[Unit]
+Description=Moonstone lobby server and relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/moonstone-netserver/server.py --port 6510 --http-port 8080
+Restart=always
+RestartSec=2
+# no account, no files, no extra privileges: the server only needs its one TCP port
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+LimitNOFILE=8192
+# counts-only log lines go to the journal: journalctl -u moonstone-netserver
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

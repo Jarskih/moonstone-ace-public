@@ -11,6 +11,7 @@
 // Deliberate differences: a job lookup that misses where the asm then reads or writes through address 0 does nothing; the
 // demon's messages (LAB_0EF6) went through LAB_0BB3, a bare RTS, and are left out.
 #include "game/api/party.hpp"
+#include "game/api/data.hpp"
 #include "engine/util.hpp"
 #include "game/fighters.hpp"
 #include "game/fighters_int.hpp"
@@ -69,6 +70,7 @@ void knightDefaults(Knight &k) {
 	k.ubStrength = 1;
 	k.ubConstitution = 1;
 	k.ubEndurance = 1;
+	if(g_gameData.rules.ubDexterityEnabled) k.ubDexterity = g_gameData.rules.ubDexterityStart;
 	k.ubLives = 5;
 	k.swHp = 0x14;
 	k.ulArmour = raw(ArmourItem::Padded);
@@ -97,6 +99,45 @@ void fightTablesInit(const FighterEnv &e) {
 
 // ---------------------------------------------------------------------------------------------------------------------
 // $B0 targets
+
+namespace {
+constexpr uint32_t OP_DIED = 0x0005, OP_END = 0x0006, OP_PAUSE_ALL = 0x000A, OP_KILL_CURRENT = 0x000D;   // the label numbers rt/fighters.cpp runs
+}  // namespace
+
+bool fightOpPartyRun(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner) {
+	if(!rosterOn(e.pRoster) || (ulFn & 0xFFFF0000u) != FIGHT_OP_TAG) {
+		return false;
+	}
+	const FightRoster &r = *e.pRoster;
+	Knight &owner = *rec(ulOwner);
+	const FightTeam team = rosterTeam(r, owner);
+	const uint32_t ulOp = ulFn & 0xFFFFu;
+	if(team == TEAM_CREATURES) {                                   // the script of a creature: LAB_000D / LAB_0006 are its kill animation's end
+		if(ulOp == OP_KILL_CURRENT) {                              // the knight it struck is the one marked dead, not the leader
+			rosterScriptVictim(r, owner).swHp = (int16_t)0xFFFF;
+			return true;
+		}
+		if(ulOp != OP_END) {                                       // LAB_0005 (a creature died) and LAB_000A stay the classic routines
+			return false;
+		}
+	}
+	if(ulOp == OP_PAUSE_ALL) {                                     // LAB_000A (the end of a knight's enter script): the creatures wait
+		return team != TEAM_FOE_KNIGHTS && ++r.ubEntered < r.ubParty;   // until the LAST party knight is in (an odd number of toggles frees them)
+	}
+	if(ulOp == OP_KILL_CURRENT) {                                  // LAB_000D: the owner of the script is the one marked dead
+		owner.swHp = (int16_t)0xFFFF;
+		return true;
+	}
+	if(ulOp == OP_DIED || ulOp == OP_END) {                        // LAB_0005 / LAB_0006: a knight fell - over only when a whole side is down
+		const bool bOver = ulOp == OP_DIED ? rosterPartyDown(r) || (team == TEAM_FOE_KNIGHTS && rosterFoesDown(r)) : rosterScriptEndsFight(r, owner);
+		if(bOver && e.pActive->ubFightActive != 0) {
+			e.pActive->ubEndTimer = 0x23;
+			e.pActive->ubFightActive = 0;
+		}
+		return true;
+	}
+	return false;
+}
 
 bool fightOpRun(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner, uint32_t ulFrames, uint16_t uwX, uint16_t uwY,
                 uint16_t uwZ, uint8_t ubFacing) {
@@ -131,7 +172,7 @@ bool fightOpRun(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner, uint32_t u
 		return true;
 	case 0x02CA:                                                   // the dagger throw (the result is not used by a script)
 		daggerRelease(e.pJobs, e.pCreatures, o, e.scripts.sDaggerScript, e.scripts.tDaggerDamage, ulFrames, uwX, uwY, uwZ,
-		              ubFacing);
+		              ubFacing, e.pRoster);
 		return true;
 	case 0x02DB:
 		e.pVars->uwLairFlag = 1;
@@ -212,13 +253,15 @@ bool fightOpRun(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner, uint32_t u
 		}
 		return true;
 	case 0x0EF6: {                                                 // "DEMON HIT" (no text player), 10 damage, frozen
-		subHp(*rec(*e.pFirst), 10);
-		jobTogglePause(e.pJobs, *e.pFirst);
+		const uint32_t ulHeld = heldOf(e, *e.pBodyA);              // Moonstone 2: the knight the demon holds (the first fighter in a classic fight)
+		subHp(*rec(ulHeld), 10);
+		jobTogglePause(e.pJobs, ulHeld);
 		return true;
 	}
 	case 0x0EF7: {                                                 // the demon lets go of the first fighter
-		jobTogglePause(e.pJobs, *e.pFirst);
-		CombatJob *j = jobOfOwner(e.pJobs, *e.pFirst);
+		const uint32_t ulHeld = heldOf(e, *e.pBodyA);
+		jobTogglePause(e.pJobs, ulHeld);
+		CombatJob *j = jobOfOwner(e.pJobs, ulHeld);
 		const Knight &body = *rec(*e.pBodyA);
 		if(j != 0) {
 			const uint8_t d0 = (uint8_t)(body.ubFacing ^ 2);
@@ -234,7 +277,7 @@ bool fightOpRun(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner, uint32_t u
 			}
 			j->uwX = (uint16_t)d1;
 		}
-		const Knight &first = *rec(*e.pFirst);
+		const Knight &first = *rec(ulHeld);
 		uint32_t script = first.ulIdleScript;
 		if(!((int16_t)first.swHp > 0)) {                           // dead: the screen fades out first
 			for(unsigned i = 2; i < 8; ++i) {
@@ -244,7 +287,7 @@ bool fightOpRun(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner, uint32_t u
 			e.fadeB();
 			script = e.scripts.s07F7;
 		}
-		jobRestart(e.pJobs, *e.pFirst, script);
+		jobRestart(e.pJobs, ulHeld, script);
 		return true;
 	}
 	default:

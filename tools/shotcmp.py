@@ -32,6 +32,9 @@ DISPLAY_SIZE = (640, 400)
 CLIENT_WIDTH = 721        # frame line to frame line, at 100 % scale
 DISPLAY_OFFSET = (59, 32)  # display origin from the client origin (first column after the left frame line, first row after the title bar)
 CHROME_GRAY = 43
+# Window pictures whose title bar / frame lines were not painted at capture time (the chrome rows come out black, the display itself
+# is fine) cannot be located; the display sits at a fixed place in a window of the same picture size, so those sizes are remembered.
+KNOWN_LAYOUTS = {(736, 635): (67, 63)}   # picture size -> display origin (the WinUAE window of the owner's host at its default size)
 
 
 def _is_chrome(px):
@@ -100,7 +103,8 @@ def load(path, crop):
     if crop == 'auto':
         box = find_display_box(im)
         if box is None:
-            crop = DEFAULT_CROP
+            known = KNOWN_LAYOUTS.get(im.size)
+            crop = (known[0], known[1], DISPLAY_SIZE[0], DISPLAY_SIZE[1]) if known else DEFAULT_CROP
         else:
             bx, by, w, h = box
             if (round(w), round(h)) == DISPLAY_SIZE and bx == int(bx) and by == int(by):

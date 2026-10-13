@@ -14,6 +14,7 @@ Needs: unicorn, the m68k toolchain of AGENTS.md and build/reasm/mog (py tools/re
 """
 import os
 import random
+from tests.fastmem import xlat
 import shutil
 import struct
 import subprocess
@@ -87,7 +88,7 @@ RT_LABELS['rtNoop'] = '0166'   # arena.cpp stores it as the no-spawn routine (th
 CL_LABELS = {'rtClMessageNext': '0134', 'rtClArenaPicture': '013C', 'rtClHe': '0116', 'rtClTroggSpear': '0118', 'rtClTroggAxe': '011A',
              'rtClRatmen': '011C', 'rtClMudmen': '011E', 'rtClBalok': '011F', 'rtClDragon': '0121', 'rtClBe': '0123',
              'rtClDemon': '0125', 'rtClTroll': '0126', 'rtClWizard': '0131'}
-ARENA_FILES = ('src/rt/arena.cpp', 'src/rt/asmcall.cpp', 'src/game/creatures.cpp', 'src/game/rules/waves.cpp', 'src/engine/util.cpp', 'tests/arena_emu_support.cpp', 'src/game/rules/damage.cpp', 'src/game/api/creatures.cpp', GAMEDATA_REL, NAMES_REL)
+ARENA_FILES = ('src/rt/arena.cpp', 'src/rt/amiga/arena_entries.cpp', 'src/rt/fight_roster.cpp', 'src/rt/party.cpp', 'src/rt/asmcall.cpp', 'src/game/creatures.cpp', 'src/game/rules/waves.cpp', 'src/engine/util.cpp', 'tests/arena_emu_support.cpp', 'src/game/rules/damage.cpp', 'src/game/api/creatures.cpp', GAMEDATA_REL, NAMES_REL)
 _BLOBS = {}
 
 
@@ -350,9 +351,7 @@ class Emu:
                         for n, l in RT_LABELS.items() if n in self.syms and (n.startswith(('rt_ar_', 'rt_arena_')) or n == 'rtNoop')]
         out = []
         for part in snap:
-            for a, b in self._xl:
-                part = part.replace(a, b)
-            out.append(part)
+            out.append(xlat(part, self._xl))
         return tuple(out)
 
     def log(self):

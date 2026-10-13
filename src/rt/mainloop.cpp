@@ -39,11 +39,18 @@
 #include "rt/abs.h"
 #include "rt/arena.hpp"
 #include "rt/combat_load.hpp"
+#include "rt/combat_pool.hpp"
 #include "rt/combat_ui.hpp"
 #include "rt/hunk9.hpp"
+#include "rt/party.hpp"
 #include "rt/perf.hpp"
 #include "rt/stubfn.h"
 #include "rt/flow.hpp"
+#include "rt/display_ops.hpp"
+#include "rt/net_tick.hpp"
+#include "rt/mog_display.hpp"
+#include "rt/platform/timer.hpp"
+#include "engine/nettick.hpp"
 
 // Labels not bound in state_bind.hpp (ROADMAP 5.1 header is not extended for this task).
 extern "C" {
@@ -59,12 +66,19 @@ extern uint8_t mogJobWork[], mogDrawBuffer[], mogAttackLists[], mogHurtLists[]; 
 
 extern "C" {
 // asm below
-void rtMainCall(const void *pFn, uint32_t ulD0, const void *pA0);
-void rtMainCallD(const void *pFn, const uint32_t *pulRegs);   // D0..D3 and D7 from pulRegs[0..4]
+void rtMogDisplayInitC(void);                                    // src/rt/display_ops.cpp
+void rtCelScratch_mog(void);                                     // src/rt/engine_blit.cpp
+void rtCelInit_mog(uint32_t ulPlanes);
+void rtCelClip_mog(uint32_t ulLeft, uint32_t ulTop, uint32_t ulRight, uint32_t ulBottom);
+void rtEnhCarveMog(void);                                        // src/rt/enhanced.cpp
+void rtMogPaletteHookAddC(uint32_t ulLive);                      // src/rt/palette_glue.cpp
+void rtJobBoot(void);                                            // src/rt/prims.cpp
+void rtMogFadeOutSilentC(void);
+void rtFightRun(void);                                           // src/rt/combat.cpp
+uint32_t rtMogWaitFireC(void);                                   // src/rt/input.cpp
 void rtOwSceneSetup(void);                                       // src/rt/overworld.cpp
 void rtOwColourStop(void);
 void rtMogEnterMap(void);
-void rtMogWait(uint32_t ulTicks);
 void rtArenaPractice(void);                                      // src/rt/combat.cpp
 void rtSceneKnightsRun(void);                                    // src/rt/scene_menu.cpp
 
@@ -76,44 +90,29 @@ namespace {
 
 using namespace ms::game;
 
-// ---- the table of asm routines ---------------------------------------------------------------------------------
-struct StepRow {
-	uint16_t uwStep;       // MainStep
-	const void *pFn;
-	uint32_t ulD0;         // the register arguments the original loaded just before the call
-	const void *pA0;
-};
-
-// Constant-initialised (addresses and integers only), so no global constructor is needed.
-const StepRow g_steps[] = {
-	{STEP_SECSTRT_34, (const void *)rt_mog_display_init, 0, nullptr},
-	{STEP_SECSTRT_30, RT_FN(rt_mog_cel_scratch), 0, nullptr},
-	{STEP_LAB_0004, (const void *)rt_mog_carve, 0, nullptr},                // LAB_0004 is a patch stub of rt_mog_carve (src/rt/enhanced.cpp)
-	{STEP_LAB_0E53_08D6, (const void *)rt_mog_palette_hook_add, 0, mog_LAB_08D6},
-	{STEP_LAB_0303, (const void *)rt_mog_job_boot, 0, nullptr},
-	{STEP_LAB_03F1, RT_FN(rt_mog_fade_out_silent), 0, nullptr},
-	{STEP_LAB_0036, (const void *)rt_fight_run, 0, nullptr},             // -> rt_fight_run (src/rt/combat.cpp)
-	{STEP_LAB_00EC, RT_FN(rt_mog_wait_fire), 0, nullptr},
-};
+// ---- the steps ---------------------------------------------------------------------------------------------------
+// The routines of the boot sequence are typed C++ calls since ROADMAP 11.10 (they were a table of asm entries called through rtMainCall, the 68k
+// register-block helper): the label of each is in the comment, its body in the file named in rt/prim.hpp.
 
 // LAB_0003: the cel renderer for 5 planes (SECSTRT_28, D7 = 5), the clip box (0, 0, $28, $C8), a flip.
-__attribute__((noinline)) void bootSprites() {
-	static const uint32_t aulCelInit[5] = {0, 0, 0, 0, 5};            // MOVEQ #5,D7 ; JSR SECSTRT_28
-	static const uint32_t aulClip[5] = {0, 0, 0x28, 0xC8, 5};         // D0..D3 ; JSR LAB_0CCD (D7 is still 5 from the MOVEQ)
-	rtMainCallD(RT_FN(rt_mog_cel_init), aulCelInit);
-	rtMainCallD(RT_FN(rt_mog_cel_clip), aulClip);
-	rtMainCall(RT_FN(rt_mog_display_flip), 0, nullptr);                             // JSR LAB_0416
+__attribute__((noinline)) void bootSprites() {   // (noinline: tests/test_boot_map_emu.py runs this step on its own against LAB_0003)
+	rtCelInit_mog(5);                             // MOVEQ #5,D7 ; JSR SECSTRT_28
+	rtCelClip_mog(0, 0, 0x28, 0xC8);               // D0..D3 ; JSR LAB_0CCD
+	rt::displayFlip();                             // JSR LAB_0416
 }
 
 void opStep(void *, MainStep eStep) {
-	switch(eStep) {                                           // the steps that are C++ (7.1l)
+	switch(eStep) {
 		case STEP_LAB_00B4: rtTitleStep(); return;                         // LAB_00B4 (src/rt/hunk9.cpp, 7.1q)
 		case STEP_LAB_00D3: rtSceneKnightsRun(); return;                  // LAB_00D3 (src/rt/scene_menu.cpp)
 		case STEP_LAB_0100_D2: return;                                     // LAB_0100: the disk prompt, a bare RTS in the game
 		case STEP_LAB_0BB3: return;                                        // LAB_0BB3 (the text / sound player) was a bare RTS
 		case STEP_LAB_0003: bootSprites(); return;
 		case STEP_LAB_0011: knightsRecalcAll(mogKnights, mogInventories); return;  // LAB_0613, LAB_0618
-		case STEP_SECSTRT_36: rtOwSceneSetup(); return;
+		case STEP_SECSTRT_36:
+			rtOwSceneSetup();
+			if(g_pfnRejoinGo) g_pfnRejoinGo();                            // a rejoiner's lockstep starts here (ROADMAP M12)
+			return;
 		case STEP_LAB_0DC8: rtOwColourStop(); return;
 		case STEP_LAB_00F8: rtClDriveInit(); return;                      // the C++ loaders / set-ups (7.1o: no asm stubs behind them)
 		case STEP_LAB_012C: rtClAssets(); return;
@@ -123,19 +122,25 @@ void opStep(void *, MainStep eStep) {
 		case STEP_LAB_013A: rtClPack(); return;
 		case STEP_LAB_0152: rtClTablesClear(); return;
 		case STEP_LAB_0156: rtArTables(); return;
-		case STEP_LAB_01AE: rtArReset(); return;
-		case STEP_LAB_01BE: rtArKnights(); return;
+		case STEP_LAB_01AE: rtArReset(); rt::partyNewGame(); return;      // + Moonstone 2: co-op off until the knights are set up (8.3a)
+		case STEP_LAB_01BE:
+			rtArKnights();
+			rtPartyKnights();                                             // + Moonstone 2: the BK pool and the party (8.3a)
+			if(g_pfnRejoinApply) g_pfnRejoinApply();                      // a rejoiner: the host's world over the new knights (ROADMAP M12)
+			return;
 		case STEP_LAB_0134: rtClMessageNext(); return;
 		case STEP_LAB_013C: rtClArenaPicture(); return;
 		case STEP_LAB_0165: rtArenaPractice(); return;
 		case STEP_LAB_0137_06E6: rtClMessageRecoloured((uint32_t)(uintptr_t)mogTextGameOver); return;   // LEA LAB_06E6,A0 ; JSR LAB_0137
+		case STEP_SECSTRT_34: rtMogDisplayInitC(); return;                 // SECSTRT_34 (src/rt/display_ops.cpp)
+		case STEP_SECSTRT_30: rtCelScratch_mog(); return;                  // SECSTRT_30 (src/rt/engine_blit.cpp)
+		case STEP_LAB_0004: rtEnhCarveMog(); return;                       // LAB_0004 is a patch stub of rt_mog_carve (src/rt/enhanced.cpp)
+		case STEP_LAB_0E53_08D6: rtMogPaletteHookAddC((uint32_t)(uintptr_t)mog_LAB_08D6); return;   // LAB_08D6 (src/rt/palette_glue.cpp)
+		case STEP_LAB_0303: rtJobBoot(); return;                           // LAB_0303 (src/rt/prims.cpp)
+		case STEP_LAB_03F1: rtMogFadeOutSilentC(); return;                 // LAB_03F1 (src/rt/palette_glue.cpp)
+		case STEP_LAB_0036: rtFightRun(); return;                          // LAB_0036 (src/rt/combat.cpp)
+		case STEP_LAB_00EC: rtMogWaitFireC(); return;                      // LAB_00EC (src/rt/input.cpp)
 		default: break;
-	}
-	for(const StepRow &row : g_steps) {
-		if(row.uwStep == (uint16_t)eStep) {
-			rtMainCall(row.pFn, row.ulD0, row.pA0);
-			return;
-		}
 	}
 }
 
@@ -164,17 +169,42 @@ const MainOps g_ops = {nullptr, opStep, opEnterMap};
 uint32_t s_ulFrameStart;                // LAB_0321, the asm cell, is dead
 
 void cbClearHitLinks() { rtArClearLinks(); }            // LAB_0161 (C++, rt/arena.hpp, 7.1o)
-void cbWait(uint32_t ulTicks) { rtMogWait(ulTicks); }
+uint32_t s_ulPaceStart;                // deterministic mode: rt::netPaceFrame() at rtMogFrameStart
+
+// Deterministic mode (ROADMAP 12.4): the frame wait. ulTicks = the VBLs LEFT of the budget on the LOGICAL clock (mogFrame as the
+// tick counted it: the same on every machine). The game still has to run at its normal speed, so the REAL wait is what the original
+// computes from real time (the interrupt's pacing counter), taken with the raw beam wait that does not tick; then ONE tick stands
+// for the logical remainder. The logical clock thus advances by a function of the game's own beam waits only, while a slow machine
+// still waits no longer than the original would.
+void cbWaitNet(uint32_t ulTicks) {
+	const int32_t lBudget = static_cast<int16_t>(mogFrameBudget);
+	int32_t lRealLeft = lBudget - static_cast<int32_t>(rt::netPaceFrame() - s_ulPaceStart);
+	for(; lRealLeft > 0; --lRealLeft) {
+		rt::displayWaitBeamRaw();
+	}
+	if(ulTicks != 0) {
+		rt::netTick(ulTicks, 2);
+	}
+}
+
+void cbWait(uint32_t ulTicks) {
+	if(rt::netDeterministic()) {
+		cbWaitNet(ulTicks);
+		return;
+	}
+	rt::displayWaitFrames(ulTicks);                         // LAB_0D74
+}
 
 uint32_t addrOf(const CombatJob *pJob) { return pJob ? ms::jobAddr(pJob) : 0; }
 
 MogJobEnv jobEnv() {
 	MogJobEnv e;
-	e.pJobs = reinterpret_cast<CombatJob *>(mogJobs);  // LAB_0649
-	e.pWork = mogJobWork;
-	e.pAttackLists = mogAttackLists;
-	e.pHurtLists = mogHurtLists;
-	e.pDrawBuffer = mogDrawBuffer;
+	const rt::CombatPool &pool = rt::combatPool();     // the original cells, or the co-op pool of a party fight
+	e.pJobs = pool.pJobs;  // LAB_0649
+	e.pWork = pool.pWork;
+	e.pAttackLists = pool.pAttackLists;
+	e.pHurtLists = pool.pHurtLists;
+	e.pDrawBuffer = pool.pDraw;
 	e.pHitA = &mogHitData;
 	e.pHitB = &mogHitPairs;
 	e.pHitASaved = &mogHitDataBase;
@@ -195,6 +225,7 @@ extern "C" __attribute__((used, externally_visible)) void rtMogMain(uint32_t ulF
 	uint32_t ulChipFree, uint32_t ulChipSize) {
 	const MainEnv env = mainEnv();
 	const BootRegs regs = {ulChipFree, ulChipSize, ulFastFree, ulFastSize};
+	ms::g_pfnTickIdle = rt::netPaceSpin;   // the poll-free spin loops get a frame boundary in deterministic mode (a no-op otherwise)
 	mainBoot(env, g_ops, regs);
 	rt::flowRun(env, g_ops, flow::SceneId::Title);         // the game's scenes (ROADMAP 9.2a); returns only on a fatal flow error
 }
@@ -214,7 +245,12 @@ extern "C" __attribute__((used, externally_visible)) void rtMogJobsReset(void) {
 
 // LAB_04A5: MOVE.W VHPOSR,D0 ; ANDI.W #3 ; LSL.W #2 ; MOVE.L LAB_0974(D0),LAB_0973
 extern "C" __attribute__((used, externally_visible)) void rtMogRngSeed(void) {
-	mogRandomSeed = mainRngSeed(*(volatile uint16_t *)0x00DFF006, mogSeedTable);
+	uint32_t ulProvided;
+	if(rt::netSeedTake(ulProvided)) {   // ROADMAP 12.4 / NETPLAY 4.1: the session provides the seed, nobody reads the beam
+		mogRandomSeed = ulProvided;
+		return;
+	}
+	mogRandomSeed = mainRngSeed(rt::platform::timerBeamVhposr(), mogSeedTable);   // VHPOSR
 }
 
 extern "C" __attribute__((used, externally_visible)) uint32_t rtMogJobToggle(uint32_t ulOwner) {
@@ -237,6 +273,7 @@ extern "C" __attribute__((used, externally_visible)) uint32_t rtMogJobRestart(ui
 
 extern "C" __attribute__((used, externally_visible)) void rtMogFrameStart(void) {
 	mogFrameStart(jobEnv());
+	s_ulPaceStart = rt::netPaceFrame();
 	rt::perfFrameStart(mogFrame);  // MS_AUTOPLAY perf log (rt/perf), a no-op otherwise
 }
 
@@ -244,101 +281,3 @@ extern "C" __attribute__((used, externally_visible)) void rtMogFrameWait(void) {
 	rt::perfFrameWait(mogFrame, static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(mogFrameBudget))));
 	mogFrameWait(jobEnv());
 }
-
-// ---- asm side ----------------------------------------------------------------------------------------------------
-// rtMainCall(fn, d0, a0): JSR fn with D0 / A0 loaded, every register the C side keeps saved around it.
-// rtMogWait(ticks): LAB_0D74 with D0 = ticks.
-// rtMogEnterMap(): JMP LAB_0DAB with the stack as the original main loop had it (the map loop never returns).
-asm(R"(
-	.text
-
-	.globl rtMainCall
-rtMainCall:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a5
-	move.l 52(%sp),%d0
-	move.l 56(%sp),%a0
-	jsr (%a5)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rtMainCallD
-rtMainCallD:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a5
-	move.l 52(%sp),%a6
-	movem.l (%a6),%d0-%d3
-	move.l 16(%a6),%d7
-	jsr (%a5)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rtMogWait
-rtMogWait:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%d0
-	jsr rt_display_wait_frames
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rtMogEnterMap
-rtMogEnterMap:
-	move.l rtMogBaseSp,%sp
-	jmp rtOwLoop
-
-	.globl rt_mog_rng_seed
-rt_mog_rng_seed:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtMogRngSeed
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_mog_main
-rt_mog_main:
-	move.l %sp,rtMogBaseSp
-	move.l %d1,-(%sp)
-	move.l %a1,-(%sp)
-	move.l %d0,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtMogMain
-	lea 16(%sp),%sp
-	rts
-
-	.globl rt_mog_quit
-rt_mog_quit:
-	move.l rtMogBaseSp,%sp
-	jsr rtMogQuit
-	rts
-
-	.globl rt_mog_jobs_reset
-rt_mog_jobs_reset:
-	jsr rtMogJobsReset
-	rts
-
-	.globl rt_mog_job_toggle
-rt_mog_job_toggle:
-	movem.l %d1/%a0-%a1,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtMogJobToggle
-	addq.l #4,%sp
-	movem.l (%sp)+,%d1/%a0-%a1
-	tst.l %d0
-	beq.s 1f
-	move.l %d0,%a6
-1:	rts
-
-	.globl rt_mog_frame_start
-rt_mog_frame_start:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtMogFrameStart
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_mog_frame_wait
-rt_mog_frame_wait:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtMogFrameWait
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-)");
-

@@ -2,7 +2,9 @@
 //
 //   SceneMenu    mog.asm 1669-1818 (the code that follows `JMP SECSTRT_9` in LAB_00B4, hunk9.cpp lands there):
 //                menu cursor LAB_00BA, option toggle LAB_00C2, player count LAB_00C6, redraw LAB_00C4 and the input
-//                loop LAB_00B5.  Items: Players, Gore, Practice, Select Knight.
+//                loop LAB_00B5.  Items: Players, Practice, Select Knight (the Gore item of the original is gone, owner 2026-10-11:
+//                gore is always on).
+//   SceneMainMenu (no original, owner 2026-10-11) LOCAL / MULTIPLAYER / SETTINGS in front of SceneMenu; LOCAL opens the title menu above.
 //   SceneKnights mog.asm 1905-2048 (LAB_00D3, called by the main loop after the menu): portrait selection LAB_00D4,
 //                free-slot search LAB_00DD, redraw LAB_00E0, per-knight setup LAB_00E5 and the name editor
 //                LAB_00C9..LAB_00D2.
@@ -26,8 +28,11 @@ namespace ms { namespace game {
 
 // Game data the asm owns, named instead of addressed (the shim maps them to labels).
 enum MenuPalette : uint8_t { MENUPAL_TITLE = 0, MENUPAL_KNIGHTS };    // LAB_0D2B, LAB_06FD
-enum MenuText : uint8_t { MENUTEXT_MAIN = 0, MENUTEXT_SELECT };       // LAB_06AE, LAB_06E7 (text item lists)
+// The title list (Players / Practice / Select Knight) is built by the shim from LAB_06AE without the Gore lines, rows at menuItemY; the Mode row's
+// line is drawn with pfnDrawString, _BACK adds the Back row.  MENUTEXT_MAIN_MENU is the three rows of the main menu (LOCAL / MULTIPLAYER / SETTINGS).
+enum MenuText : uint8_t { MENUTEXT_MAIN = 0, MENUTEXT_SELECT, MENUTEXT_MAIN_BACK, MENUTEXT_MAIN_MENU };
 enum MenuBank : uint8_t { MENUBANK_BACKDROP = 0, MENUBANK_SPRITES };  // ActiveKnights +10 (= LAB_05E3+16), LAB_05C4
+enum MenuFont : uint8_t { MENUFONT_BIG = 0, MENUFONT_SMALL };          // the font cel table text is printed in (ActiveKnights +10): bold.f / Small.font
 enum MenuBuffer : uint8_t { MENUBUF_BACKGROUND = 0, MENUBUF_SCREEN }; // the buffers LAB_05C0 / LAB_0D92 point to
 
 // One entry per asm primitive.  All are called with the exact argument values the original loads into registers.
@@ -43,7 +48,6 @@ struct MenuOps {
 	void (*pfnSetTextFlag)(uint16_t uwValue);             // MOVE.W #n,LAB_0D05
 	void (*pfnDrawSprite)(MenuBank eBank, uint16_t uwIndex, uint16_t uwX, uint16_t uwY);  // LAB_0CDA
 	void (*pfnDrawNumber)(uint16_t uwValue);              // LAB_0442 into the LAB_06B9 text buffer
-	void (*pfnSetGoreText)(bool bAlternate);              // LAB_06B3 := LAB_06BB (true) / LAB_06BA (false)
 	void (*pfnDrawText)(MenuText eText);                  // LAB_0432
 	void (*pfnDrawString)(const uint8_t *pText, uint16_t uwX, uint16_t uwY, uint16_t uwStyle);  // LAB_0431
 	void (*pfnPalette)(MenuPalette ePal);                 // LAB_03F2 (palette + 36 tick fade)
@@ -57,15 +61,30 @@ struct MenuOps {
 	void (*pfnPublishPlayerCount)(uint16_t uwCount);      // ActiveKnights +14 := count (LAB_00B9)
 	uint32_t (*pfnSpawnJob)(uint16_t uwD0, uint16_t uwD1, uint16_t uwD2, uint16_t uwD3);  // LAB_0E5A, result into LAB_05A5
 	void (*pfnKillJob)(uint32_t ulJob);                   // MOVEA.L LAB_05A5,A0 ; CLR.L (A0)
-	// Co-op (ROADMAP 8.2), no original: the Players field reads "Coop N" instead of the number.  Called only in co-op, in
-	// place of pfnDrawNumber, so a classic trace never reaches it (nullptr is fine for a classic-only host).
-	void (*pfnDrawPartyText)(uint16_t uwKnights);
+	// Options screen (ROADMAP 9.9), no original: switches the font text and the backdrop sprites are drawn from (the banner is a cel of the
+	// big font's table, so sprites need MENUFONT_BIG).  MENUFONT_SMALL = Small.font, resident since the boot loads (LAB_012C).  Not called
+	// by the title menu, the knight select or the Multiplayer screen (nullptr is fine for them).
+	void (*pfnUseFont)(MenuFont eFont);
+	// No original: the title picture (ch.piv, from the raw copy kept since the boot) decoded again into the background buffer (LAB_05C0) and its
+	// palette (LAB_0D2B).  The lobby draws the knight select over its own background and returns to the Multiplayer screen / main menu, which
+	// blit the title picture from there.  nullptr for screens that never overwrite the background.
+	void (*pfnRestoreBackground)();
 };
 
 // ---------------------------------------------------------------------------------------------------------
 // Title menu
 
-enum MenuItem : uint16_t { ITEM_PLAYERS = 0, ITEM_GORE = 1, ITEM_PRACTICE = 2, ITEM_SELECT = 3 };
+// The cursor's items in list order (LAB_06DC): the settings group Players and Mode, then (after an empty line the cursor skips) Practice and
+// Select Knight, which keep the numbers 2 and 3 of the original; Mode takes the index of the original's Gore row.  ITEM_MODE only exists with
+// bCoopAllowed, ITEM_BACK with bBack.
+enum MenuItem : uint16_t { ITEM_PLAYERS = 0, ITEM_MODE = 1, ITEM_PRACTICE = 2, ITEM_SELECT = 3, ITEM_BACK = 4 };
+
+// The Esc key's code in the key word (SECSTRT_21): leaves the title menu for the main menu (bBack).
+constexpr uint16_t MENUKEY_ESC = 0x45;
+
+// LAB_06DA, the gore cell: 0 = gore on (the cell's start value, shown as "On" by the original menu), non-zero = off (the original's menu toggled
+// it; combat reads it as the `ifnogore` flag).  The title menu no longer offers the choice, the shim writes MENU_GORE_ON before the menu.
+constexpr uint32_t MENU_GORE_ON = 0;
 
 // The game variables the menu reads and writes (copied in and out by the shim; nothing else reads them while the
 // menu runs).
@@ -73,45 +92,83 @@ struct MenuState {
 	uint16_t uwPlayers;     // LAB_05C5 (.W) number of human players 1..4
 	uint16_t uwCursor;      // LAB_06DC item under the cursor; the main loop tests it == ITEM_PRACTICE afterwards
 	uint16_t uwMoved;       // LAB_06DB set to 1 when the cursor hit an end stop (never read)
-	uint32_t ulGore;        // LAB_06DA toggled by fire/left/right on the Gore item; non-zero shows the LAB_06BB text
 	uint16_t uwDamageDiv;   // LAB_06DE 3,2,1,1 for 1..4 players (table SECSTRT_4); subtracted from a knight's gold-like word in LAB_0545
 	// The four costs for 1..4 players ([temple] stat_cost of shops.ini, ROADMAP 9.5b); nullptr = the original 3,2,1,1.
 	const uint16_t *pStatCost = nullptr;
-	// Co-op (ROADMAP 8.2): right on Players past 4 gives "Coop 2" (uwPlayers = the party size, PARTY_COOP_MAX at most),
-	// left from there goes back to 4.  bCoopAllowed = false (MS_COOP off, the host traces) keeps the original clamp at 4.
+	// Co-op (ROADMAP 8.2): the Mode row under Players (left / right / fire) selects Classic or Coop and never changes the count, except that co-op needs at
+	// least two knights: entering it with one player makes two, and in co-op Players stays within 2..PARTY_COOP_MAX (uwPlayers = the party size).
+	// bCoopAllowed = false (MS_COOP off, the host traces) keeps the original 1..4 and hides Mode.
 	bool bCoopAllowed = false;
 	bool bCoop = false;
+	// Main menu (owner 2026-10-11, no original): the title menu is the LOCAL screen of the main menu.  bBack adds the Back row after the last item
+	// and makes Esc leave to it (MENU_BACK).  false (host traces, a running network game where the replicated menu has nothing to go back to).
+	bool bBack = false;
 };
 
 enum MenuAction : uint8_t {
 	MENU_IDLE = 0,          // nothing to do, poll again
 	MENU_REDRAW,            // something changed: LAB_00C4
 	MENU_PRACTICE,          // fire on Practice: leave (LAB_00B8)
-	MENU_SELECT             // fire on Select Knight: leave (LAB_00B9)
+	MENU_SELECT,            // fire on Select Knight: leave (LAB_00B9)
+	MENU_BACK               // fire on Back or Esc (bBack only): leave for the main menu
 };
 
-// LAB_00C6: players += delta, then 0 -> 1 / (signed) > 4 -> 4, and uwDamageDiv from the table.
+// LAB_00C6: players += delta, then 0 -> 1 / (signed) > 4 -> 4, and uwDamageDiv from the table.  In co-op the count is kept within
+// 2..PARTY_COOP_MAX instead (also with delta 0: the way into co-op raises a single player to two).
 void menuSetPlayers(MenuState &s, int16_t swDelta);
-// LAB_00C2: toggles the gore flag when the cursor is on Gore; returns true (D0 = 1) when it did.
-bool menuToggleGore(MenuState &s);
-// LAB_00BA: cursor movement / player count / gore with the joystick word; returns true when a redraw is needed.
+// LAB_00BA: cursor movement / player count / mode with the joystick word; returns true when a redraw is needed.
 bool menuMove(MenuState &s, uint16_t uwJoy);
 // One pass of the LAB_00B5 loop body for a joystick word (D1 of LAB_00EE).
 MenuAction menuInput(MenuState &s, uint16_t uwJoy);
-// y of an item (LAB_06DD; LAB_05D9 in the asm).
+// y of the cursor of an item (LAB_06DD; LAB_05D9 in the asm): Players 66, Mode 86, an empty line, Practice 126, Select Knight 146, Back 166
+// (20 lines apart, the picture has 200).
 uint16_t menuItemY(uint16_t uwCursor);
+
+// ---------------------------------------------------------------------------------------------------------
+// Main menu (owner 2026-10-11, no original): LOCAL / MULTIPLAYER / SETTINGS in front of the title menu, on the same title picture.
+
+enum MainItem : uint16_t { MAIN_LOCAL = 0, MAIN_MULTIPLAYER, MAIN_SETTINGS, MAIN_ITEMS };
+struct MainMenuState {
+	uint16_t uwCursor;
+};
+enum MainAction : uint8_t {
+	MAINACT_IDLE = 0,       // nothing to do, poll again
+	MAINACT_REDRAW,         // the cursor moved
+	MAINACT_LOCAL,          // fire on a row: leave for the title menu / the Multiplayer screen / the Options screen (these three follow MainItem)
+	MAINACT_MULTIPLAYER,
+	MAINACT_SETTINGS
+};
+// One pass of the loop body for a joystick word: up / down move the cursor (wrapping), fire takes the row.
+MainAction mainMenuInput(MainMenuState &s, uint16_t uwJoy);
+// y of the cursor of a row.
+uint16_t mainMenuItemY(uint16_t uwCursor);
+
+struct SceneMainMenu {
+	MainMenuState state;
+	MainAction eResult;     // the row taken once update() returned true
+
+	// Interrupts on, first draw, palette (bFade: after a screen that faded out; from the title menu the title palette stands).
+	void enter(const MenuOps &ops, bool bFade);
+	// One pass of the loop.  Returns true when a row was taken.
+	bool update(const MenuOps &ops);
+	// Fades out unless the title menu follows (same picture); returns true when it did.
+	bool exit(const MenuOps &ops);
+
+private:
+	void draw(const MenuOps &ops);
+};
 
 struct SceneMenu {
 	MenuState state;
-	MenuAction eResult;     // MENU_PRACTICE / MENU_SELECT once update() returned true
+	MenuAction eResult;     // MENU_PRACTICE / MENU_SELECT / MENU_BACK once update() returned true
 
 	// LAB_00B4+12 up to the first poll: interrupts on, hit list cleared, player count normalised, first draw,
-	// palette.  `state` must be filled by the caller.
-	void enter(const MenuOps &ops);
+	// palette (bFade false: no fade-in, coming from the main menu on the same picture).  `state` must be filled by the caller.
+	void enter(const MenuOps &ops, bool bFade = true);
 	// One pass of the LAB_00B5 loop (read the joystick, act).  Returns true when the menu is finished.
 	bool update(const MenuOps &ops);
-	// LAB_00B8 / LAB_00B9: publish the player count (Select Knight only) and fade out.
-	void exit(const MenuOps &ops);
+	// LAB_00B8 / LAB_00B9: publish the player count (Select Knight only) and fade out (not for Back); returns true when it faded.
+	bool exit(const MenuOps &ops);
 
 private:
 	void draw(const MenuOps &ops);    // LAB_00C4
@@ -128,6 +185,8 @@ struct KnightsEnv {
 	// Co-op (ROADMAP 8.2): the active party (g_party): after each name a controller choice for that knight, written to
 	// pParty->aubPad[slot].  nullptr or inactive = the original screen.
 	PartyConfig *pParty = nullptr;
+	// Network game (docs/NETPLAY.md 3.2): pParty->isNet.  Member i sits at node pParty->aubNode[i]; its Control line ("Player N  <pad>") is
+	// steered by that node only (the screen asks the merge through pParty->ubFocus = i) and offers the pads of that node.
 };
 
 enum KnightsPhase : uint8_t {

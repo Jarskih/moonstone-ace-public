@@ -1,6 +1,7 @@
 // engine/synthinst - mog's synth instrument rows (S_45 LAB_10A2) decoded into ms::SynthInstrument (ROADMAP 10.2a; the same
 // rule as tools/gen_synth_tables.py, which wrote them into a compiled-in table before). Pure: host tests compare the two.
 #include "engine/synth_data.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
@@ -25,20 +26,17 @@ constexpr BankRule kBankRules[] = {
 	{130, 131, 2},   // LAB_10AD..LAB_10AE: LAB_05C8
 };
 
-uint16_t be16(const uint8_t *p) { return (uint16_t)(p[0] << 8 | p[1]); }
-uint32_t be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
-
 }  // namespace
 
 void synthDecodeInstruments(const uint8_t *pRaw, SynthInstrument *pOut) {
 	for(unsigned i = 0; i < kSynthInstCount; ++i) {
 		const uint8_t *p = pRaw + i * kSynthInstRow;
 		SynthInstrument &s = pOut[i];
-		s.wLoop = (int16_t)be16(p);
-		s.uwLoopOff = be16(p + 2);
-		s.uwWords = be16(p + 4);
-		s.ulOffset = be32(p + 6);
-		s.uwPitch = (uint16_t)be32(p + 10);
+		s.wLoop = (int16_t)be::ld16(p);
+		s.uwLoopOff = be::ld16(p + 2);
+		s.uwWords = be::ld16(p + 4);
+		s.ulOffset = be::ld32(p + 6);
+		s.uwPitch = (uint16_t)be::ld32(p + 10);
 		uint8_t ubBank = 0;
 		if(i >= 9) {
 			for(const BankRule &r : kBankRules) {

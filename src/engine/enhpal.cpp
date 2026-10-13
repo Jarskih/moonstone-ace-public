@@ -1,11 +1,11 @@
 // engine/enhpal - see include/engine/enhpal.hpp.
 #include "engine/enhpal.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
 namespace {
 
-inline uint32_t be16(const uint8_t *p) { return (static_cast<uint32_t>(p[0]) << 8) | p[1]; }
 
 uint32_t stepGun(uint32_t cur, uint32_t target, uint32_t shift, uint32_t n) {
 	const uint32_t c = (cur >> shift) & 0xFF, t = (target >> shift) & 0xFF;
@@ -52,7 +52,7 @@ bool parseSidecar(const uint8_t *data, uint32_t size, uint32_t out[kEnhColors]) 
 	if(size < 8 || data[0] != 'M' || data[1] != 'S' || data[2] != 'P' || data[3] != 'L' || data[4] != 1) {
 		return false;
 	}
-	const uint32_t count = be16(data + 6);
+	const uint32_t count = be::ld16(data + 6);
 	if(count == 0 || size < 8 + 3 * count) {
 		return false;
 	}

@@ -1,6 +1,8 @@
 // game/placevisit - see placevisit.hpp.  Transcribed from mog.asm LAB_007B (1191) .. LAB_00B3 (1651), LAB_009B / LAB_009C (1429 / 1486) and LAB_0DCA (25038).
 #include "game/placevisit.hpp"
 
+#include "engine/guard.hpp"
+
 #include "game/scene_places.hpp"
 
 namespace ms { namespace game {
@@ -16,6 +18,32 @@ namespace {
 inline PlaceRet pcall(const PlaceOps &ops, PlaceCall e, uint32_t ulD0 = 0, uint32_t ulD1 = 0, uint32_t ulA0 = 0, uint32_t ulA1 = 0) {
 	return ops.pfnCall(ops.pCtx, e, ulD0, ulD1, ulA0, ulA1);
 }
+
+// Co-op (ROADMAP 8.5, owner 2026-10-10): the corner arrows hand the screens to the previous / next party member (no hook: classic).
+inline void turnSwitch(const PlaceOps &ops, int iDir) { if (ops.pfnTurnSwitch) ops.pfnTurnSwitch(ops.pCtx, iDir); }
+
+// Co-op (ROADMAP 8.5a): the town screen says whose turn it is (no hook: classic).
+inline void turnMark(const PlaceOps &ops, PlaceMark eMark, bool bTownA) { if (ops.pfnTurnMark) ops.pfnTurnMark(ops.pCtx, eMark, bTownA); }
+
+// Moonstone 2 (ROADMAP 8.4): the roster of the party's boss fight, open for the length of the scope (a classic game: nothing happens).
+class PartyFightScope {
+public:
+	explicit PartyFightScope(const PlaceOps &o) : m_o(o), m_isParty(o.pfnPartyFightOpen != nullptr && o.pfnPartyFightOpen(o.pCtx)) {}
+	~PartyFightScope() {
+		if(m_isParty) {
+			m_o.pfnPartyFightClose(m_o.pCtx);
+		}
+	}
+	PartyFightScope(const PartyFightScope &) = delete;
+	PartyFightScope &operator=(const PartyFightScope &) = delete;
+	PartyFightScope(PartyFightScope &&) = delete;
+	PartyFightScope &operator=(PartyFightScope &&) = delete;
+	bool isParty() const { return m_isParty; }
+private:
+	const PlaceOps &m_o;
+	bool m_isParty;
+};
+MS_GUARD_PINNED(PartyFightScope);
 
 constexpr uint32_t RESTART = 0xFFFF;     // D0 after SECSTRT_36: the exit value of LAB_0011's DBF loop
 
@@ -44,8 +72,10 @@ void townDraw(bool bA, const PlaceCells &c, const PlaceOps &ops) {
 	pcall(ops, PCALL_CURSOR_ON);                                      // JSR LAB_0575
 	townButtonsBuild(bA ? kTownA : kTownB, c, ops);                   // JSR LAB_009B / LAB_009C
 	pcall(ops, PCALL_BLIT_SCREEN, 0, 0, *c.pulPicture, *c.pulScreen); // MOVEA.L LAB_0704,A0 ; MOVEA.L LAB_05C0,A1 ; JSR LAB_0419
+	turnMark(ops, MARK_NAME, bA);                                     // co-op: the knight's name on the clean picture
 	pcall(ops, PCALL_BLIT_BOTH);                                      // JSR LAB_0418
 	pcall(ops, PCALL_FADE_TO, 0, 0, c.ulPalette);                     // LEA LAB_05B7,A0 ; JSR LAB_03F2
+	turnMark(ops, MARK_BANNER, bA);                                   // co-op: the banner, once per turn
 	pcall(ops, PCALL_KEY_RESET);                                      // JSR LAB_0B82
 }
 
@@ -100,13 +130,24 @@ uint32_t placeTownRun(bool bA, const PlaceCells &c, const PlaceOps &ops) {
 		townDraw(bA, c, ops);                                         // LAB_008B / LAB_0094
 		bool bRedraw = false;
 		while (!bRedraw) {                                            // LAB_008C / LAB_0095
+			if (ops.pfnIdle) ops.pfnIdle(ops.pCtx);                     // the original town loop has no beam wait; network input must still advance
 			const PlaceRet h = pcall(ops, PCALL_HIT_TEST, *c.puwMenuX, *c.puwMenuY);   // MOVEQ #0,D0 / D1 ; MOVE.W ... ; JSR LAB_0451
 			if ((uint16_t)h.ulD0 != 0) {                              // TST.W D0 ; BEQ.S LAB_008D
 				const PlaceRet j = pcall(ops, PCALL_JOYSTICK);        // MOVE.L A0,-(A7) ; JSR LAB_00EE ; MOVEA.L (A7)+,A0
 				if (j.ulD1 & 0x10) {                                  // BTST #4,D1 ; BEQ.S LAB_008D: fire
 					const TownButton eButton = townButton(ops.pfnButtonId(ops.pCtx, h.ulA0));   // JSR rt_places_town_btn
+					if (eButton == TB_PREV || eButton == TB_NEXT) {           // co-op: another knight takes over, the screen is built again
+						pcall(ops, PCALL_FADE_OUT);
+						pcall(ops, PCALL_CURSOR_OFF);
+						turnSwitch(ops, eButton == TB_NEXT ? 1 : -1);
+						bRedraw = true;
+						continue;
+					}
 					if (eButton != TB_NONE) {
-						if (townAction(bA, eButton, ops) == TA_EXIT) return exitSpent(c, ops);   // LAB_0092: BRA.W LAB_00B2
+						turnMark(ops, MARK_LEAVE, bA);                    // co-op: the corner arrows are off while a shop / the exit runs
+						if (townAction(bA, eButton, ops) == TA_EXIT) {
+							return exitSpent(c, ops);                 // LAB_0092: BRA.W LAB_00B2
+						}
 						bRedraw = true;
 						continue;
 					}
@@ -184,8 +225,9 @@ void placeVisitBegin(const PlaceCells &c, const PlaceOps &ops) {
 
 // LAB_00B0: a castle visit gives a life.
 uint32_t placeVillage(const PlaceCells &c, const PlaceOps &ops) {
-	ops.pfnCastle(ops.pCtx);
-	return exitTemple(c, ops);
+	ops.pfnCastle(ops.pCtx);                                          // co-op: every living member gets its blessing (rt pvCastle)
+	pcall(ops, PCALL_SCREEN, 9);                                      // LAB_00B1: the temple sheet (co-op: the arrows switch the knight)
+	return exitSpent(c, ops);
 }
 
 // LAB_00A1
@@ -222,12 +264,20 @@ uint32_t placeValley(const PlaceCells &c, const PlaceOps &ops) {
 		return exitSetup(ops);                                        // BRA.W LAB_00B3 (the turn is kept)
 	}
 	pcall(ops, PCALL_SETUP_TURN);                                     // LAB_009E
-	pcall(ops, PCALL_GUARDIAN_SETUP);                                 // JSR LAB_01A0
-	pcall(ops, PCALL_FIGHT_RUN);                                      // JSR LAB_0036
+	bool bParty;
+	bool bLost;
+	{
+		PartyFightScope party(ops);                                   // co-op: the whole party fights the guardian
+		pcall(ops, PCALL_GUARDIAN_SETUP);                             // JSR LAB_01A0
+		pcall(ops, PCALL_FIGHT_RUN);                                  // JSR LAB_0036
+		bParty = party.isParty();
+		bLost = bParty ? ops.pfnPartyValleySettle(ops.pCtx)           // every fallen knight paid; lost = the whole party is down
+		               : (*c.pubDefeat & 1) != 0;                     // BTST #0,LAB_05DC: the knight lost
+	}
 	*c.pulLocked = 0;                                                 // CLR.L LAB_0662
-	if (*c.pubDefeat & 1) {                                           // BTST #0,LAB_05DC: the knight lost
+	if (bLost) {
 		pcall(ops, PCALL_SETUP_TURN);
-		ops.pfnValleyDefeat(ops.pCtx);                                // the life and the stat
+		if (!bParty) ops.pfnValleyDefeat(ops.pCtx);                   // the life and the stat
 		return exitTemple(c, ops);                                    // BRA.W LAB_00B1
 	}
 	ops.pfnValleyVictory(ops.pCtx);                                   // LAB_00A0: +3 progress, the keys are taken

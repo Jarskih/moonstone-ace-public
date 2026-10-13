@@ -36,8 +36,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import flow_lib  # noqa: E402
 
 SRCS = ('src/game/overworld.cpp', 'src/game/rules/ai_map.cpp', 'src/game/rules/stats.cpp', 'src/game/rules/rituals.cpp', 'src/game/rules/dice.cpp', 'src/game/rules/shops.cpp', 'src/game/rules/healing.cpp', 'src/game/rules/levelling.cpp', 'src/game/rules/settle.cpp', 'src/game/rules/clock.cpp', 'src/game/rules/turns.cpp', 'src/game/mogjobs.cpp', 'src/game/mainloop.cpp', 'src/engine/util.cpp',
-        'src/rt/overworld.cpp', 'src/rt/mainloop.cpp', 'tests/mainloop_emu_support.cpp', 'src/rt/scene_places.cpp', 'src/game/scene_places.cpp',
-        'src/rt/scene_town.cpp', 'src/game/scene_town.cpp', 'src/rt/game_rules.cpp', 'src/game/placevisit.cpp') + flow_lib.flow_rel_sources()   # the scene manager the rt glue runs (ROADMAP 9.2a)
+        'src/rt/overworld.cpp', 'src/rt/party.cpp', 'src/rt/mainloop.cpp', 'tests/mainloop_emu_support.cpp', 'src/rt/scene_places.cpp', 'src/rt/amiga/scene_places_entries.cpp', 'src/game/scene_places.cpp',
+        'src/rt/scene_town.cpp', 'src/rt/party_loot.cpp', 'src/game/party_loot.cpp', 'src/game/loot.cpp', 'src/game/scene_town.cpp', 'src/rt/game_rules.cpp', 'src/rt/amiga/game_rules_entries.cpp', 'src/game/placevisit.cpp', 'src/game/net_drop.cpp', 'src/game/ending_knight.cpp', 'src/game/local_knight.cpp', 'src/engine/netplay.cpp', 'src/game/party.cpp', 'src/engine/pad.cpp', 'src/rt/combat_pool.cpp', 'src/rt/amiga/mainloop_entries.cpp') + flow_lib.flow_rel_sources()   # the scene manager the rt glue runs (ROADMAP 9.2a)
 SYM = TM.SYM
 TEXT_PAGE = (0x7F000, 0x1000)
 LOG_CELL, LOG_BASE = 0x180000, 0x180100
@@ -47,7 +47,7 @@ HIT_TAB, JOY_TAB, KEY_TAB = 0x181000, 0x181400, 0x181800        # the scripts
 BUTTONS = 0x182000                                              # 8 button records of 24 bytes
 PIC_SZ = 0x19F400
 LAIRS, CELS = 0x141000, 0x142000
-STUBS = TE.BLOB_BASE + 0xC000
+STUBS = TE.BLOB_BASE + 0x12000   # the blob and its BSS must stay below (ROADMAP 8.3a: the co-op rules made it pass 0xC000; the net / party code 0x10000)
 # the rt entries the C++ calls directly (the fights, the carve): the label whose stub they get (None: never called here), behind the symbol
 ALIAS = {'rt_fight_run': 'LAB_0036', 'rt_fight_meet': 'LAB_004F', 'rt_fight_creature': None, 'rt_fight_dragon': None, 'rt_mog_carve': None}
 STUB_SIZE = 0x60
@@ -55,7 +55,7 @@ STUB_SIZE = 0x60
 ALIAS.update({'rt_mog_display_init': 'SECSTRT_34', 'rt_mog_palette_hook_add': 'LAB_0E53', 'rt_mog_job_boot': 'LAB_0303',
               'rt_palette_cycle_add_mog': 'LAB_0E56', 'rt_palette_slot_free': 'LAB_0E59', 'rt_scr_mystic': 'LAB_047C',
               'rt_scr_dice': 'LAB_04A6', 'rt_scr_healer': 'LAB_048E', 'rt_scr_ritual': 'LAB_04BF', 'rt_scr_ritual_done': 'LAB_04C4',
-              'rt_screen_redraw': 'LAB_04D4'})
+              'rtScreenRedraw': 'LAB_04D4'})
 
 HAVE = TE.HAVE_UC and TE.HAVE_TOOLS and TM.HAVE_INPUTS and os.path.exists(TM.MOG_ASM)
 
@@ -69,7 +69,7 @@ def build_blob():
     tmp = tempfile.mkdtemp(prefix='places_emu_')
     env = dict(os.environ, PATH=os.path.dirname(TE.GXX) + os.pathsep + os.environ.get('PATH', ''))
     flags = ['-m68020', '-msoft-float', '-fomit-frame-pointer', '-nostdlib', '-fno-exceptions', '-fno-rtti',
-             '-fno-threadsafe-statics', '-std=c++17', '-O1', '-DNDEBUG', '-DAMIGA', '-DMS_LINK_GAME_ASM=1', '-DMS_TEST_ENTRIES',
+             '-fno-threadsafe-statics', '-std=c++17', '-O1', '-DNDEBUG', '-DAMIGA', '-DBARTMAN_GCC', '-DMS_LINK_GAME_ASM=1', '-DMS_TEST_ENTRIES',
              '-ffunction-sections', '-I', os.path.join(ROOT, 'include'), '-I', os.path.join(ROOT, 'src'),
              '-I', os.path.join(TE.ACE, 'mini_std'), '-I', TE.ACE, '-I', TE.GCC_SUPPORT]
     objs = []
@@ -105,6 +105,8 @@ def build_blob():
             cmd.append('--defsym=%s=%d' % (s, STUBS + 0x2000 + STUB_SIZE * list(ALIAS).index(s)))
         elif s == 'rt_run_program':
             cmd.append('--defsym=rt_run_program=%d' % (STUBS + 0x3000))     # replaced by a logging stub in the tests
+        elif s == '_ZN2rt23netSessionQuestCompleteEv':   # ROADMAP 12.19: pvRunProgram's network hook just before rt_run_program: a bare `rts` (no network game here)
+            cmd.append('--defsym=%s=%d' % (s, STUBS + 0x3100))
         elif s in TM.RT_LABELS:
             cmd.append('--defsym=%s=%d' % (s, SYM[TM.RT_LABELS[s]]))
         else:
@@ -124,6 +126,7 @@ def build_blob():
     with open(binf, 'rb') as fh:
         blob = fh.read()
     assert len(blob) < STUBS - TE.BLOB_BASE, len(blob)
+    assert syms.get('_end', 0) <= STUBS, hex(syms.get('_end', 0))   # the BSS too
     _BLOB = (blob, syms)
     return _BLOB
 
@@ -195,7 +198,7 @@ class PlacesEmuTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.blob, cls.syms = build_blob()
-        regions = [(TE.BLOB_BASE, TE.BLOB_SIZE), (TE.LOW_BASE, TE.LOW_SIZE), TEXT_PAGE, (TE.DATA_BASE, TE.DATA_SIZE)]
+        regions = [(TE.BLOB_BASE, 2 * TE.BLOB_SIZE), (TE.LOW_BASE, TE.LOW_SIZE), TEXT_PAGE, (TE.DATA_BASE, TE.DATA_SIZE)]
         saved = H.CPU_MODEL
         H.CPU_MODEL = UM.UC_CPU_M68K_M68020
         try:
@@ -229,7 +232,8 @@ class PlacesEmuTest(unittest.TestCase):
             assert len(code) <= STUB_SIZE, (lab, len(code))
             patches += [(at, code), (SYM[lab], struct.pack('>HI', 0x4EF9, at))]
             k += 1
-        stubs_blob = [(STUBS + 0x3000, stub_log(0x8005, b'', True))]               # rt_run_program (the blob's call)
+        stubs_blob = [(STUBS + 0x3000, stub_log(0x8005, b'', True)),               # rt_run_program (the blob's call)
+                      (STUBS + 0x3100, struct.pack('>H', 0x4E75))]                  # rt::netSessionQuestComplete: rts
         for k, (sym, lab) in enumerate(ALIAS.items()):
             i, extra, abort = LEAVES[lab] if lab in LEAVES else (0x7FFF, b'', False)
             stubs_blob.append((STUBS + 0x2000 + STUB_SIZE * k, stub_log(i, extra, abort)))
@@ -325,7 +329,7 @@ class PlacesEmuTest(unittest.TestCase):
         """The hit test / joystick / key scripts: random presses, ending with the exit button so a town visit always leaves."""
         hits, joys, keys = [], [], []
         for k in range(n):
-            hits.append(struct.pack('>HI', rng.choice((0, 1, 1, 1)), BUTTONS + 24 * rng.randrange(8)))
+            hits.append(struct.pack('>HI', rng.choice((0, 1, 1, 1)), BUTTONS + 24 * rng.randrange(6)))   # ids 0..5: the original's records (LAB_009B builds 1..5, 0 = no button); 6 / 7 are the co-op corner arrows (rt::turnArrowHit, party_turn.cpp), which a classic game never hands out
             joys.append(struct.pack('>H', rng.choice((0, 0x10, 0x10, 0x11, 0x01))))
             keys.append(struct.pack('>I', rng.choice((0x20, 0x20, 0x31, 0x00200020, 0, 0x45))))
         hits.append(struct.pack('>HI', 1, BUTTONS + 24 * 5))                # the exit button (id 5) ...

@@ -4,11 +4,11 @@
 // (ms::animSpawn, used by the scene engine's host) and the credit overlay rtAnimOverlay (ms::animOverlay). The scene sequences,
 // the spawn helpers LAB_0015/LAB_0016 and the overlay LAB_003C have no asm callers any more (src/engine/scenes.cpp runs the
 // scenes), so their patches are gone.
-// This file names game symbols (prg_*), so it is built only with the game asm linked (CMake exclude list).
 //
-// Script opcode $B4 with selector 0 calls a routine by the address stored in the script. LAB_0032 / LAB_003F / LAB_0040 run as
-// C++ (rtSceneScriptCall, src/rt/engine_scenes.cpp); any other address would still be called as asm through
-// rt_anim_call_direct (none exists in the shipped scripts).
+// Script opcode $B4 calls a routine by the address stored in the script (selector 0) or in the call table (selector > 0).
+// LAB_0032 / LAB_003F / LAB_0040 run as C++ (rtSceneScriptCall, src/rt/engine_scenes.cpp).  Any other address is the address of a C++
+// function of the typed signatures below (ROADMAP 11.1d; it used to be called as asm with a register contract through
+// rt_anim_call_table / rt_anim_call_direct, whose bodies are not linked since 7.1r: none exists in the shipped scripts).
 // Differences kept deliberately: scene job spawns pass id = 0 (the original left A1 as it happened to be; the shipped scripts
 // only hand the id to LAB_003F, which ignores it).
 
@@ -16,6 +16,7 @@
 
 #include "engine/anim.hpp"
 #include "rt/prgops.hpp"
+#include "rt/prim.hpp"
 
 extern "C" {
 extern ms::Job prgJobPool[];  // LAB_0282
@@ -27,29 +28,29 @@ extern uint32_t prgRectList, prgDrawListANext, prgDrawListBNext, prgFrameSets[],
 	prgFrame, prgFrames[], prgCreditCels;  // LAB_0379, LAB_0276 (LAB_0121)
 extern UWORD prgSpawnId, prgSpawnPair, prgOverlayPhase;  // LAB_00EF, LAB_00F0, LAB_003E
 
-// asm trampolines below
-void rt_anim_prep(ULONG ulTab, ULONG ulFrame);
-void rt_anim_draw(ULONG ulTab, ULONG ulFrame, ULONG ulX, ULONG ulY);
-void rt_anim_call_table(ULONG ulFn, ULONG ulJob, ULONG ulScript, ULONG ulD0);
-void rt_anim_call_direct(ULONG ulFn, ULONG ulX, ULONG ulY, ULONG ulZ, ULONG ulFlags, ULONG ulFrames, ULONG ulId);
-
 bool rtSceneScriptCall(ULONG ulFn);
 }
 
 namespace {
 
-void cbPrep(uint32_t ulTab, uint16_t uwFrame) { rt_anim_prep(ulTab, uwFrame); }
+// What a script's call operand can name besides the three routines of rtSceneScriptCall (typed function pointers instead of 68k routines).
+typedef void (*ScriptTableFn)(ms::Job *pJob, uint32_t ulScript, uint16_t uwD0);
+typedef void (*ScriptDirectFn)(uint16_t uwX, uint16_t uwY, uint16_t uwZ, uint8_t ubFlags, uint32_t ulFrames, uint32_t ulId);
+
+void cbPrep(uint32_t ulTab, uint16_t uwFrame) { rtCelMirror_prg(uwFrame, reinterpret_cast<uint8_t *>(ulTab)); }   // LAB_04A8: A0 = cel table, D0 = frame
 void cbSetTarget(uint32_t ulBuf) { rtPrgTarget(ulBuf); }  // LAB_026C
-void cbDraw(uint32_t ulTab, uint16_t uwFrame, uint16_t uwX, uint16_t uwY) { rt_anim_draw(ulTab, uwFrame, uwX, uwY); }
+void cbDraw(uint32_t ulTab, uint16_t uwFrame, uint16_t uwX, uint16_t uwY) {                         // LAB_04B4: D0 = frame, D1 = x, D2 = y, A0 = cel table
+	rtDrawCel_prg(uwFrame, uwX, uwY, reinterpret_cast<const uint8_t *>(ulTab));
+}
 void cbCallTable(uint32_t ulFn, ms::Job *pJob, uint32_t ulScript, uint16_t uwD0) {
-	rt_anim_call_table(ulFn, (ULONG)pJob, ulScript, uwD0);
+	reinterpret_cast<ScriptTableFn>(ulFn)(pJob, ulScript, uwD0);
 }
 void cbCallDirect(uint32_t ulFn, uint16_t uwX, uint16_t uwY, uint16_t uwZ, uint8_t ubFlags, uint32_t ulFrames,
 	uint32_t ulId) {
 	if(rtSceneScriptCall(ulFn)) {
 		return;
 	}
-	rt_anim_call_direct(ulFn, uwX, uwY, uwZ, ubFlags, ulFrames, ulId);
+	reinterpret_cast<ScriptDirectFn>(ulFn)(uwX, uwY, uwZ, ubFlags, ulFrames, ulId);
 }
 
 // Constant-initialised (addresses only), so no global constructor is needed.
@@ -83,52 +84,3 @@ extern "C" __attribute__((used, externally_visible)) ULONG rtAnimSpawn(ULONG ulK
 extern "C" __attribute__((used, externally_visible)) void rtAnimOverlay(void) {
 	ms::animOverlay(g_env, prgCreditCels, prgOverlayPhase);
 }
-
-asm(R"(
-	.text
-	.globl rt_anim_prep
-rt_anim_prep:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a0
-	move.l 52(%sp),%d0
-	jsr rt_prg_cel_mirror
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rt_anim_draw
-rt_anim_draw:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a0
-	move.l 52(%sp),%d0
-	move.l 56(%sp),%d1
-	move.l 60(%sp),%d2
-	jsr rt_prg_draw_cel
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rt_anim_call_table
-rt_anim_call_table:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a0
-	move.l 52(%sp),%a1
-	move.l 56(%sp),%a6
-	move.l 60(%sp),%d0
-	jsr (%a0)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rt_anim_call_direct
-rt_anim_call_direct:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a0
-	move.l 52(%sp),%d0
-	move.l 56(%sp),%d1
-	move.l 60(%sp),%d2
-	move.l 64(%sp),%d3
-	move.l 68(%sp),%a2
-	move.l 72(%sp),%a1
-	jsr (%a0)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-)");
-

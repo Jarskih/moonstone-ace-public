@@ -1,0 +1,106 @@
+# Moonstone 2 co-op in town and on the loot screen (ROADMAP 8.5; play_coop_map is the map run this builds on).  `poke party 2`, Players = 2
+# and two knights, as there.  The party (knight 1 on joystick 1, knight 2 on joystick 2) visits town A: the shop queue gives each knight its
+# own turn on the town screen with its OWN pad - owner 2026-10-10: the leader starts, a click on the corner's ">" arrow makes the second
+# knight active (its banner, token and name), and only joy0 moves its cursor then (a joy1 press must do nothing: shotdiff); one Exit ends
+# the visit for the whole party and spends the turn once.
+# The visit spends the party's turn, the round ends ("Next Day", fire) and knight 2 is the leader (joystick 2 = port 0): a lair fight (ratmen;
+# the leader fights, ROADMAP 8.4b brings the second fighter) and the creature loot screen: the gold pile is clicked once and BOTH knights
+# get the full pile (owner 2026-10-06: loot is not split); the dumps log every knight's gold, and `cur=` whose screens these are.
+# Gold before: knight 1 = 50, knight 2 = 120.  Keep the poked stats small (the 100-record click pool, docs/AUTOPLAY.md).
+# shotcmp-tol play-coop-town-map 3
+# shotcmp-tol play-coop-town-k1-banner 5
+# shotcmp-tol play-coop-town-k1 5
+# shotcmp-tol play-coop-town-k2-banner 5
+# shotcmp-tol play-coop-town-k2 5
+# shotcmp-tol play-coop-town-k2-joy1 5
+# shotcmp-tol play-coop-town-k2-joy0 5
+# shotcmp-tol play-coop-town-back 5
+# shotcmp-tol play-coop-town-arena 15
+# shotcmp-tol play-coop-town-loot 5
+# shotcmp-tol play-coop-town-loot-gold 5
+# shotcmp-tol play-coop-town-end 5
+# shotdiff play-coop-town-k2 play-coop-town-k2-joy0 0.05
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 20 joy1 fire pulse
+frame 40 poke party 2
+frame 80 joy1 right pulse
+frame 120 shot play-coop-town-players
+frame 130 joy1 down pulse
+frame 160 joy1 down pulse
+frame 190 joy1 down pulse
+frame 240 joy1 fire pulse
+frame 690 joy1 fire pulse
+frame 990 joy1 fire pulse
+frame 1060 joy1 fire pulse
+frame 1390 joy1 right pulse
+frame 1440 joy1 fire pulse
+frame 1790 joy1 fire pulse
+frame 1860 joy1 fire pulse
+frame 2390 shot play-coop-town-map
+frame 2400 poke who 0
+frame 2400 poke gold 50
+frame 2401 poke who 1
+frame 2402 poke gold 120
+frame 2403 poke who 0
+frame 2413 poke dump 1
+# the town first: knight 1 (joystick 1) visits town A and leaves by Exit, then it is knight 2's turn (joystick 2)
+frame 2423 poke warp_node 4
+frame 2493 joy1 fire pulse 8
+wait file HighWood.piv max 3000
+wait input 10 gap 6 max 1500
+# ROADMAP 8.5a: the banner "SIR <NAME>'S TURN" stands over the picture until the first input (or 1.5 s), then the name stays on the menu
+frame 60 shot play-coop-town-k1-banner
+frame 320 shot play-coop-town-k1
+frame 330 poke dump 1
+# owner 2026-10-10: the arrows in the corner switch the knight: a click on ">" (the right arrow) makes knight 2 the active one
+frame 340 poke cursorx 121
+frame 340 poke cursory 12
+frame 365 joy1 fire pulse 8
+frame 475 shot play-coop-town-k2-banner
+frame 665 shot play-coop-town-k2
+frame 675 poke dump 1
+# a press on joystick 1 must not move knight 2's cursor
+frame 685 joy1 down
+frame 705 joy1 none
+frame 735 shot play-coop-town-k2-joy1
+frame 745 joy1 none
+# its own pad does: 43 frames down = Exit
+frame 755 joy0 down
+frame 775 joy0 none
+frame 805 shot play-coop-town-k2-joy0
+frame 815 joy0 down
+frame 838 joy0 none
+frame 868 joy0 fire pulse 8
+frame 1168 shot play-coop-town-back
+wait var turn 0 max 20000
+frame 100 joy1 fire pulse 8
+frame 400 poke dump 1
+# the lair: knight 2 is the leader now (pad joystick 2): it fights, then the loot screen
+frame 410 poke who 1
+frame 411 poke warp_lair 0
+frame 412 poke strength 9
+frame 414 poke constitution 30
+frame 417 poke endurance 9
+frame 421 poke hpmax 310
+frame 426 poke hp 310
+frame 456 joy0 fire pulse 8
+frame 1256 shot play-coop-town-arena
+frame 1266 mash joy0 10
+wait var scene 2 max 25000
+frame 0 mash joy0 off
+frame 1 joy0 none
+frame 151 shot play-coop-town-loot
+frame 161 poke dump 1
+frame 171 poke cursorx 248
+frame 171 poke cursory 76
+frame 196 joy0 fire pulse 12
+frame 296 shot play-coop-town-loot-gold
+frame 306 poke dump 1
+frame 316 poke cursorx 308
+frame 316 poke cursory 140
+frame 341 joy0 fire pulse 8
+frame 1041 shot play-coop-town-end
+frame 1051 poke dump 1
+frame 1151 quit

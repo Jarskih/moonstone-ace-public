@@ -25,6 +25,8 @@
 #include "game/creatures.hpp"
 #include "game/state_bind.hpp"
 #include "rt/abs.h"
+#include "rt/combat_pool.hpp"
+#include "rt/fight_roster.hpp"
 #include "rt/perf.hpp"
 
 extern "C" {
@@ -34,8 +36,6 @@ extern uint16_t mogDaggerSteps, mogDaggerArc, mogDaggerAimDist;  // LAB_02DA (LA
 extern uint32_t mogFightTarget;                  // Knight* the target (first long of DS.L 5) (LAB_0634)
 extern uint32_t mogHitPairs;                  // end of the registered hit-set pairs (LAB_0A4E)
 extern uint8_t mogHitPairTable[];                 // the pairs: {cel table, hit set}, 8 bytes each (LAB_0A51)
-extern uint8_t mogAttackLists[ms::game::HIT_LIST_BYTES];  // LAB_064F
-extern uint8_t mogHurtLists[ms::game::HIT_LIST_BYTES];  // LAB_0650
 extern uint32_t mogHandlerTable[];                // the per-type AI handler table (longs, indexed by the unscaled type byte) (LAB_08C7)
 extern const uint8_t mogDaggerDamage[];           // the dagger damage table (nine longs of 3) (LAB_0302)
 extern const uint8_t mogDaggerScript[];           // the dagger script (LAB_07EB)
@@ -51,7 +51,7 @@ namespace {
 using namespace ms;
 using namespace ms::game;
 
-inline CombatJob *jobs() { return reinterpret_cast<CombatJob *>(mogJobs); }  // LAB_0649
+inline CombatJob *jobs() { return rt::combatPool().pJobs; }  // LAB_0649 (Moonstone 2: the co-op pool in a party fight)
 inline Knight *creatures() { return jobPtr<Knight>(mogCreatureHeap); }  // LAB_05C3
 
 // The handler of a job's type: the ported ones (fighters.hpp) run in C++, every other table entry is still the asm.
@@ -76,8 +76,9 @@ __attribute__((used, externally_visible)) void rtContactScan(void) {
 	env.pDragon = &mogKnights[4];  // LAB_0613
 	env.pKnights = mogKnights;
 	env.pCreatures = creatures();
-	env.pAttackLists = mogAttackLists;
-	env.pHurtLists = mogHurtLists;
+	env.pAttackLists = rt::combatPool().pAttackLists;
+	env.pHurtLists = rt::combatPool().pHurtLists;
+	env.pRoster = &rt::fightRoster();                  // Moonstone 2 (ROADMAP 8.4b): no friendly fire in a party fight
 	contactScan(env);
 }
 

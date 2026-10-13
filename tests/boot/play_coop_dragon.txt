@@ -1,0 +1,86 @@
+# Moonstone 2 co-op: the DRAGON fought by two knights (ROADMAP 8.4, emulator pass pending).  Start as play_coop_fight; the black-knight
+# group is parked (frog on the AI knight records 2, 3), the day is poked to 2 so the dragon spawns on the next map start, `poke dragon_hit 1` puts it
+# on the party and the next map frame starts the fight.  Expected: BOTH knights in the arena with the dragon and the two bats
+# (fightdump: roster 2, the dragon's and bats' sticky target slots may differ), the dragon follows the nearer knight (walk the two
+# apart: joy1 up, joy0 down).  Both knights are poked strong; knight 2 gets hp 30 so it can fall: a fallen knight loses a life (dump
+# lives 4) and the party still wins; the loot screen follows (`wait var dragonlives` negative = slain, scene 10).  The dump after the fight
+# gives each knight's lives / hp.  Look for "knight colours: knight 2 uses palette entries" in the log (the dragon picture may leave
+# only two free entries: then "share a colour", see MOONSTONE2 6.3) and the low-hp pulse of knight 2 (its own colour).
+# shotcmp-tol play-cdragon-arena 20
+# shotcmp-tol play-cdragon-apart 30
+# shotcmp-tol play-cdragon-mash 100
+# shotcmp-tol play-cdragon-end 100
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 20 joy1 fire pulse
+frame 140 poke party 2
+frame 180 joy1 right pulse
+frame 220 shot play-coop-fight-players
+frame 230 joy1 down pulse
+frame 260 joy1 down pulse
+frame 290 joy1 down pulse
+frame 340 joy1 fire pulse
+frame 790 joy1 fire pulse
+frame 1090 joy1 fire pulse
+frame 1160 joy1 fire pulse
+frame 1490 joy1 right pulse
+frame 1540 joy1 fire pulse
+frame 1890 joy1 fire pulse
+frame 1960 joy1 fire pulse
+frame 2490 poke who 0
+frame 2491 poke strength 9
+frame 2493 poke constitution 30
+frame 2496 poke endurance 9
+frame 2500 poke hpmax 310
+frame 2505 poke hp 310
+frame 2511 poke who 1
+frame 2518 poke strength 9
+frame 2526 poke constitution 30
+frame 2535 poke endurance 9
+frame 2545 poke hpmax 310
+frame 2556 poke hp 310
+frame 2568 poke who 1
+frame 2581 poke hpmax 30
+frame 2595 poke hp 30
+frame 2610 poke who 2
+frame 2626 poke frog 100
+frame 2643 poke who 3
+frame 2661 poke frog 100
+frame 2680 poke who 0
+frame 2700 poke day 2
+frame 2730 key SPACE tap
+frame 3030 shot play-cdragon-status
+frame 3040 poke cursorx 236
+frame 3040 poke cursory 150
+frame 3065 joy1 fire pulse 8
+# the second party member's status sheet (its own pad: joystick 2 = joy0)
+frame 3350 poke cursorx 236
+frame 3350 poke cursory 150
+frame 3380 joy0 fire pulse 8
+frame 3680 key SPACE tap
+frame 3690 key SPACE tap
+wait var dragon 1 max 1500
+frame 200 poke dump 1
+frame 210 poke dragon_hit 1
+frame 1010 poke fightdump 1
+frame 1020 shot play-cdragon-arena
+frame 1030 joy1 up
+frame 1070 joy1 none
+frame 1075 joy0 down
+frame 1115 joy0 none
+frame 1145 poke fightdump 1
+frame 1155 shot play-cdragon-apart
+frame 1165 mash joy1 10
+frame 1165 mash joy0 13
+frame 1465 shot play-cdragon-mash
+frame 1475 poke fightdump 1
+wait var dragonlives 255 max 14000
+frame 0 mash joy1 off
+frame 0 mash joy0 off
+frame 1 joy1 none
+frame 2 joy0 none
+frame 202 shot play-cdragon-end
+frame 212 poke dump 1
+frame 222 poke fightdump 1
+frame 322 quit

@@ -110,7 +110,7 @@ struct Knight {
 	uint8_t  ubRecency;        // +83  wizard-visit recency: -10 per day clamped at 0 (LAB_002B); $FF = AI sentinel (LAB_0030); LAB_045D writes $46
 	int16_t  swHpMax;          // +84  LAB_0013 stores the recomputed maximum; daily regen heals (max-hp)/4|1 (LAB_002D)
 	uint8_t  ubDerivedEnd;     // +86  LAB_0019; the turn budget is this << 4 (LAB_0DBE)
-	uint8_t  ubSpare87;          // +87  unused
+	uint8_t  ubDexterity;       // +87 optional mod stat, 1..5; shortens melee recovery
 	uint32_t ulSword;          // +88  $16 long, $17 broad, $18 claymore, $19 sharpness; init $16; damage bonus +0/+2/+3/+5 in LAB_021B
 	uint32_t ulArmour;         // +92  $1B padded, $1C mail, $1D plate, $1E battle; init $1B; max-HP bonus +0/+10/+20/+30 in LAB_0013
 	uint32_t ulInventory;      // +96  pointer to this record's Inventory (LAB_01C4: LAB_0618 + 24*i; dragon: LAB_0619).  DOC 10.18 calls this "linked_knight": wrong
@@ -129,7 +129,10 @@ struct Knight {
 	uint16_t uwMapX;           // +126 overworld position X: compared with the node table LAB_069F (LAB_0069), +1 per step (LAB_0DA6); DOC 10.18 "spawn_x8"
 	uint16_t uwMapY;           // +128 overworld position Y; DOC 10.18 "spawn_y8"
 	uint8_t  ubLifeLoss;       // +130 non-zero makes LAB_0030 subtract one life; LAB_01EF sets 1; LAB_01C6 clears it
-	uint8_t  ubSpare131;         // +131 unused
+	union {                    // +131 type-specific combat metadata; daggers never select targets
+		uint8_t ubTeam;          // thrown dagger's FightTeam
+		uint8_t ubTargetSlot;    // creature/foe knight's sticky party target + 1 (0 = none)
+	};
 };
 static_assert(sizeof(Knight) == 132, "Knight is $84 bytes (LAB_0613 DS.L 33)");
 static_assert(offsetof(Knight, ulActive) == 0, "");
@@ -169,7 +172,8 @@ static_assert(offsetof(Knight, ubFrogDays) == 82, "");
 static_assert(offsetof(Knight, ubRecency) == 83, "");
 static_assert(offsetof(Knight, swHpMax) == 84, "");
 static_assert(offsetof(Knight, ubDerivedEnd) == 86, "");
-static_assert(offsetof(Knight, ubSpare87) == 87, "");
+static_assert(offsetof(Knight, ubDexterity) == 87, "");
+static_assert(offsetof(Knight, ubTargetSlot) == 131, "");
 static_assert(offsetof(Knight, ulSword) == 88, "");
 static_assert(offsetof(Knight, ulArmour) == 92, "");
 static_assert(offsetof(Knight, ulInventory) == 96, "");
@@ -188,7 +192,7 @@ static_assert(offsetof(Knight, uwHitY) == 124, "");
 static_assert(offsetof(Knight, uwMapX) == 126, "");
 static_assert(offsetof(Knight, uwMapY) == 128, "");
 static_assert(offsetof(Knight, ubLifeLoss) == 130, "");
-static_assert(offsetof(Knight, ubSpare131) == 131, "");
+static_assert(offsetof(Knight, ubTeam) == 131, "");
 
 // The dragon is record 4 of the same array; the alias only documents intent at call sites.
 typedef Knight Dragon;

@@ -4,6 +4,7 @@
 
 #include "game/api/clock.hpp"
 #include "game/api/party.hpp"
+#include "game/rules/party.hpp"
 #include "game/rules/stats.hpp"
 
 namespace ms { namespace game {
@@ -127,6 +128,10 @@ bool aiFeelsLikeFighting(uint32_t &ulSeed, const GameData &d) {
 
 // LAB_0DED .. LAB_0DFC (mog.asm 25255)
 void aiPickOpponent(const RecordSet &rs, int iCur, uint16_t uwRoamHidden, AiScratch &s, uint32_t &ulSeed, const GameData &d) {
+	if (rs.coop()) {                                                  // Moonstone 2: the BK group picks the party token (ROADMAP 8.3a)
+		partyAiPickOpponent(rs, iCur, uwRoamHidden, s, ulSeed, d);
+		return;
+	}
 	Knight &cur = rs.aRec[iCur];
 	sortNeighboursByDistance(rs, iCur, s);
 	if (knightEngagedWith(cur) != 0) return;                          // TST.L 100(A1) ; BEQ.S LAB_0DF4 ; RTS
@@ -141,6 +146,39 @@ void aiPickOpponent(const RecordSet &rs, int iCur, uint16_t uwRoamHidden, AiScra
 			return;
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Moonstone 2 co-op on the map (ROADMAP 8.3a / 8.3; include/game/rules/party.hpp).  Not reached in the classic game.
+
+void partyAiPickOpponent(const RecordSet &rs, int iCur, uint16_t uwRoamHidden, AiScratch &s, uint32_t &ulSeed, const GameData &d) {
+	Knight &cur = rs.rec(iCur);
+	const int iTok = partyLeader(rs);
+	const Knight &tok = rs.rec(iTok);
+	for (int i = 0; i < 4; ++i) {
+		s.aulDist[i] = 0;
+		s.aulPtr[i] = 0;
+	}
+	s.aulPtr[0] = rs.addr(iTok);                                      // one row: the party token
+	s.aulDist[0] = (uint32_t)mapDistance(tok.uwMapX, tok.uwMapY, cur.uwMapX, cur.uwMapY);
+	if (knightEngagedWith(cur) != 0) return;
+	if (partySameGroup(rs, iCur, iTok)) return;                       // a party member never picks its own party
+	if (!((int8_t)tok.ubLives > 0)) return;
+	if (uwRoamHidden != 0 || aiFeelsLikeFighting(ulSeed, d)) knightEngage(cur, rs.addr(iTok));
+}
+
+void partyStart(const RecordSet &rs, PartyMap &pm, uint8_t ubSize) {
+	if (ubSize < 1) ubSize = 1;
+	if (ubSize > 4) ubSize = 4;
+	pm.ubActive = 1;
+	pm.ubSize = ubSize;
+	pm.ubBk = ubSize;                                                 // fight extras: as many black knights fight as the party has knights (decision 4)
+	pm.ubLeader = 0;                                                  // the first player leads the first round
+	for (int i = 0; i < 4; ++i) {
+		Knight &k = rs.aRec[i];
+		if (i < ubSize) k.ubInputPort = partyPortOf(i);               // the other slots stay the original's AI black knights (2026-10-09)
+	}
+	partySyncMap(rs, 0);                                              // the party starts at the first player's home
 }
 
 // LAB_0E23 (mog.asm 25598)

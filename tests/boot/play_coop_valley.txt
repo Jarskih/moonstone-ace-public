@@ -1,0 +1,76 @@
+# Moonstone 2 co-op: the VALLEY GUARDIAN fought by two knights (ROADMAP 8.4, emulator pass pending).  Same start as play_coop_fight
+# (`poke party 2`, Players 2, two knights, knight 1 = joy1, knight 2 = joy0).  Both knights get all four keys, the party stands on the
+# valley (node 6) and fires into the fight.  Expected: BOTH knights in the arena (fightdump: party 2, ports, hp, lives; the guardian's
+# sticky target slot), each moved by its own pad, then the autopilot plays the fight.  Knight 2 is poked WEAK (hp 12) so it usually falls
+# first: in a WON fight the dump after it shows knight 2 with lives 4 (only the normal life of a fallen knight; the guardian's penalty, 2 lives + a stat
+# point per fallen knight, is charged only when the whole party LOSES) while knight 1 keeps its lives (keys 0 for both, progress +3 = the 8.5 victory).  A lost party
+# ends on the temple screen (the wait below then times out after 14000 frames: expected, not a failure).  Log lines to look for: "knight colours: ..." (or "share a colour" when the valley
+# picture has no three free entries: expected on some pictures, MOONSTONE2 6.3), the low-hp pulse of knight 2 in the shots.
+# shotcmp-tol play-cvalley-arena 20
+# shotcmp-tol play-cvalley-moved 20
+# shotcmp-tol play-cvalley-mash 100
+# shotcmp-tol play-cvalley-end 100
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 20 joy1 fire pulse
+frame 140 poke party 2
+frame 180 joy1 right pulse
+frame 220 shot play-coop-fight-players
+frame 230 joy1 down pulse
+frame 260 joy1 down pulse
+frame 290 joy1 down pulse
+frame 340 joy1 fire pulse
+frame 790 joy1 fire pulse
+frame 1090 joy1 fire pulse
+frame 1160 joy1 fire pulse
+frame 1490 joy1 right pulse
+frame 1540 joy1 fire pulse
+frame 1890 joy1 fire pulse
+frame 1960 joy1 fire pulse
+frame 2490 poke who 0
+frame 2491 poke strength 9
+frame 2493 poke constitution 30
+frame 2496 poke endurance 9
+frame 2500 poke hpmax 310
+frame 2505 poke hp 310
+frame 2511 poke who 1
+frame 2518 poke strength 9
+frame 2526 poke constitution 30
+frame 2535 poke endurance 9
+frame 2545 poke hpmax 310
+frame 2556 poke hp 310
+frame 2568 poke who 1
+frame 2581 poke hpmax 12
+frame 2595 poke hp 12
+frame 2610 poke who 0
+frame 2626 poke keys 15
+frame 2643 poke who 1
+frame 2661 poke keys 15
+frame 2680 poke who 0
+frame 2700 poke dump 1
+frame 2720 poke warp_node 6
+frame 2800 joy1 fire pulse 8
+frame 3500 poke fightdump 1
+frame 3510 shot play-cvalley-arena
+frame 3520 joy1 up
+frame 3545 joy1 none
+frame 3550 joy0 down
+frame 3575 joy0 none
+frame 3605 poke fightdump 1
+frame 3615 shot play-cvalley-moved
+frame 3625 mash joy1 10
+frame 3625 mash joy0 13
+frame 3925 shot play-cvalley-mash
+frame 3935 poke fightdump 1
+wait var keys 0 max 14000
+frame 0 mash joy1 off
+frame 0 mash joy0 off
+frame 1 joy1 none
+frame 2 joy0 none
+frame 152 shot play-cvalley-end
+frame 162 poke dump 1
+frame 172 poke fightdump 1
+frame 182 joy1 fire pulse 8
+frame 582 poke dump 1
+frame 682 quit

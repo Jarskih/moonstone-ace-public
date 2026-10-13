@@ -1,0 +1,32 @@
+# Main menu (owner 2026-10-11, tests/test_main_menu.py is the logic test): the first screen after the intro is LOCAL / MULTIPLAYER / SETTINGS on the
+# title picture; up from LOCAL wraps to SETTINGS and down wraps back; fire on LOCAL opens the title menu (Players, Practice, Select Knight, Mode,
+# Back); Esc and the Back row both return to the main menu.  Multiplayer and Settings are covered by play_netmenu and play_options.
+# shotcmp-tol play-mainmenu-local 0.5
+# shotcmp-tol play-mainmenu-settings 0.5
+# shotcmp-tol play-mainmenu-wrap 0.5
+# shotcmp-tol play-mainmenu-local-open 0.5
+# shotcmp-tol play-mainmenu-esc 0.5
+# shotcmp-tol play-mainmenu-back-row 0.5
+# shotcmp-tol play-mainmenu-back 0.5
+# shotdiff play-mainmenu-local play-mainmenu-esc 0.2
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 60 shot play-mainmenu-local
+frame 100 joy1 up pulse 10
+frame 160 shot play-mainmenu-settings
+frame 200 joy1 down pulse 10
+frame 260 shot play-mainmenu-wrap
+frame 300 joy1 fire pulse 10
+frame 380 shot play-mainmenu-local-open
+frame 420 key ESC tap
+frame 500 shot play-mainmenu-esc
+frame 540 joy1 fire pulse 10
+# the LOCAL menu reads the stick once per redraw (draw + a 10-frame wait, as the original): presses of 20 frames, 50 apart
+frame 620 joy1 down pulse 20
+frame 670 joy1 down pulse 20
+frame 720 joy1 down pulse 20
+frame 770 joy1 down pulse 20
+frame 840 shot play-mainmenu-back-row
+frame 880 joy1 fire pulse 20
+frame 960 shot play-mainmenu-back
+frame 960 quit

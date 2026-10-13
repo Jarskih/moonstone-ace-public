@@ -47,6 +47,7 @@
 
 #include "engine/jobs.hpp"
 #include "game/knight.hpp"
+#include "game/roster.hpp"
 
 namespace ms { namespace game {
 
@@ -122,6 +123,20 @@ static_assert(offsetof(CombatWork, ulLoop) == 2 && offsetof(CombatWork, ulLoop2)
 constexpr uint32_t COMBAT_JOB_COUNT = 10;
 constexpr uint32_t COMBAT_RECT_MAX = 0x2D;   // LAB_0645 limit of the dirty-rect list; further draws are not listed
 
+// Moonstone 2 (ROADMAP 8.4b, docs/PERF.md): the sizes of the job table and of the dirty-rect list are PARAMETERS, the original's
+// 10 jobs / 45 rects in a classic fight (g_combatLimits stays at its initial value: bit-identical), 16 jobs / 64 rects in a co-op
+// party fight (src/rt/combat_pool.cpp switches the pool and the limits together at the start and the end of such a fight).  The
+// list buffers hold (rects + 2) entries of 8 bytes, two lists (A and B) per pool.
+constexpr uint32_t COMBAT_JOB_COUNT_COOP = 16;
+constexpr uint32_t COMBAT_RECT_MAX_COOP = 64;
+struct CombatLimits {
+	uint32_t ulJobs;          // job slots in use (the job table, the work blocks and the attack / hurt list slots all have this many)
+	uint32_t ulRects;         // entries of a dirty-rect list
+	uint32_t ulDrawBytes;     // the two list buffers together (cleared to $FF)
+};
+inline CombatLimits g_combatLimits = {COMBAT_JOB_COUNT, COMBAT_RECT_MAX, 720};
+inline uint32_t combatJobs() { return g_combatLimits.ulJobs; }
+
 // Offsets inside the owner record that the engine writes (Knight layout; +58/+60/+112/+114 are words the Knight
 // struct only has as raw bytes).
 static_assert(offsetof(Knight, uwX) == 4 && offsetof(Knight, uwHeight) == 6 && offsetof(Knight, uwY) == 8 &&
@@ -161,6 +176,9 @@ struct CombatEnv {
 		uint8_t flags);                                                                  // $B0: A0 fn, A1 owner, A2 frames, D0-D3
 	void (*spawn)(uint32_t pScript, uint32_t pFrames, uint16_t x, uint16_t y, uint16_t z, uint8_t flags,
 		uint32_t pOwner);                                                                // $B8 -> LAB_02D0: A0, A2, D0-D3, D4, D5 = $28
+	const FightRoster *pRoster = nullptr;   // Moonstone 2 (ROADMAP 8.4b): the second party knight draws remapped copies of the knight cels (rosterCelFor)
+	// Optional counted-hold rule; null retains the original interpreter.
+	uint8_t (*recoveryRepeats)(const Knight &owner, uint32_t loop, uint8_t repeats) = nullptr;
 };
 
 // LAB_0351: bubble-sorts the job slots by ascending z (unsigned word compare of z, swap while the next is smaller),
@@ -176,5 +194,9 @@ void combatTick(const CombatEnv &env);
 // LAB_0378 (+ LAB_0380..LAB_0389): one motion step of the $8C block.  Exposed for tests; returns nothing, mutates the
 // job, the work block and, through the work block's return point, the script.
 void combatMotionStep(CombatJob *pJob, CombatWork *pWork);
+
+// Terminal counted hold of a linear melee script; rejects branching/motion/spawn scripts (512-byte limit).
+uint32_t combatFinalHold(uint32_t ulScript);
+bool combatIsRecoveryHold(const Knight &k, uint32_t ulLoop);
 
 }}  // namespace ms::game

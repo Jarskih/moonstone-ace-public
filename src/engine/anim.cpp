@@ -1,6 +1,7 @@
 // engine/anim - see anim.hpp. Transcribed from program.asm LAB_01F1 (interpreter), LAB_0201 (end of frame),
 // LAB_0215..LAB_0241 (opcode handlers), LAB_020B, LAB_024F, LAB_0015/LAB_0016 and LAB_003C.
 #include "engine/anim.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
@@ -20,11 +21,6 @@ MS_NO_LIBCALLS void zero(void *pDst, uint32_t n) {
 	}
 }
 
-// Game memory (script bytes, cel headers, draw lists) is big-endian bytes whatever the CPU is.
-inline uint16_t rd16(const uint8_t *p) { return (uint16_t)((p[0] << 8) | p[1]); }
-inline uint32_t rd32(const uint8_t *p) { return ((uint32_t)rd16(p) << 16) | rd16(p + 2); }
-inline void wr16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
-inline void wr32(uint8_t *p, uint32_t v) { wr16(p, (uint16_t)(v >> 16)); wr16(p + 2, (uint16_t)v); }
 
 inline const uint8_t *at(uint32_t addr) { return jobPtr<const uint8_t>(addr); }
 
@@ -32,8 +28,8 @@ inline const uint8_t *at(uint32_t addr) { return jobPtr<const uint8_t>(addr); }
 // the job and lets the cel renderer prepare the cel when its mirror state differs from the job's.
 void loadFrame(const AnimEnv &env, Job *pJob, uint32_t pCelTab, uint8_t frame) {
 	const uint8_t *pRec = at(pCelTab) + 10 + (uint16_t)(frame * 10);
-	pJob->w = rd16(pRec + 4);
-	pJob->h = rd16(pRec + 6);
+	pJob->w = be::ld16(pRec + 4);
+	pJob->h = be::ld16(pRec + 6);
 	const uint8_t want = (pRec[8] == 1) ? 1 : 3;
 	if(want != pJob->flags) {
 		env.prepCel(pCelTab, frame);
@@ -47,7 +43,7 @@ void opCall(const AnimEnv &env, Job *pJob, const uint8_t *s) {
 		const uint32_t fn = env.pCallTable[(uint8_t)(s[1] - 1)];
 		env.callTable(fn, pJob, jobAddr(s), (uint16_t)((uint8_t)(s[1] - 1) << 2));
 	} else {
-		env.callDirect(rd32(s + 2), pJob->x, pJob->y, pJob->z, pJob->flags, pJob->pFrames, pJob->id);
+		env.callDirect(be::ld32(s + 2), pJob->x, pJob->y, pJob->z, pJob->flags, pJob->pFrames, pJob->id);
 	}
 	pJob->pScript += 6;
 }
@@ -55,17 +51,17 @@ void opCall(const AnimEnv &env, Job *pJob, const uint8_t *s) {
 // Opcodes $CC / $D0: test the byte ($01), word ($02) or long (else) at id + offset; jump when it is zero ($CC) or
 // non-zero ($D0), else skip the 8 bytes.
 void opCondJump(Job *pJob, const uint8_t *s, bool jumpIfNonZero) {
-	const uint8_t *pVar = at(pJob->id) + (int16_t)rd16(s + 2);
+	const uint8_t *pVar = at(pJob->id) + (int16_t)be::ld16(s + 2);
 	bool nonZero;
 	if(s[1] & 1) {
 		nonZero = pVar[0] != 0;
 	} else if(s[1] & 2) {
-		nonZero = rd16(pVar) != 0;
+		nonZero = be::ld16(pVar) != 0;
 	} else {
-		nonZero = rd32(pVar) != 0;
+		nonZero = be::ld32(pVar) != 0;
 	}
 	if(nonZero == jumpIfNonZero) {
-		pJob->pScript = rd32(s + 4);
+		pJob->pScript = be::ld32(s + 4);
 	} else {
 		pJob->pScript += 8;
 	}
@@ -75,16 +71,16 @@ void opCondJump(Job *pJob, const uint8_t *s, bool jumpIfNonZero) {
 // direction bits: x bit0 (inverted while the job's flags are exactly 3), y bit3, z bit5 = subtract.
 void opMove(Job *pJob, const uint8_t *s) {
 	if(s[1] & 0x40) {
-		pJob->x = rd16(s + 2);
-		pJob->y = rd16(s + 4);
-		pJob->z = rd16(s + 6);
+		pJob->x = be::ld16(s + 2);
+		pJob->y = be::ld16(s + 4);
+		pJob->z = be::ld16(s + 6);
 	} else {
-		const uint16_t dx = rd16(s + 2);
+		const uint16_t dx = be::ld16(s + 2);
 		const bool xAdd = (pJob->flags == 3) ? !(s[1] & 1) : (s[1] & 1);
 		pJob->x = (uint16_t)(xAdd ? pJob->x + dx : pJob->x - dx);
-		const uint16_t dy = rd16(s + 4);
+		const uint16_t dy = be::ld16(s + 4);
 		pJob->y = (uint16_t)((s[1] & 8) ? pJob->y - dy : pJob->y + dy);
-		const uint16_t dz = rd16(s + 6);
+		const uint16_t dz = be::ld16(s + 6);
 		pJob->z = (uint16_t)((s[1] & 0x20) ? pJob->z - dz : pJob->z + dz);
 	}
 	pJob->pScript += 8;
@@ -219,9 +215,9 @@ void animRun(const AnimEnv &env, Job *pJob) {
 						break;
 					case 0x84:  // LAB_0218
 						if(s[1] == 3) {
-							pJob->pScript = rd32(s + 2);
+							pJob->pScript = be::ld32(s + 2);
 						} else {
-							pSt->pDeferred = rd32(s + 2);
+							pSt->pDeferred = be::ld32(s + 2);
 							pSt->deferred = 1;
 							pJob->pScript += 6;
 						}
@@ -278,17 +274,17 @@ void animRun(const AnimEnv &env, Job *pJob) {
 			}
 
 			// Draw instruction (LAB_01F7)
-			const uint32_t pCelTab = rd32(at(pJob->pFrames) + (op & 0x1f));
+			const uint32_t pCelTab = be::ld32(at(pJob->pFrames) + (op & 0x1f));
 			const uint8_t frame = s[1];
 			pJob->frame = frame;
 			loadFrame(env, pJob, pCelTab, frame);
 			uint16_t x, y;
 			const uint16_t dy = (uint16_t)(int16_t)(int8_t)s[2];
 			if(!(pJob->flags & 2)) {
-				x = (uint16_t)(rd16(s + 4) + pJob->x);
+				x = (uint16_t)(be::ld16(s + 4) + pJob->x);
 				y = (uint16_t)(dy + pJob->y + pJob->z);
 			} else {
-				x = (uint16_t)(pJob->x - rd16(s + 4) - pJob->w);
+				x = (uint16_t)(pJob->x - be::ld16(s + 4) - pJob->w);
 				y = (uint16_t)(dy + pJob->y + pJob->z);
 			}
 			pJob->sx = x;
@@ -304,29 +300,29 @@ void animRun(const AnimEnv &env, Job *pJob) {
 				env.setTarget(*env.pBufWork);
 			} else {
 				uint8_t *p = jobPtr<uint8_t>(*env.pRectEnd);
-				wr16(p, pJob->sx);
-				wr16(p + 2, pJob->sy);
-				wr16(p + 4, pJob->w);
-				wr16(p + 6, pJob->h);
-				wr16(p + 12, 0xFFFF);
+				be::st16(p, pJob->sx);
+				be::st16(p + 2, pJob->sy);
+				be::st16(p + 4, pJob->w);
+				be::st16(p + 6, pJob->h);
+				be::st16(p + 12, 0xFFFF);
 				*env.pRectEnd += 8;
 			}
 			if(d3 & 2) {
 				uint8_t *p = jobPtr<uint8_t>(*env.pListB);
-				wr32(p, pCelTab);
-				wr16(p + 4, frame);
-				wr16(p + 6, x);
-				wr16(p + 8, y);
-				wr32(p + 10, 0);
+				be::st32(p, pCelTab);
+				be::st16(p + 4, frame);
+				be::st16(p + 6, x);
+				be::st16(p + 8, y);
+				be::st32(p + 10, 0);
 				*env.pListB += 10;
 			}
 			if(d3 & 1) {
 				uint8_t *p = jobPtr<uint8_t>(*env.pListA);
-				wr32(p, pCelTab);
-				wr16(p + 4, frame);
-				wr16(p + 6, x);
-				wr16(p + 8, y);
-				wr32(p + 10, 0);
+				be::st32(p, pCelTab);
+				be::st16(p + 4, frame);
+				be::st16(p + 6, x);
+				be::st16(p + 8, y);
+				be::st32(p + 10, 0);
 				*env.pListA += 10;
 			}
 			*env.pCpuMask = (d3 & 0x20) ? 1 : 0;

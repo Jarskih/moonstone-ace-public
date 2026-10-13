@@ -14,6 +14,8 @@
 #include "rt/display.hpp"
 #include "rt/game.hpp"
 #include "rt/modload.hpp"
+#include "rt/net.hpp"
+#include "rt/net_session.hpp"
 #include "rt/system.hpp"
 #include "rt/text.hpp"
 
@@ -111,13 +113,22 @@ __attribute__((used, externally_visible)) ULONG s_pBigStack[8192];  // 32 KB
 __attribute__((used, externally_visible)) ULONG s_ulShellSp;
 
 __attribute__((externally_visible)) int gameMain(void) {
-	rt::systemCreate();
-	genericCreate();
-	while(gameIsRunning()) {
-		timerProcess();
-		genericProcess();
+	rt::NetArgs sNetArgs;
+	if(!rt::netParseArgs(sNetArgs)) {   // ReadArgs while the OS is still whole (ROADMAP 12.8)
+		return 5;
 	}
-	genericDestroy();
+	rt::systemCreate();
+	{
+		rt::NetTransport sNet;   // the sockets of a network game (ROADMAP 12.8b); idle until the Multiplayer screen opens one
+		rt::netSessionSetArgs(sNetArgs);
+		genericCreate();
+		while(gameIsRunning()) {
+			timerProcess();
+			genericProcess();
+		}
+		rt::netSessionShutdown();   // BYE(normal) to the peers of a running network game (ROADMAP 12.11)
+		genericDestroy();
+	}
 	rt::systemDestroy();
 	return 0;
 }

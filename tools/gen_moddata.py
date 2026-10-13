@@ -22,6 +22,7 @@ import sys
 import textwrap
 
 import yaml
+import yamlfast
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_OUT = os.path.join(ROOT, 'build', 'gen')
@@ -206,7 +207,7 @@ def load_schema(schema_dir):
     for path in sorted(glob.glob(os.path.join(schema_dir, '*.yaml'))):
         fname = os.path.basename(path)
         with open(path, encoding='utf-8') as f:
-            y = yaml.safe_load(f)
+            y = yamlfast.safe_load(f)
         for need in ('file', 'sections'):
             if need not in y:
                 die(fname, f'missing `{need}`')

@@ -48,7 +48,7 @@ HandlerResult snatchWalk(const FighterEnv &e, Knight &k) {
 	if(bit(k.uwInput, 2)) {                                        // LAB_0EA4
 		m.swDy = SNATCH_STEP_Y;
 	}
-	const uint16_t mask = blockedMask(e.pJobs, &k, (uint16_t)m.swDx, k.ubFacing);
+	const uint16_t mask = blockedMask(e.pJobs, &k, (uint16_t)m.swDx, k.ubFacing, e.pRoster);
 	k.uwInput = (uint16_t)(k.uwInput & mask);                      // AND.W D0,62(A0)
 	if((k.uwInput & 3) == 0) {
 		m.swDx = 0;
@@ -72,7 +72,7 @@ HandlerResult fighterSnatcher(const FighterEnv &e, Knight &k) {
 	FightVars &v = *e.pVars;
 	uint8_t &f = *e.pSnatchFlags;
 	*e.pSelf = addr(&k);
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k, (f & (SNATCH_CARRY | SNATCH_RELEASE | SNATCH_FREE | SNATCH_GONE)) != 0);   // a grab keeps its knight
 	v.ulNextScript = k.ulIdleScript;
 	k.uwInput = 0;
 	if(k.ulAttacker != 0) {                                        // LAB_0EB5: hit: the damage of the attacker
@@ -115,7 +115,7 @@ HandlerResult fighterSnatcher(const FighterEnv &e, Knight &k) {
 		f &= (uint8_t)~SNATCH_CARRY;                                   // LAB_0EAF: the hold ran out: swallow it
 		f |= SNATCH_FREE;
 		k.ubBehaviourFlags |= SNATCH_FREE;
-		killCurrent(e);
+		knockOut(e, tgt);
 		state = SnatchState::Freed;                                // falls into LAB_0EB0
 	}
 	if(state == SnatchState::Freed) {                                  // LAB_0EB0
@@ -159,7 +159,7 @@ HandlerResult fighterSnatcher(const FighterEnv &e, Knight &k) {
 			const uint16_t d0 = xDelta(k, tgt, left);
 			if(snatcherCanGrab((int16_t)d0)) {
 				jobTogglePause(e.pJobs, addr(&tgt));
-				killCurrent(e);
+				knockOut(e, tgt);
 				v.ulNextScript = e.scripts.s08A2;
 				f |= SNATCH_GONE;
 				return finish(e);
@@ -216,7 +216,7 @@ HandlerResult fighterStalker(const FighterEnv &e, Knight &k) {
 	*e.pSelf = addr(&k);
 	v.ulNextScript = k.ulIdleScript;
 	k.uwInput = 0;
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k);
 	if(k.ulHitTarget != 0) {                                       // LAB_0ECB
 		v.ulNextScript = k.ulScript26;
 		return finish(e);
@@ -227,7 +227,7 @@ HandlerResult fighterStalker(const FighterEnv &e, Knight &k) {
 		v.ulNextScript = e.scripts.s08AC;
 		return finish(e);
 	}
-	const Knight &first = *rec(*e.pFirst);
+	const Knight &first = *rec(firstOf(e));
 	if((int16_t)first.swHp <= 0) {                                 // LAB_0ECD: nobody left to chase
 		return finish(e);
 	}
@@ -307,8 +307,8 @@ HandlerResult demonWalk(const FighterEnv &e, Knight &k) {
 // fighter is thawed and restarted on LAB_07FB; the demon's byte goes to +106 of A0 = LAB_07FB (QUIRK, see the file header).
 void demonRelease(const FighterEnv &e, uint8_t ubTimer) {
 	*e.pHopDir = rec(*e.pBodyA)->ubFacing;
-	jobTogglePause(e.pJobs, *e.pFirst);
-	jobRestart(e.pJobs, *e.pFirst, e.scripts.s07FB);
+	jobTogglePause(e.pJobs, firstOf(e));
+	jobRestart(e.pJobs, firstOf(e), e.scripts.s07FB);
 	*jobPtr<uint8_t>(e.scripts.s07FB + 106) = ubTimer;
 }
 
@@ -341,7 +341,7 @@ HandlerResult fighterDemon(const FighterEnv &e, Knight &k) {
 		v.ulNextScript = 0xFFFFFFFFu;
 		return demonSync(e, k);
 	}
-	*e.pTarget = *e.pFirst;
+	*e.pTarget = targetFor(e, k, (f[0] & DEMON_BODY) != 0);       // a grab keeps its knight (Moonstone 2)
 	switch(demonState(f[0])) {
 	case DemonState::StageE1:                                      // LAB_0EE1
 		f[0] &= (uint8_t)~DEMON_E1;
@@ -557,7 +557,8 @@ HandlerResult fighterAiKnight(const FighterEnv &e, Knight &k) {
 	*e.pSelf = addr(&k);
 	v.ulNextScript = k.ulIdleScript;
 	k.uwInput = 0;
-	*e.pTarget = addr(&k) == *e.pFirst ? e.pActive->ulOpponent : *e.pFirst;
+	const FightRoster *pParty = rosterOn(e.pRoster) ? e.pRoster : 0;      // Moonstone 2: a black knight picks among the party
+	*e.pTarget = pParty ? addr(&rosterFoeTarget(*pParty, k)) : addr(&k) == *e.pFirst ? e.pActive->ulOpponent : *e.pFirst;
 	if(k.ulAttacker != 0) {                                        // LAB_0F14: hit: the knight rule of damage.cpp (parry, damage, or down)
 		return knightHurtBy(e, k, *rec(k.ulAttacker), raw(ActorType::KnightFight));
 	}

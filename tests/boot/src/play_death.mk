@@ -1,6 +1,6 @@
 # Defeat and game over: the knight has one life left and stands idle in a lair fight (the ratmen kill it): the "you lost" status
 # screen (scene 9) with the life gone, then the map; the black knights are parked (frog days) so the turn comes back to the dead
-# knight at once: no human knight alive = game over (farewell text, fire, back to the title menu).
+# knight at once: no human knight alive = game over (farewell text, fire, back to the main menu).
 # shotcmp-tol play-death-arena 15
 # shotcmp-tol play-death-fight 15
 # shotcmp-tol play-death-lost 3

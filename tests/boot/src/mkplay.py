@@ -7,7 +7,7 @@ with relative delays and expanded here):
 Source syntax (everything else is copied as it is, so plain `frame N ...` / `wait ...` / comment lines work):
   +N <command>        N frames after the previous event of the segment; the absolute `frame` number is generated. A line `wait ...`
                       starts a new segment (frames count from the barrier's release, docs/AUTOPLAY.md), `@SET N` sets the clock.
-  @PRE                the boot prefix: intro skip, Select Knight, first knight, fire = keep the name (map ready ~600 frames later)
+  @PRE                the boot prefix: intro skip, main menu LOCAL, Select Knight, first knight, fire = keep the name (map ready ~600 frames later)
   @click X Y [N]      poke the cursor to X,Y, 25 frames later `joy1 fire pulse N` (default 8): a click on a shop / town screen
   @hold joy1 up N     `joy1 up` now, `joy1 none` N frames later
 """
@@ -15,9 +15,12 @@ import os
 import re
 import sys
 
-PRE = '''# --- boot to the map: intro skip, Select Knight, first knight, keep the preset name (fire = OK) ---
-frame 300 key SPACE tap
+PRE = '''# --- boot to the map: intro skip, main menu LOCAL, Select Knight, first knight, keep the preset name (fire = OK) ---
+# the intro skip is event-driven (2026-10-11): the intro opens its first picture (data/mindscape) once it runs, i.e. the skip is armed
+wait file mindscape max 900
+frame 20 key SPACE tap
 wait input 10 max 3000
+frame 40 joy1 fire pulse
 frame 100 joy1 down pulse
 frame 130 joy1 down pulse
 frame 160 joy1 down pulse

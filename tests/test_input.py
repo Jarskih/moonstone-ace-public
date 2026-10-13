@@ -411,7 +411,10 @@ if HAVE_EMU:
                  '-I', E.ACE, '-I', E.GCC_SUPPORT] + os.environ.get('MS_TEST_OPT', '-O1').split()   # the Release build is -O1 plus -fipa-ra etc.
         objs = []
         for i, src in enumerate(('src/engine/input.cpp', 'src/rt/input.cpp', 'src/rt/irq.cpp', 'src/rt/sprites.cpp', 'src/engine/display_fx.cpp',
-                              'src/engine/pad.cpp', 'src/game/party.cpp', 'tests/input_emu_support.cpp')):   # pad/party: co-op (8.2)
+                              'src/engine/pad.cpp', 'src/game/party.cpp', 'src/engine/nettick.cpp', 'src/rt/net_tick.cpp',
+                              'tests/input_emu_support.cpp',
+                              'src/rt/amiga/input_entries.cpp', 'src/rt/amiga/sprites_entries.cpp', 'src/rt/amiga/platform_input.cpp',
+                              'src/rt/amiga/platform_display.cpp')):   # pad/party: co-op (8.2); nettick/net_tick: the deterministic mode's flag (12.4), off here; the last four: the register shims and Amiga platform halves that moved out of input.cpp / sprites.cpp (11.10)
             o = os.path.join(tmp, '%d.o' % i)
             r = subprocess.run([E.GXX] + flags + ['-c', os.path.join(ROOT, src), '-o', o], capture_output=True, text=True, env=env)
             if r.returncode != 0:
@@ -444,7 +447,7 @@ if HAVE_EMU:
                 cmd.append('--defsym=g_pCia=%d' % CELL_CIA)
             elif s == 'g_sKeyManager':
                 cmd.append('--defsym=g_sKeyManager=%d' % (SCRATCH + 0x100))
-            elif s.startswith(('system', 'onKey', 'log')):
+            elif s.startswith(('system', 'onKey', 'log', 'keyCheck', 'rtCuiCursorStep', '_ZN2rt18netStatsLineToggle')):   # rtCuiCursorStep: net_tick's cursor tick, never reached with the mode off; keyCheck: ACE's key table, behind platform::inputKeyHeld (11.10)
                 cmd.append('--defsym=%s=%d' % (s, RTS_ADDR))
             else:
                 raise RuntimeError('unresolved symbol ' + s)

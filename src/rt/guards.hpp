@@ -14,6 +14,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "engine/guard.hpp"
+#include "rt/file_handle.hpp"   // rt::FileHandle (platform-neutral, split out in ROADMAP 11.1d)
 #include "rt/files.hpp"
 
 namespace rt {
@@ -106,30 +107,6 @@ private:
 	BPTR m_lk;
 };
 
-// ---- the runtime's single sequential file slot (rt_file_open ... rt_file_close) -----------------------------------------
-class FileHandle {
-public:
-	struct Exact {};   // tag: open exactly this path (rt_file_open_exact), no search / art override
-	explicit FileHandle(const char *szName) : m_isOpen(rt_file_open(szName) == 0) {}
-	FileHandle(const char *szPath, Exact) : m_isOpen(rt_file_open_exact(szPath) == 0) {}
-	~FileHandle() { close(); }
-	FileHandle(const FileHandle &) = delete;
-	FileHandle &operator=(const FileHandle &) = delete;
-	// moved out of its scope (an open function returning it): the source is empty and closes nothing
-	FileHandle(FileHandle &&o) : m_isOpen(o.m_isOpen) { o.m_isOpen = false; }
-	FileHandle &operator=(FileHandle &&o) {
-		if(this != &o) { close(); m_isOpen = o.m_isOpen; o.m_isOpen = false; }
-		return *this;
-	}
-	bool isOpen() const { return m_isOpen; }
-	void close() { if(m_isOpen) { rt_file_close(); m_isOpen = false; } }   // early close, e.g. before a long decode
-	void read(void *pDst, ULONG ulCount) { rt_file_read(pDst, ulCount); }
-	void skip(ULONG ulCount) { rt_file_skip(ulCount); }
-	ULONG size() const { return rt_file_size(); }
-private:
-	bool m_isOpen;
-};
-
 // ---- memory taken from the OS (memAlloc ... memFree) -------------------------------------------------------------------
 class MemBlock {
 public:
@@ -185,6 +162,5 @@ MS_GUARD_PINNED(DosLock);
 MS_GUARD_PINNED(MemBlock);
 MS_GUARD_PINNED(IrqOff);
 MS_GUARD_PINNED(FileSession);
-MS_GUARD_MOVABLE(FileHandle);
 
 }  // namespace rt

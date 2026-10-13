@@ -1,0 +1,103 @@
+# Moonstone 2 co-op fight with FOUR knights (ROADMAP 8.4b, the 2-knight twin is play_coop_fight): `poke party 4`, Players 4, four knights with joystick 1, joystick 2, the arrow keys (Ctrl fire) and WASD (Alt fire); the party fights lair 0 (the ratmen): 16 jobs / 64 dirty rects, waves x4, `+3` alive: `poke party 2` switches the co-op rules on (knight 1 =
+# joystick 1 = joy1, knight 2 = joystick 2 = joy0), the party walks onto lair 0 (the ratmen) and fires into the fight.  BOTH knights
+# are in the arena (shot play-coop4-fight-arena; `poke fightdump 1` logs the roster, both fighters with their ports and every live
+# creature with its sticky target slot and team).  Each knight is moved with its OWN pad: joy1 walks the leader, joy0 the second
+# knight (fightdump before / after).  Then both pads play the fight with the autopilot (`mash`) until the lair is cleared
+# (`wait var scene 2` = creature loot screen); the end dump shows the roster's defeat bits, and the log has the wave numbers
+# ("waves: ... coop=1 total=... alive=..."): the total is doubled and one more is alive at once.
+# Keep the poked stats small (docs/AUTOPLAY.md: the stat sheet registers one click region per point).
+# the fight is random (the enemies): loose tolerances
+# shotcmp-tol play-coop4-fight-map 3
+# shotcmp-tol play-coop4-fight-arena 15
+# shotcmp-tol play-coop4-fight-moved 15
+# shotcmp-tol play-coop4-fight-mash 15
+# shotcmp-tol play-coop4-fight-loot 5
+# shotcmp-tol play-coop4-fight-end 5
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 20 joy1 fire pulse
+frame 140 poke party 4
+frame 180 joy1 right pulse
+frame 210 joy1 right pulse
+frame 240 joy1 right pulse
+frame 280 shot play-coop4-fight-players
+frame 290 joy1 down pulse
+frame 320 joy1 down pulse
+frame 350 joy1 down pulse
+frame 400 joy1 fire pulse
+frame 850 joy1 fire pulse
+frame 1150 joy1 fire pulse
+frame 1220 joy1 fire pulse
+frame 1550 joy1 right pulse
+frame 1600 joy1 fire pulse
+frame 1950 joy1 fire pulse
+frame 2020 joy1 fire pulse
+frame 2350 joy1 fire pulse
+frame 2700 joy1 fire pulse
+frame 2770 joy1 fire pulse
+frame 3100 joy1 fire pulse
+frame 3450 joy1 fire pulse
+frame 3520 joy1 fire pulse
+frame 4050 poke who 0
+frame 4052 poke strength 9
+frame 4054 poke constitution 30
+frame 4056 poke endurance 9
+frame 4058 poke hpmax 310
+frame 4060 poke hp 310
+frame 4066 poke who 1
+frame 4068 poke strength 9
+frame 4070 poke constitution 30
+frame 4072 poke endurance 9
+frame 4074 poke hpmax 310
+frame 4076 poke hp 310
+frame 4082 poke who 2
+frame 4084 poke strength 9
+frame 4086 poke constitution 30
+frame 4088 poke endurance 9
+frame 4090 poke hpmax 310
+frame 4092 poke hp 310
+frame 4098 poke who 3
+frame 4100 poke strength 9
+frame 4102 poke constitution 30
+frame 4104 poke endurance 9
+frame 4106 poke hpmax 310
+frame 4108 poke hp 310
+frame 4114 poke who 0
+frame 4127 poke warp_lair 0
+frame 4141 poke lair_left 5
+frame 4171 shot play-coop4-fight-map
+frame 4181 poke dump 1
+frame 4191 joy1 fire pulse 8
+frame 4791 poke fightdump 1
+frame 4991 shot play-coop4-fight-arena
+frame 5001 poke fightdump 1
+frame 5011 joy1 up
+frame 5036 joy1 none
+frame 5041 joy0 down
+frame 5066 joy0 none
+frame 5071 key LEFT down
+frame 5096 key LEFT up
+frame 5101 key W down
+frame 5126 key W up
+frame 5156 poke fightdump 1
+frame 5166 shot play-coop4-fight-moved
+frame 5176 poke fightdump 1
+frame 5186 mash joy1 10
+frame 5186 mash joy0 13
+frame 5486 shot play-coop4-fight-mash
+frame 5496 poke fightdump 1
+wait var scene 2 max 12000
+frame 0 mash joy1 off
+frame 0 mash joy0 off
+frame 1 joy1 none
+frame 2 joy0 none
+frame 152 shot play-coop4-fight-loot
+frame 162 poke fightdump 1
+frame 172 poke dump 1
+frame 182 poke cursorx 308
+frame 182 poke cursory 140
+frame 207 joy1 fire pulse 8
+frame 607 shot play-coop4-fight-end
+frame 617 poke dump 1
+frame 717 quit

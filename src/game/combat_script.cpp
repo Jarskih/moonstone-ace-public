@@ -2,6 +2,8 @@
 // LAB_032E..LAB_034C (interpreter, draw, end of frame), LAB_034E (frame record) and the handlers LAB_0358..LAB_039C.
 // Labels in the comments are mog's.
 #include "game/combat_script.hpp"
+#include "game/record.hpp"
+#include "engine/endian.hpp"
 
 namespace ms { namespace game {
 
@@ -29,17 +31,11 @@ MS_NO_LIBCALLS void copy(void *pDst, const void *pSrc, uint32_t n) {
 	}
 }
 
-// Script bytes, cel headers and draw lists are big-endian game memory whatever the CPU is; the job, the work block
-// and the owner record are native structs (the same thing on the 68k).
-inline uint16_t rd16(const uint8_t *p) { return (uint16_t)((p[0] << 8) | p[1]); }
-inline uint32_t rd32(const uint8_t *p) { return ((uint32_t)rd16(p) << 16) | rd16(p + 2); }
-inline void wr16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
-inline void wr32(uint8_t *p, uint32_t v) { wr16(p, (uint16_t)(v >> 16)); wr16(p + 2, (uint16_t)v); }
 
 inline const uint8_t *at(uint32_t addr) { return jobPtr<const uint8_t>(addr); }
 inline CombatWork *workOf(const CombatJob *pJob) { return jobPtr<CombatWork>(pJob->ulWork); }
 
-// Native word / long at owner + offset (the owner is a Knight-layout record; the engine also pokes arbitrary offsets).
+// The engine's bounding box words of the owner (+58 / +60 / +112 / +114): native cells of the record (game/record.hpp kKnightCells).
 inline void ownerSet16(Knight *pOwner, uint32_t off, uint16_t v) { __builtin_memcpy((uint8_t *)pOwner + off, &v, 2); }
 
 // LAB_039C: clears the work block but keeps the spawn flag (+18) and the spawn script (+20).
@@ -94,8 +90,8 @@ void boxAdd(const CombatEnv &env, int16_t x, int16_t w, int16_t y, int16_t h) {
 // cel preparer when the mirror state wanted by the cel differs from the job's flags byte.
 void loadFrame(const CombatEnv &env, CombatJob *pJob, uint32_t pCelTab, uint8_t frame) {
 	const uint8_t *pRec = at(pCelTab) + 10 + (uint16_t)(frame * 10);
-	pJob->uwW = rd16(pRec + 4);
-	pJob->uwH = rd16(pRec + 6);
+	pJob->uwW = be::ld16(pRec + 4);
+	pJob->uwH = be::ld16(pRec + 6);
 	const uint8_t want = (pRec[8] == 1) ? 1 : 3;
 	if(want != pJob->ubFlags) {
 		env.prepCel(pCelTab, frame);
@@ -104,7 +100,7 @@ void loadFrame(const CombatEnv &env, CombatJob *pJob, uint32_t pCelTab, uint8_t 
 
 // LAB_0315: the first job whose owner is `owner` (the whole table is searched, inactive slots included), or null.
 CombatJob *findJob(const CombatEnv &env, uint32_t owner) {
-	for(uint32_t i = 0; i < COMBAT_JOB_COUNT; ++i) {
+	for(uint32_t i = 0; i < combatJobs(); ++i) {
 		if(env.pJobs[i].ulOwner == owner) {
 			return &env.pJobs[i];
 		}
@@ -243,16 +239,16 @@ void endOfFrame(const CombatEnv &env, CombatJob *pJob, const uint8_t *s) {
 
 // One draw event, LAB_0334..LAB_033E.  The caller advances the script by 6.
 void drawEvent(const CombatEnv &env, CombatJob *pJob, const uint8_t *s) {
-	const uint32_t pCelTab = rd32(at(pJob->ulFrames) + (s[0] & 0x1f));
+	const uint32_t pCelTab = rosterCelFor(env.pRoster, rosterDrawSkin(env.pRoster, jobPtr<Knight>(pJob->ulOwner), pJob->ulOwner), be::ld32(at(pJob->ulFrames) + (s[0] & 0x1f)));
 	const uint8_t frame = s[1];
 	pJob->ubFrame = frame;
 	loadFrame(env, pJob, pCelTab, frame);
 	const uint16_t dy = (uint16_t)(int16_t)(int8_t)s[2];
 	uint16_t x;
 	if(!(pJob->ubFlags & 2)) {
-		x = (uint16_t)(rd16(s + 4) + pJob->uwX);
+		x = (uint16_t)(be::ld16(s + 4) + pJob->uwX);
 	} else {
-		x = (uint16_t)(pJob->uwX - rd16(s + 4) - pJob->uwW);
+		x = (uint16_t)(pJob->uwX - be::ld16(s + 4) - pJob->uwW);
 	}
 	const uint16_t y = (uint16_t)(dy + pJob->uwY + pJob->uwZ);
 	pJob->uwSx = x;
@@ -274,31 +270,31 @@ void drawEvent(const CombatEnv &env, CombatJob *pJob, const uint8_t *s) {
 		// LAB_033A: dirty-rect list, capped at 45 entries (the count keeps growing past it)
 		uint8_t *p = jobPtr<uint8_t>(*env.pRectList);
 		++*env.pRectCount;
-		if((int16_t)*env.pRectCount <= (int16_t)COMBAT_RECT_MAX) {
-			wr16(p, pJob->uwSx);
-			wr16(p + 2, pJob->uwSy);
-			wr16(p + 4, pJob->uwW);
-			wr16(p + 6, pJob->uwH);
-			wr16(p + 12, 0xFFFF);
+		if((int16_t)*env.pRectCount <= (int16_t)g_combatLimits.ulRects) {
+			be::st16(p, pJob->uwSx);
+			be::st16(p + 2, pJob->uwSy);
+			be::st16(p + 4, pJob->uwW);
+			be::st16(p + 6, pJob->uwH);
+			be::st16(p + 12, 0xFFFF);
 			*env.pRectList += 8;
 		}
 	}
 	if(flags & 2) {
 		uint8_t *p = jobPtr<uint8_t>(*env.pAttackList);
-		wr32(p, pCelTab);
-		wr16(p + 4, frame);
-		wr16(p + 6, x);
-		wr16(p + 8, y);
-		wr32(p + 10, 0);
+		be::st32(p, pCelTab);
+		be::st16(p + 4, frame);
+		be::st16(p + 6, x);
+		be::st16(p + 8, y);
+		be::st32(p + 10, 0);
 		*env.pAttackList += 10;
 	}
 	if(flags & 1) {
 		uint8_t *p = jobPtr<uint8_t>(*env.pHurtList);
-		wr32(p, pCelTab);
-		wr16(p + 4, frame);
-		wr16(p + 6, x);
-		wr16(p + 8, y);
-		wr32(p + 10, 0);
+		be::st32(p, pCelTab);
+		be::st16(p + 4, frame);
+		be::st16(p + 6, x);
+		be::st16(p + 8, y);
+		be::st32(p + 10, 0);
 		*env.pHurtList += 10;
 	}
 	env.waitBlitter();
@@ -306,19 +302,16 @@ void drawEvent(const CombatEnv &env, CombatJob *pJob, const uint8_t *s) {
 }
 
 // $C0/$C8-style tests on the owner: byte ($01), word ($02) or long (else) at owner + signed word offset.
+// The offset is the 68k's: byte 63 is the low byte of the word at +62 whatever the CPU (game/record.hpp).
 bool ownerNonZero(const Knight *pOwner, const uint8_t *s) {
-	const uint8_t *p = (const uint8_t *)pOwner + (int16_t)rd16(s + 2);
+	const int32_t slOff = (int16_t)be::ld16(s + 2);
 	if(s[1] & 1) {
-		return p[0] != 0;
+		return recGet8(*pOwner, slOff) != 0;
 	}
 	if(s[1] & 2) {
-		uint16_t v;
-		__builtin_memcpy(&v, p, 2);
-		return v != 0;
+		return recGet16(*pOwner, slOff) != 0;
 	}
-	uint32_t v;
-	__builtin_memcpy(&v, p, 4);
-	return v != 0;
+	return recGet32(*pOwner, slOff) != 0;
 }
 
 }  // namespace
@@ -360,9 +353,9 @@ void combatRunJob(const CombatEnv &env, CombatJob *pJob) {
 					break;
 				case raw(ScriptOp::Call):                       // LAB_035B
 					if(s[1] == 3) {
-						pJob->ulScript = rd32(s + 2);
+						pJob->ulScript = be::ld32(s + 2);
 					} else {
-						pW->ulCall = rd32(s + 2);
+						pW->ulCall = be::ld32(s + 2);
 						pW->ubCallArmed = 1;
 						pJob->ulScript += 6;
 					}
@@ -373,6 +366,10 @@ void combatRunJob(const CombatEnv &env, CombatJob *pJob) {
 						pW->ubLoopCount = n ? n : 1;
 					} else {
 						pW->ubLoopCount = s[1];
+						if(env.recoveryRepeats) {
+							pW->ubLoopCount = env.recoveryRepeats(*jobPtr<Knight>(pJob->ulOwner), pJob->ulScript, s[1]);
+							if(pW->ubLoopCount == 0) pW->ubLoopCount = 1;
+						}
 					}
 					pW->ubLoopActive = 1;
 					pJob->ulScript += 2;
@@ -399,23 +396,23 @@ void combatRunJob(const CombatEnv &env, CombatJob *pJob) {
 					break;
 				case raw(ScriptOp::JumpIfDemo):                       // LAB_0363
 					if(*env.pDemoFlag != 0) {
-						pJob->ulScript = rd32(s + 2);
+						pJob->ulScript = be::ld32(s + 2);
 					} else {
 						pJob->ulScript += 6;
 					}
 					break;
 				case raw(ScriptOp::MovePos):                       // LAB_0368: set or move x/y/z
 					if(s[1] & 0x40) {
-						pJob->uwX = rd16(s + 2);
-						pJob->uwY = rd16(s + 4);
-						pJob->uwZ = rd16(s + 6);
+						pJob->uwX = be::ld16(s + 2);
+						pJob->uwY = be::ld16(s + 4);
+						pJob->uwZ = be::ld16(s + 6);
 					} else {
-						const uint16_t dx = rd16(s + 2);
+						const uint16_t dx = be::ld16(s + 2);
 						const bool xAdd = (pJob->ubFlags == 3) ? !(s[1] & 1) : (s[1] & 1);
 						pJob->uwX = (uint16_t)(xAdd ? pJob->uwX + dx : pJob->uwX - dx);
-						const uint16_t dy = rd16(s + 4);
+						const uint16_t dy = be::ld16(s + 4);
 						pJob->uwY = (uint16_t)((s[1] & 8) ? pJob->uwY - dy : pJob->uwY + dy);
-						const uint16_t dz = rd16(s + 6);
+						const uint16_t dz = be::ld16(s + 6);
 						pJob->uwZ = (uint16_t)((s[1] & 0x20) ? pJob->uwZ - dz : pJob->uwZ + dz);
 					}
 					pJob->ulScript += 8;
@@ -425,26 +422,26 @@ void combatRunJob(const CombatEnv &env, CombatJob *pJob) {
 					pJob->ulScript += 2;
 					break;
 				case raw(ScriptOp::PokeOwner): {                     // LAB_0374: poke the owner at a signed word offset
-					uint8_t *p = jobPtr<uint8_t>(pJob->ulOwner) + (int16_t)rd16(s + 2);
-					const uint32_t v = rd32(s + 4);
+					Knight &owner = *jobPtr<Knight>(pJob->ulOwner);
+					const int32_t slOff = (int16_t)be::ld16(s + 2);               // a 68k offset: game/record.hpp maps it to the native cell
+					const uint32_t v = be::ld32(s + 4);
 					if(s[1] & 1) {
-						*p = (uint8_t)v;
+						recSet8(owner, slOff, (uint8_t)v);
 					} else if(s[1] & 2) {
-						const uint16_t w = (uint16_t)v;
-						__builtin_memcpy(p, &w, 2);
+						recSet16(owner, slOff, (uint16_t)v);
 					} else {
-						__builtin_memcpy(p, &v, 4);
+						recSet32(owner, slOff, v);
 					}
 					pJob->ulScript += 8;
 					break;
 				}
 				case raw(ScriptOp::SpawnArm):                       // LAB_0372
-					pW->ulSpawn = rd32(s + 2);
+					pW->ulSpawn = be::ld32(s + 2);
 					pW->ubSpawnArmed = s[1] ? 1 : 0;
 					pJob->ulScript += 6;
 					break;
 				case raw(ScriptOp::CallRoutine):                       // LAB_038B
-					env.callRoutine(rd32(s + 2), pJob->ulOwner, pJob->ulFrames, pJob->uwX, pJob->uwY, pJob->uwZ,
+					env.callRoutine(be::ld32(s + 2), pJob->ulOwner, pJob->ulFrames, pJob->uwX, pJob->uwY, pJob->uwZ,
 						pJob->ubFlags);
 					pJob->ulScript += 6;
 					break;
@@ -452,12 +449,12 @@ void combatRunJob(const CombatEnv &env, CombatJob *pJob) {
 					if(jobPtr<Knight>(pJob->ulOwner)->swHp > 0) {
 						pJob->ulScript += 6;
 					} else {
-						pJob->ulScript = rd32(s + 2);
+						pJob->ulScript = be::ld32(s + 2);
 						resetWork(pJob);
 					}
 					break;
 				case raw(ScriptOp::SpawnJob):                       // LAB_0390
-					env.spawn(rd32(s + 2), pJob->ulFrames, pJob->uwX, pJob->uwY, pJob->uwZ, pJob->ubFlags,
+					env.spawn(be::ld32(s + 2), pJob->ulFrames, pJob->uwX, pJob->uwY, pJob->uwZ, pJob->ubFlags,
 						pJob->ulOwner);
 					pJob->ulScript += 6;
 					break;
@@ -477,7 +474,7 @@ void combatRunJob(const CombatEnv &env, CombatJob *pJob) {
 				case raw(ScriptOp::JumpIfSameFacing): {                     // LAB_038C: jump when the current knight's job faces the same way
 					const CombatJob *pOther = findJob(env, *env.pCurrentKnight);
 					if(pOther && pJob->ubFlags == pOther->ubFlags) {
-						pJob->ulScript = rd32(s + 2);
+						pJob->ulScript = be::ld32(s + 2);
 					} else {
 						pJob->ulScript += 6;
 					}
@@ -485,14 +482,14 @@ void combatRunJob(const CombatEnv &env, CombatJob *pJob) {
 				}
 				case raw(ScriptOp::JumpIfZero):                       // LAB_0393: jump if the owner value is zero
 					if(!ownerNonZero(jobPtr<Knight>(pJob->ulOwner), s)) {
-						pJob->ulScript = rd32(s + 4);
+						pJob->ulScript = be::ld32(s + 4);
 					} else {
 						pJob->ulScript += 8;
 					}
 					break;
 				case raw(ScriptOp::JumpIfNonZero):                       // LAB_0397: jump if non-zero
 					if(ownerNonZero(jobPtr<Knight>(pJob->ulOwner), s)) {
-						pJob->ulScript = rd32(s + 4);
+						pJob->ulScript = be::ld32(s + 4);
 					} else {
 						pJob->ulScript += 8;
 					}
@@ -508,11 +505,58 @@ void combatRunJob(const CombatEnv &env, CombatJob *pJob) {
 	}
 }
 
+uint32_t combatFinalHold(uint32_t ulScript) {
+	if(!ulScript) return 0;
+	uint32_t last = 0;
+	bool holdClosed = false;
+	for(uint16_t offset = 0; offset < 512;) {
+		const uint8_t *s = at(ulScript + offset);
+		uint16_t size = 0;
+		if(!(s[0] & 0x80)) {
+			// A later, distinct pose means that the earlier hold was not the terminal recovery pose.
+			if(holdClosed) last = 0;
+			size = 6;
+		} else {
+			switch(s[0]) {
+			case raw(ScriptOp::LoopBegin):
+				if(s[1] == 0) return 0; // random holds are not a recovery duration
+				last = ulScript + offset;
+				holdClosed = false;
+				size = 2;
+				break;
+			case raw(ScriptOp::EndOfFrame):
+				if(s[1] == raw(ScriptOp::EndOfFrame)) return last;
+				if(s[1] != 0) return 0;
+				holdClosed = true;
+				size = 2;
+				break;
+			case raw(ScriptOp::Call):
+				if(s[1] == 3) return 0; // immediate branch: not a linear tail
+				size = 6;
+				break;
+			case raw(ScriptOp::Sound):
+			case raw(ScriptOp::SetFacing):
+			case raw(ScriptOp::ResetWork): size = 2; break;
+			case raw(ScriptOp::CallRoutine): size = 6; break;
+			default: return 0;
+			}
+		}
+		offset = (uint16_t)(offset + size);
+	}
+	return 0;
+}
+
+bool combatIsRecoveryHold(const Knight &k, uint32_t ulLoop) {
+	if(!k.ulActionScripts || k.uwAction > raw(Action::Heavy) || (k.uwAction & 3)) return false;
+	const uint32_t root = be::ld32(at(k.ulActionScripts + k.uwAction));
+	return ulLoop != 0 && ulLoop == combatFinalHold(root);
+}
+
 void combatSortJobs(const CombatEnv &env) {
 	bool swapped;
 	do {                                         // LAB_0352
 		swapped = false;
-		for(uint32_t i = 0; i + 1 < COMBAT_JOB_COUNT; ++i) {
+		for(uint32_t i = 0; i + 1 < combatJobs(); ++i) {
 			CombatJob *pA = &env.pJobs[i];
 			if(pA[1].uwZ < pA->uwZ) {            // LAB_0353: CMP.W ; BCC = no swap when next >= this (unsigned)
 				copy(env.pScratchJob, pA, sizeof(CombatJob));
@@ -528,7 +572,7 @@ void combatTick(const CombatEnv &env) {
 	combatSortJobs(env);
 	// First pass: a job with a second script armed ($AC) runs it on a scratch copy of itself, y forced to 0.
 	*env.pJobIndex = 0;
-	for(CombatJob *pJob = env.pJobs; *env.pJobIndex != COMBAT_JOB_COUNT; ++pJob, ++*env.pJobIndex) {
+	for(CombatJob *pJob = env.pJobs; *env.pJobIndex != combatJobs(); ++pJob, ++*env.pJobIndex) {
 		*env.pCurJob = jobAddr(pJob);
 		if(!pJob->ubActive || pJob->uwPaused) {
 			continue;
@@ -546,7 +590,7 @@ void combatTick(const CombatEnv &env) {
 	}
 	// Second pass: the real jobs.
 	*env.pJobIndex = 0;
-	for(CombatJob *pJob = env.pJobs; *env.pJobIndex != COMBAT_JOB_COUNT; ++pJob, ++*env.pJobIndex) {
+	for(CombatJob *pJob = env.pJobs; *env.pJobIndex != combatJobs(); ++pJob, ++*env.pJobIndex) {
 		*env.pCurJob = jobAddr(pJob);
 		if(!pJob->ubActive || pJob->uwPaused) {
 			continue;

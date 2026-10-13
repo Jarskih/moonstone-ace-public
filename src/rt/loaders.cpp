@@ -30,7 +30,7 @@
 #include "rt/enhanced.hpp"
 #include "rt/enhanced_cells.hpp"
 #include "rt/files.hpp"
-#include "rt/guards.hpp"
+#include "rt/file_handle.hpp"
 
 extern "C" {
 // program
@@ -49,7 +49,7 @@ extern uint32_t mogCelLastName;
 extern uint32_t mogCelLastTotal;
 extern uint8_t mogCelScratch[];
 extern uint8_t mogFileErr[4];
-extern uint32_t mogArenaPtrs[] asm("mogHeapTable");   // [21] = the collide.hit text buffer, [22] = the hit data region
+extern uint32_t mogHeapTable[];   // [21] = the collide.hit text buffer, [22] = the hit data region
 extern uint32_t mogHitData;       // write cursor of the hit data
 extern uint32_t mogHitPairs;      // write cursor of the (cel table, hit data) pair table
 extern uint32_t mogHitDataBase;
@@ -212,11 +212,11 @@ LOADER_ENTRY uint32_t rtLoadBlob_mog(const char *szName, uint8_t *pDst, uint8_t 
 }
 
 LOADER_ENTRY void rtHitOpen_mog(void) {
-	const uint32_t ulDataBase = mogArenaPtrs[HIT_DATA_INDEX];
+	const uint32_t ulDataBase = mogHeapTable[HIT_DATA_INDEX];
 	mogHitData = ulDataBase;
 	mogHitDataBase = ulDataBase;
 	mogHitPairs = addr(mogHitPairTable);
-	uint8_t *const pText = reinterpret_cast<uint8_t *>(mogArenaPtrs[HIT_TEXT_INDEX]);
+	uint8_t *const pText = reinterpret_cast<uint8_t *>(mogHeapTable[HIT_TEXT_INDEX]);
 	rt::FileHandle sFile = openFile(s_mog, mogHitName);
 	if(sFile.isOpen()) {
 		sFile.read(pText, HIT_FILE_READ);
@@ -228,7 +228,7 @@ LOADER_ENTRY void rtHitOpen_mog(void) {
 }
 
 LOADER_ENTRY uint32_t rtHitLoad_mog(const char *szName, uint8_t *pCelDest) {
-	const uint8_t *const pText = reinterpret_cast<const uint8_t *>(mogArenaPtrs[HIT_TEXT_INDEX]);
+	const uint8_t *const pText = reinterpret_cast<const uint8_t *>(mogHeapTable[HIT_TEXT_INDEX]);
 	uint8_t *const pOut = reinterpret_cast<uint8_t *>(mogHitData);
 	const int32_t lBytes = ms::hitParse(pText, static_cast<int32_t>(mogHitFileSize), reinterpret_cast<const uint8_t *>(szName), pOut);
 	if(lBytes < 0) {
@@ -243,34 +243,3 @@ LOADER_ENTRY uint32_t rtHitLoad_mog(const char *szName, uint8_t *pCelDest) {
 }
 
 }  // extern "C"
-
-// Register-preserving entries. Arguments go on the stack in C order (A0 first); the C++ result comes back in D0. The patched label
-// JMPs here, so the RTS of the shim returns to the original caller of the routine.
-#define LOADER_SHIM1(NAME, FN) \
-	asm(".text\n.globl " NAME "\n" NAME ":\n" \
-		"	movem.l %d1-%d7/%a0-%a6,-(%sp)\n" \
-		"	move.l %a0,-(%sp)\n" \
-		"	jsr " FN "\n" \
-		"	addq.l #4,%sp\n" \
-		"	movem.l (%sp)+,%d1-%d7/%a0-%a6\n" \
-		"	rts\n");
-#define LOADER_SHIM2(NAME, FN) \
-	asm(".text\n.globl " NAME "\n" NAME ":\n" \
-		"	movem.l %d1-%d7/%a0-%a6,-(%sp)\n" \
-		"	move.l %a1,-(%sp)\n" \
-		"	move.l %a0,-(%sp)\n" \
-		"	jsr " FN "\n" \
-		"	addq.l #8,%sp\n" \
-		"	movem.l (%sp)+,%d1-%d7/%a0-%a6\n" \
-		"	rts\n");
-
-LOADER_SHIM1("rt_prg_pic_mem", "rtLoadPicMem_prg")
-LOADER_SHIM1("rt_mog_pic_mem", "rtLoadPicMem_mog")
-LOADER_SHIM2("rt_prg_pic_file", "rtLoadPicFile_prg")
-LOADER_SHIM2("rt_mog_pic_file", "rtLoadPicFile_mog")
-LOADER_SHIM2("rt_prg_cel_load", "rtLoadCel_prg")
-LOADER_SHIM2("rt_mog_cel_load", "rtLoadCel_mog")
-LOADER_SHIM1("rt_prg_cel_size", "rtCelSize_prg")
-LOADER_SHIM1("rt_mog_cel_size", "rtCelSize_mog")
-LOADER_SHIM2("rt_mog_hit_load", "rtHitLoad_mog")
-

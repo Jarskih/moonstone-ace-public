@@ -188,10 +188,11 @@ class Table:
 def load_tables(path):
     try:
         import yaml
+        import yamlfast
     except ImportError:
         raise SystemExit('PyYAML missing: py -m pip install pyyaml')
     with open(path, encoding='utf-8') as f:
-        doc = yaml.safe_load(f)
+        doc = yamlfast.safe_load(f)
     structs = doc.get('structs') or {}
     tables = [Table(d, structs) for d in doc['tables']]
     seen = set()

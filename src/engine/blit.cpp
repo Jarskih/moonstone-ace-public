@@ -1,16 +1,12 @@
 // engine/blit - see blit.hpp. Transcribed from program.asm S_23 LAB_04B5..LAB_04D6 (mog.asm S_28, identical
 // code with labels +0x826) and S_25 LAB_04E1 / LAB_04E2. Word arithmetic is kept as the 68000 does it.
 #include "engine/blit.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
 namespace {
 
-uint16_t rd16(const uint8_t *p) { return static_cast<uint16_t>((p[0] << 8) | p[1]); }
-uint32_t rd32(const uint8_t *p) {
-	return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
-	       (static_cast<uint32_t>(p[2]) << 8) | p[3];
-}
 
 BlitOp makeOp(uint16_t con0, uint16_t con1, uint8_t channels) {
 	BlitOp op{};
@@ -26,15 +22,15 @@ BlitOp makeOp(uint16_t con0, uint16_t con1, uint8_t channels) {
 
 bool celFrame(const uint8_t *cel, int16_t frame, CelFrame &out) {
 	// TST.W D0 / BLT, CMP.W (A0),D0 / BGE  (signed word compares)
-	if(frame < 0 || frame >= static_cast<int16_t>(rd16(cel))) {
+	if(frame < 0 || frame >= static_cast<int16_t>(be::ld16(cel))) {
 		return false;
 	}
 	// D0 = frame * 10 as a word, then LEA 0(A0,D0.W): the offset is sign-extended
 	const int16_t rec = static_cast<int16_t>(static_cast<uint16_t>(frame * 10));
 	const uint8_t *r = cel + 10 + rec;
-	out.data = rd32(cel + 2) + rd32(r);
-	out.width = rd16(r + 4);
-	out.height = rd16(r + 6);
+	out.data = be::ld32(cel + 2) + be::ld32(r);
+	out.width = be::ld16(r + 4);
+	out.height = be::ld16(r + 6);
 	out.hot = r[8];
 	out.planeBits = r[9];
 	return true;

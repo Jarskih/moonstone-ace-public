@@ -36,7 +36,8 @@ PLATFORM_EXACT = {'game/state_bind.hpp', 'owned_data.hpp', 'stdio.h', 'stdlib.h'
 STATE_POD = {'game/state.hpp', 'game/knight.hpp', 'game/constants.hpp'}   # the typed records every layer above L0 shares
 L1_GAME = {'src/game/combat_script.cpp', 'src/game/creatures.cpp', 'src/game/mogjobs.cpp', 'src/game/arena.cpp',
            'src/game/combat_load.cpp', 'include/game/combat_script.hpp', 'include/game/creatures.hpp',
-           'include/game/mogjobs.hpp', 'include/game/arena.hpp', 'include/game/combat_load.hpp'}   # L1 per ARCHITECTURE 1.1
+           'include/game/mogjobs.hpp', 'include/game/arena.hpp', 'include/game/combat_load.hpp',
+           'include/game/roster.hpp', 'src/game/roster.cpp'}   # L1 per ARCHITECTURE 1.1
 
 KNIGHT_POINTER_FIELDS = ('ulInventory', 'ulEngagedWith', 'ulWalkScripts')
 

@@ -14,7 +14,7 @@ have the original game again.
 
 | File | What it changes | Section |
 |---|---|---|
-| `rules.ini` | wave scaling, the gold cap, the dagger cap (and the co-op switches) | 3.1 |
+| `rules.ini` | wave scaling, purse/quiver limits, co-op switches, optional Dexterity | 3.1 |
 | `items.ini` | swords, armour and stat items: damage, hit points, prices | 3.2 |
 | `shops.ini` | market prices, the dice house, temple, healer and the dagger price | 3.3 |
 | `places.ini` | which map node is a village, a town, Stonehenge ... | 3.4 |
@@ -66,7 +66,7 @@ line and the allowed values.
 
 ## 3. The files, one by one
 
-### 3.1 `rules.ini`: waves and limits
+### 3.1 `rules.ini`: waves, limits and Dexterity
 
 ```
 [waves]
@@ -80,9 +80,36 @@ dagger_cap = 10
 (HP >= 30 / >= 90 add one, ...), the adjusted total is written back into the lair so it compounds on every visit, and the number
 of monsters alive at once grows too. `limited`: the total still grows, the number alive at once does not. `none`: nothing grows; the
 lair's own count and the arena's base numbers are used. Creature stats never scaled in the original. Not touched: the day-based skill
-of computer knights and the ratmen's moon-phase strength. Examples: `mods_examples/no_scaling`, `limited_scaling`.
+of computer knights and the ratmen's moon-phase strength. On the Options screen this is the MONSTER SCALING setting (NONE / LIMITED / FULL, section 4-O); the folders `mods_examples/no_scaling` and `limited_scaling` do the same by hand.
 `[coop]` holds the owner's co-op wave decisions (`enabled`, `alive_bonus`, `total_factor`, `writeback_divisor`); there is no co-op
 mode yet, so they do nothing. Code: `src/game/rules/waves.cpp`. A knight's gold is cut to `gold_cap` wherever gold is added.
+
+#### Optional Dexterity stat
+
+Copy `mods_examples/dexterity/rules.ini` into `mods/`, or add this section to your existing `rules.ini`:
+
+```ini
+[dexterity]
+enabled = true
+starting = 1
+recovery_frames_per_point = 1
+```
+
+Start a new game. Dexterity is a fourth stat on the same **1-5** scale as the other attributes; click **Dex** on your knight's
+sheet to buy a point for the normal temple training cost. At 1, attack timing is unchanged. Each additional point removes
+`recovery_frames_per_point` repeats from the final held pose of a melee attack, with **at least one repeat retained**. Short
+holds reach that minimum sooner, so some attacks receive no further benefit at higher scores. These are combat animation
+frames, not individual 50 Hz display ticks.
+
+The bonus affects only the terminal counted hold of the knight's own melee-action script. It does not speed the whole game,
+change movement or damage values, or accelerate dagger throws, blocking, hurt or death animations. It preserves every distinct
+animation pose and event; the final pose is held for less time. Where that held pose still carries a contact box, its contact
+window is shorter too. Random, branching and motion scripts are excluded. `starting` can be 1-5; the repeat reduction can be
+0-4 (0 keeps the stat visible but disables its timing effect). Dexterity is off by default. Random stat gifts and computer-knight
+training retain their original three-stat choices; Dexterity is trained explicitly on the player's sheet.
+
+Code: `src/game/rules/recovery.cpp`, `src/game/combat_script.cpp`, `src/rt/combat_script.cpp`. The knight record keeps its
+132-byte layout: Dexterity uses the previously unused byte at +87.
 
 ### 3.2 `items.ini`: swords, armour, stat items
 
@@ -123,7 +150,7 @@ stat_cost = 3, 2, 1, 1    # progress points per stat point for 1..4 human player
 
 The armour and sword prices of the smith are in `items.ini` (`price`). The game refuses a price above `gold_cap` and unsorted or
 repeated dice. The text and numbers drawn on the shop *pictures* are not data: the price list you see in the market does not
-change with a mod, the price you pay does. Example: `mods_examples/cheap_shops`.
+change with a mod, the price you pay does. Half-price shops, for instance, are `price` values in `items.ini` and `shops.ini`.
 
 ### 3.4 `places.ini`: what a map node is
 
@@ -204,7 +231,7 @@ arena is the guardian's: it honours only `creature` and `palette`.
 ### 3.9 A new monster in a lair: three rows
 
 A new monster is a **creature row**, an **arena row** that spawns it and a **lair row** that uses the arena. No C++. This is
-`mods_examples/cave_troll`:
+an example:
 
 ```
 # creatures.ini                       # arenas.ini                          # lairs.ini
@@ -222,7 +249,7 @@ hp = 60                               creature = 10
    the wave. The pictures and sounds are the troll's (a variation borrows an original monster's set until it has its own).
 3. **The lair.** `[lair lair07]` with `arena = 10` makes the seventh lair of the map use that fight; `count` is how many it holds.
 
-Start the game, go to lair 7 and fight cave trolls. If the game ignores a file, `mods.log` says which line.
+Start the game, go to lair 7 and fight cave trolls (this example is not shipped as a folder: it is the pattern for your own pack). If the game ignores a file, `mods.log` says which line.
 
 **Own pictures, sounds and animations** are made with the monster kit: `docs/MONSTER_KIT.md` describes the kit and its converter, and
 the **web editor** `tools/monsterkit/editor_web/monster_editor.html` (one page, open it in a browser, no server and no game data
@@ -236,14 +263,69 @@ copy its `.ini` files into the `mods` drawer; the hard disk install stages them 
 
 | Folder | Files | What it does |
 |---|---|---|
-| `no_scaling` | `rules.ini` | `[waves] scaling = none`: lair fights never grow |
-| `limited_scaling` | `rules.ini` | `scaling = limited`: more monsters in all, never more at once |
-| `cheap_shops` | `items.ini`, `shops.ini` | smith, market, healer and daggers cost half |
+| `no_scaling` | `rules.ini` | `[waves] scaling = none`: lair fights never grow (the Options setting MONSTER SCALING = NONE) |
+| `limited_scaling` | `rules.ini` | `scaling = limited`: more monsters in all, never more at once (MONSTER SCALING = LIMITED) |
+| `dexterity` | `rules.ini` | `[dexterity] enabled = true`: the Dexterity stat (the Options setting DEXTERITY = ON) |
 | `tough_dragon` | `creatures.ini` | the dragon has 250 HP (original 120) and hits twice as hard |
-| `cave_troll` | `creatures.ini`, `arenas.ini`, `lairs.ini` | a new 60 HP troll, in lair 7 |
 
-Each is proved by a headless boot (`py tools/modsboot.py <name>`: the log shows the loaded values, the dragon and the cave troll
-log a line from the fight set-up) and by `tests/test_mod_examples.py` (every example parses clean against the schema).
+`no_scaling`, `limited_scaling` and `dexterity` are **settings on the Options screen** now (MONSTER SCALING, DEXTERITY, section 4-O), so the
+pack list does not show them (it hides any pack that sets only the keys of the `[waves]` / `[dexterity]` sections of `rules.ini`, whatever
+its folder is called). The folders stay on disk and still work when copied into `mods/` by hand.
+
+Each is proved by a headless boot (`py tools/modsboot.py <name>`: the log shows the loaded values, the dragon
+logs a line from the fight set-up) and by `tests/test_mod_examples.py` (every example parses clean against the schema).
+
+### 4-O. Options screen (ROADMAP 9.9)
+
+The main menu (LOCAL / MULTIPLAYER / SETTINGS) has a third row, **SETTINGS** (the Options screen). It lists the mod packs and the main rule settings, so a player can switch a pack on without
+copying files. Everything it does can still be done by hand (sections 1-3); files you put into `mods/` yourself keep working.
+
+**Packs.** A pack is a folder that holds `.ini` data files of the schema (`rules.ini`, `items.ini` ...). The screen lists every such folder
+of `PROGDIR:mods_examples/` (the examples above) and of `PROGDIR:packs/` (your own; same layout, one folder per pack, folder names of
+letters, digits, `_ - .` and space, at most 31 characters). Each pack is ON or OFF. Folders without a data file are not listed, and neither
+is a pack whose only keys are the ones the two settings below already offer (`no_scaling`, `limited_scaling`, `dexterity`: found by scanning
+the keys of the pack, not by its folder name). At most 16 packs are listed, eight to a page; examples first, then yours, each sorted by name.
+Up/down moves, left = OFF, right = ON, fire toggles, a long list scrolls. The rows are written in the game's small font (capitals; `_` and
+`-` show as spaces), so the whole folder name is shown as far as it fits (about 25 characters).
+If you switch a pack ON that sets a key (same file, same section and row, same key) which another enabled pack sets, that other pack is
+switched OFF for you and the bottom line says **<PACK> TURNED OFF** (**2 PACKS TURNED OFF** when there are several), so two packs that
+fight over a key are never on together. (A hand-edited `options.ini` that enables both still loads: the later pack wins, as everywhere.)
+
+**Settings.** `DEXTERITY` (OFF / ON, `[dexterity] enabled`) and `MONSTER SCALING` (NONE / LIMITED / FULL, `[waves] scaling` = `none` /
+`limited` / `original`; FULL is the original scaling), left/right to change (MONSTER SCALING cycles NONE, LIMITED, FULL and wraps). The
+value shown is the value in effect: the base rules (OFF and FULL), changed by the enabled packs in load order, then by the loose files of
+`mods/`, then by your own choice. So a player who never touched the screen sees what the game plays with, and the shown value follows the
+packs you switch until you pick one yourself. A value you pick is stored and applied last: it wins over every pack and file.
+`BACK` or Esc leaves the screen.
+
+An old `options.ini` that still enables one of the hidden packs is converted when the screen loads: `no_scaling` becomes MONSTER SCALING
+NONE, `limited_scaling` LIMITED, `dexterity` DEXTERITY ON (a value the file sets itself wins), and the pack line is dropped at the next save.
+
+**What is saved, and when it applies.** On leaving, the choice is written to `PROGDIR:mods/options.ini`:
+
+```
+[options]
+pack = "mods_examples/tough_dragon"     # one line per enabled pack, in load order
+pack = "packs/my_pack"
+dexterity = on                           # on | off; the line is absent until you change the setting
+monster_scaling = limited                # original (FULL) | limited | none; absent until you change it
+```
+
+A key that is absent means "not set on the screen". Old files are read as before: `waves = ...` is the old name of `monster_scaling`,
+`full` means `original`, and `auto` means not set (the next save drops those lines).
+
+Other lines of the file (comments, other sections, keys you add) are kept when the screen saves; a pack named in the file whose folder is
+gone stays in it (nothing is loaded for it). Then the live data is rebuilt exactly as at start-up: the built-in defaults, the enabled packs in
+order (each pack's files in the fixed file order of section 1), the loose files in `mods/` as before, and last the screen's settings. The
+**next game** uses it; a game that is running keeps its data (the screen exists only in the title menu). A bad file in a pack is skipped
+whole like any bad mod file; `mods.log` lists every `pack <name>` line, each file applied or skipped and the final values, as at start-up.
+`options.ini` is not a data file: it does not turn the boot screen red.
+
+**Network games.** The screen opens read-only in a running network session (the cursor moves, nothing changes; the bottom line says so).
+A network game refuses a peer whose mods differ: the data checksum and the rule bits in the HELLO message (docs/NETPLAY.md 4) must match,
+so everybody enables the same packs and settings before the host starts.
+
+If the volume is write-protected (a boot floppy), `options.ini` cannot be written; the choice still applies until the game quits.
 
 ### 4a. Art and monsters (pictures and sounds)
 
@@ -265,7 +347,7 @@ monsters: the monster kit (3.9).
 py tools/integrate.py                      # regenerate, build Release + Debug, run the tests that touch changed files
 py tools/integrate.py --boot               # headless boot regression in WinUAE (docs/AUTOPLAY.md)
 py tools/check.py --quick                  # unit tests and tool checks without replay and builds
-py tools/modsboot.py cave_troll            # boot one example mod and check the log
+py tools/modsboot.py tough_dragon          # boot one example mod and check the log
 py -m unittest tests.test_game_rules       # one module
 ```
 

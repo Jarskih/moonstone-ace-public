@@ -18,7 +18,10 @@
 #include <stdint.h>
 
 #include "game/combat_script.hpp"
+#include "game/rules/recovery.hpp"
 #include "game/state_bind.hpp"
+#include "rt/combat_pool.hpp"
+#include "rt/fight_roster.hpp"
 #include "rt/perf.hpp"
 #include "rt/sfx.hpp"
 
@@ -81,11 +84,17 @@ void cbSpawn(uint32_t ulScript, uint32_t ulFrames, uint16_t uwX, uint16_t uwY, u
 	rtCombatSpawn(ulScript, ulFrames, uwX, uwY, uwZ, ubFlags, ulOwner);
 }
 
+uint8_t cbRecovery(const ms::game::Knight &k, uint32_t loop, uint8_t repeats) {
+	using namespace ms::game;
+	if(k.ubDexterity <= 1 || repeats <= 1) return repeats;
+	return knightRecoveryRepeats(k, combatIsRecoveryHold(k, loop), repeats, g_gameData.rules);
+}
+
 }  // namespace
 
 extern "C" __attribute__((used, externally_visible)) void rtCombatTick(void) {
 	ms::game::CombatEnv env;
-	env.pJobs = reinterpret_cast<ms::game::CombatJob *>(mogJobs);  // LAB_0649
+	env.pJobs = rt::combatPool().pJobs;  // LAB_0649 (the co-op pool in a party fight)
 	env.pScratchJob = &mogScratchJob;
 	env.pScratchWork = &mogScratchWork;
 	env.pCurJob = &mogCurJob;
@@ -113,6 +122,8 @@ extern "C" __attribute__((used, externally_visible)) void rtCombatTick(void) {
 	env.sound = cbSound;
 	env.callRoutine = cbCall;
 	env.spawn = cbSpawn;
+	env.pRoster = &rt::fightRoster();                  // Moonstone 2: the second party knight's colours (ROADMAP 8.4b)
+	env.recoveryRepeats = ms::game::g_gameData.rules.ubDexterityEnabled ? cbRecovery : nullptr;
 	ms::game::combatTick(env);
 }
 
@@ -197,4 +208,3 @@ rtCombatSpawn:
 	movem.l (%sp)+,%d2-%d7/%a2-%a6
 	rts
 )");
-

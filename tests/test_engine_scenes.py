@@ -678,12 +678,43 @@ void rtPrgCopyScreen(unsigned long, unsigned long) {}
 void rtPrgWipeStepC(unsigned long) {}
 void rtPrgWipeRowsC(void) {}
 void rtPrgWipeRefreshC(void) {}
+void rtJobResetAll(void) {}
 }
 asm(R"(
 	.text
-	.globl rt_job_reset
-rt_job_reset:
+	| ROADMAP 11.1d: the scene host calls the primitives of the program overlay as C++ functions (rt/prim.hpp).  Each wrapper below loads the
+	| registers of the ORIGINAL routine from the C arguments and calls the label that the test hooks (rt_prg_* symbols are defined to the
+	| image addresses at link time, RT_LABEL), so the hook logs the call and applies its stand-in effect exactly as for the asm run.
+	| D2/D3 are callee-saved for the C caller: the wrapper saves them, the first C argument is at 12(%sp).
+	.macro SFW name, label, loads
+	.globl \name
+\name:
+	movem.l %d2-%d3,-(%sp)
+	\loads
+	jsr \label
+	movem.l (%sp)+,%d2-%d3
 	rts
+	.endm
+	SFW rtRestorePass_prg, rt_prg_restore_pass, "nop"
+	SFW _ZN2rt17displayWaitFramesEm, rt_display_wait_frames, "move.l 12(%sp),%d0"
+	SFW rtPaletteSetTarget, rt_palette_set_target_prg, "move.l 16(%sp),%a0; move.l 20(%sp),%d0"
+	SFW rtDisplayPaletteWriteC, rt_display_palette_write, "move.l 12(%sp),%a0"
+	SFW rtPalCopyLive_prg, rt_prg_pal_copy_live, "move.l 12(%sp),%a0"
+	SFW rtPaletteRampAdd, rt_palette_ramp_add_prg, "move.l 16(%sp),%d0; move.l 20(%sp),%d1; move.l 24(%sp),%d2; move.l 28(%sp),%d3"
+	SFW rtPaletteSlotFreeC, rt_palette_slot_free, "move.l 12(%sp),%d0"
+	SFW rtMusicStartC, rt_music_start, "nop"
+	SFW rtPrgTextList, rt_prg_text_list, "move.l 12(%sp),%a0"
+	SFW rtLoadPicFile_prg, rt_prg_pic_file, "move.l 12(%sp),%a0; move.l 16(%sp),%a1"
+	SFW rt_file_open, rt_prg_file_open, "move.l 12(%sp),%a0"
+	SFW rt_file_read, rt_prg_file_read, "move.l 12(%sp),%a0; move.l 16(%sp),%d0"
+	SFW rt_file_close, rt_prg_file_close, "nop"
+	SFW rtLoadCel_prg, rt_prg_cel_load, "move.l 12(%sp),%a0; move.l 16(%sp),%a1"
+	SFW rtCelSize_prg, rt_prg_cel_size, "move.l 12(%sp),%a0"
+	SFW rtRncDecode, rt_rnc_decode, "move.l 12(%sp),%a0"
+	SFW rtLoadPicMem_prg, rt_prg_pic_mem, "move.l 12(%sp),%a0"
+	SFW rtPrgDisplaySwapC, rt_prg_display_swap, "nop"
+	SFW rtPrgKeyResetC, rt_prg_key_reset, "nop"
+	SFW rtDrawCel_prg, rt_prg_draw_cel, "move.l 12(%sp),%d0; move.l 16(%sp),%d1; move.l 20(%sp),%d2; move.l 24(%sp),%a0"
 	.data
 	.balign 4
 	.globl rt_enh_scr
@@ -708,7 +739,7 @@ STACK_STUBS = {'rtPrgTarget': ('FnTarget', ('d0',)), 'rtPrgClear': ('FnClear', (
                'rtPrgCopyLongs': ('FnUnpack', ('a0', 'a1')), 'rtPrgCopyScreen': ('FnScreenCopy', ('a0', 'a1')),
                'rtPrgWipeStepC': ('FnWipeStep', ('d1',))}
 PLAIN_STUBS = {'rtJobsSpawnQueued': 'FnJobsSpawn', 'rtJobsTick': 'FnJobsTick', 'rtAnimOverlay': 'FnOverlay',
-               'rt_job_reset': 'FnJobsReset', 'rtJobsClearLists': 'FnListClear', 'rtPrgBlackout': 'FnBlackout',
+               'rtJobResetAll': 'FnJobsReset', 'rtJobsClearLists': 'FnListClear', 'rtPrgBlackout': 'FnBlackout',
                'rtPrgWipeRowsC': 'FnWipeRows', 'rtPrgWipeRefreshC': 'FnWipeRefresh'}
 
 
@@ -728,7 +759,8 @@ def build_blob(addr_of):
     with open(stub, 'w') as f:
         f.write(STUB_CPP)
     objs = []
-    for i, src in enumerate((os.path.join(ROOT, 'src', 'engine', 'scenes.cpp'), os.path.join(ROOT, 'src', 'rt', 'engine_scenes.cpp'), stub)):
+    for i, src in enumerate((os.path.join(ROOT, 'src', 'engine', 'scenes.cpp'), os.path.join(ROOT, 'src', 'rt', 'engine_scenes.cpp'),
+                                                                                              os.path.join(ROOT, 'src', 'rt', 'amiga', 'engine_scenes_entries.cpp'), stub)):
         o = os.path.join(tmp, '%d.o' % i)
         r = subprocess.run([E.GXX] + flags + ['-c', src, '-o', o], capture_output=True, text=True, env=env)
         if r.returncode != 0:
@@ -1143,7 +1175,7 @@ class SequenceCoverageTest(unittest.TestCase):
             text = f.read()
         ours = set(re.findall(r'SCENE\(([0-9A-F]{4}),', text)) | set(re.findall(r'case 0x([0-9A-F]{4}):', text))
         with open(os.path.join(ROOT, 'src', 'rt', 'engine_intro.cpp'), encoding='latin-1') as f:
-            asm_helpers = {a or b for a, b in re.findall(r'E\(([0-9A-F]{4})\)|\{0x([0-9A-F]{4}),', f.read().split('s_routines[]')[1].split(';')[0])}
+            asm_helpers = set(re.findall(r'uwId == 0x([0-9A-F]{4})', f.read()))   # 11.1d: hostCall names the one routine that is not a scene (the music stop)
         self.assertEqual(asm_helpers, {'005B'})        # 7.1q: the progress wipe LAB_05A5 is a scene of the engine
         self.assertEqual({i.upper() for i in ids} - ours - asm_helpers, set())
         self.assertTrue({'001A', '001B', '001C', '0174', '0185', '018E', '0036', '0037', '0039', '003B'} <= ours)

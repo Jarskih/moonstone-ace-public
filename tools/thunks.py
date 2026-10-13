@@ -136,10 +136,11 @@ def load_contracts(path=None, routines=None):
         return {}
     try:
         import yaml
+        import yamlfast
     except ImportError:
         raise SystemExit('PyYAML missing: py -m pip install pyyaml')
     with open(path, encoding='utf-8') as f:
-        doc = yaml.safe_load(f) or {}
+        doc = yamlfast.safe_load(f) or {}
     errs, out = [], {}
     if not isinstance(doc, dict):
         raise ValueError('contracts.yaml: top level must be a mapping binary -> label -> contract')

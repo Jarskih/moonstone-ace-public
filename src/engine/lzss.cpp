@@ -10,6 +10,7 @@
 // d == 0 copies each output byte onto itself: the bytes keep whatever the buffer held. moonshard's
 // libmoon_assets decoder fills with the previous byte instead; the asm is the reference here.
 #include "engine/lzss.hpp"
+#include "engine/endian.hpp"
 
 namespace ms {
 
@@ -30,7 +31,7 @@ uint32_t lzssDecode(const uint8_t *pSrc, uint32_t srcLen, uint8_t *pDst) {
 				*pOut++ = *pSrc++;
 				continue;
 			}
-			const uint16_t word = static_cast<uint16_t>((pSrc[0] << 8) | pSrc[1]);
+			const uint16_t word = be::ld16(pSrc);
 			pSrc += 2;
 			const uint8_t *pBack = pOut - (word & DISTANCE_MASK);
 			for(uint32_t n = MAX_COPY - (word >> 11); n; --n) {

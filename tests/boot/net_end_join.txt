@@ -1,0 +1,112 @@
+# ROADMAP 12.19 end-to-end run, JOIN window: a normal two-player network game played to the ending (run with `py tools/netpair.py --ending`, never alone; generated
+# by tests/boot/src/mknetpair.py, edit that).  Companion: net_end_host.txt.  The join leads round 2 and makes the final move (its fire enters Stonehenge).
+# Lobby and barriers as in net_pair_*.txt (state-hash barriers every 50 ticks).  Flow: lobby -> START -> map, round 1 the host walks and ends its turn, Next Day,
+# round 2 the join walks -> tick-pokes (all moonstones, the party on Stonehenge: the same tick on both windows, docs/AUTOPLAY.md) -> one more hash bar proves the
+# states equal -> the leader's fire enters Stonehenge, a second fire (any pad) ends its quest text -> the ending on both windows (outside the lockstep) -> the session closes -> the main menu -> quit.
+frame 300 key SPACE tap
+wait input 10 max 3000
+frame 60 poke menuact 1
+wait log screen_open max 1500
+frame 30 shot netend-j-multi
+# CONNECT by poke (netpair.py starts this window later, the host listens by now); a refused connect shows "no answer" and the next poke dials again.
+# The host seats us and the screen goes to the lobby.
+frame 1 poke netaction 2
+frame 150 shot netend-j-wait
+frame 600 poke netaction 2
+wait log lobby_open max 12000
+frame 60 shot netend-j-lobby
+# the join window starts on portrait 1 (the host's is 0): fire, the name GUEST is kept (fire), the Control line: Joystick 1 -> Keys WASD (left wraps), fire
+wait log lobby_seat_0_done max 15000
+frame 30 joy1 fire pulse 30
+frame 110 shot netend-j-name
+frame 120 joy1 fire pulse 30
+frame 200 joy1 left pulse 12
+frame 280 shot netend-j-control
+frame 290 joy1 fire pulse 30
+wait log lockstep_begins max 12000
+wait log knight_1_kind max 6000
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 poke dump 1
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-j-map
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+frame 5 key D down
+frame 45 key D up
+frame 5 poke dump 1
+wait var turn 1 max 6000
+wait var turn 0 max 20000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 key LALT down
+frame 17 key LALT up
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-j-leader2
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+frame 5 key D down
+frame 45 key D up
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-j-walk2
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+tick hash+10 poke who 0
+tick hash+10 poke moonstones 15
+tick hash+10 poke who 1
+tick hash+10 poke moonstones 15
+tick hash+12 poke warp_node 7
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-j-stonehenge
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+frame 5 key LALT down
+frame 25 key LALT up
+sync
+wait log hash_tick max 3000
+sync
+wait log hash_tick max 3000
+frame 5 shot netend-j-quest
+frame 6 poke dump 1
+sync
+wait log hash_tick max 3000
+frame 5 key LALT down
+frame 25 key LALT up
+wait log enter_program max 3000
+frame 500 shot netend-j-ceremony
+frame 500 shot netend-j-orb
+frame 1000 shot netend-j-dancers
+frame 1500 shot netend-j-vortex
+frame 1500 shot netend-j-epilogue
+wait log enter_mog max 8000
+frame 300 shot netend-j-title
+frame 400 quit

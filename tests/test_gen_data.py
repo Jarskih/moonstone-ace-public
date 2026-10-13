@@ -162,7 +162,18 @@ def compile_object(out_dir, cpp):
     return obj
 
 
+_PATCHED_CELLS = {}
+
+
 def patched_cells(binary, owned):
+    """Memoised (the listing parse and the patch tables behind it were redone for every owned hunk: 500 times a run)."""
+    key = (binary, frozenset(owned))
+    if key not in _PATCHED_CELLS:
+        _PATCHED_CELLS[key] = _patched_cells(binary, owned)
+    return _PATCHED_CELLS[key]
+
+
+def _patched_cells(binary, owned):
     """{hunk: {offset: (width, value)}}: the DC cells that patches inside owned hunks rewrite (independent of gen_data:
     patch tables + the vasm listing of the original).  A public checkout has neither: there the patched cells of tools/facts
     stand in (ROADMAP 10.2; tests/test_origload.py checks the facts against the listing where it exists)."""
@@ -232,10 +243,13 @@ def compare_object(elf, entries, originals, mutate=None):
             rel = relocs.get(val + poff)
             if rel is None or rel[0] != sym or rel[1] != 0 or rel[2] != 1:
                 diffs.append(f'{binary} S_{num}: cell +{poff:#x} should be a 32-bit relocation to {sym}, object has {rel}')
-        for off in range(h.size_bytes):
-            in_ptr = any(p <= off < p + 4 for p in ptr_at)
-            if not in_ptr and want[off] != got[off]:
-                diffs.append(f'{binary} S_{num}: byte +{off:#x} original {want[off]:#04x}, object {got[off]:#04x}')
+        in_ptr = bytearray(h.size_bytes + 4)            # 1 where a relocated pointer cell covers the byte (was: any() over every cell, per byte)
+        for p in ptr_at:
+            in_ptr[p:p + 4] = bytes((1, 1, 1, 1))
+        if want[:h.size_bytes] != got[:h.size_bytes]:
+            for off in range(h.size_bytes):
+                if not in_ptr[off] and want[off] != got[off]:
+                    diffs.append(f'{binary} S_{num}: byte +{off:#x} original {want[off]:#04x}, object {got[off]:#04x}')
         for off, (tgt_hunk, _) in ptr_at.items():
             rel = relocs.get(val + off)
             orig_off = struct.unpack('>I', want[off:off + 4])[0]

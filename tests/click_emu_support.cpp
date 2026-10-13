@@ -33,6 +33,20 @@ unsigned char sfxRequest(unsigned short uwSeq) {
 }
 }  // namespace rt
 
+// src/rt/party_turn.cpp (ROADMAP 8.5a): the classic click test runs outside a co-op game, so the turn cues are inert here.
+#include "rt/party_turn.hpp"
+namespace rt {
+void turnActivate(bool) {}
+void turnBegin() {}
+void turnCorner(bool) {}
+void turnBanner(bool) {}
+void turnCornerScreen() {}
+void turnBannerScreen() {}
+void turnArrowsOff() {}
+bool turnArrowHit(uint32_t, uint32_t, uint32_t *) { return false; }
+bool turnArrowClick(uint32_t) { return false; }
+}  // namespace rt
+
 extern "C" {
 __attribute__((used, externally_visible)) void emuLog(uint32_t id, uint32_t a, uint32_t b, uint32_t c) { rec(id, a, b, c); }
 

@@ -47,6 +47,7 @@ static uint8_t &statRef(Knight &k, Stat eStat) {
 	switch(eStat) {
 		case Stat::Strength: return k.ubStrength;
 		case Stat::Constitution: return k.ubConstitution;
+		case Stat::Dexterity: return k.ubDexterity;
 		default: return k.ubEndurance;
 	}
 }

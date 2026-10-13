@@ -13,6 +13,7 @@ void arenaClearKnights();
 void arenaPlaceAttacker();
 // mog LAB_01A9: start the job of record ulRecord with the script ulScript (A1 / A0 of the original).
 void arenaSpawn(uint32_t ulRecord, uint32_t ulScript);
+void arenaSpawnAt(uint32_t ulRecord, uint32_t ulScript, uint16_t uwDepth);   // the same at a chosen depth (party fights)
 // mog LAB_0171: the first free creature record, marked in use (the original's A1).
 uint32_t arenaAlloc();
 

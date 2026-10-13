@@ -30,6 +30,9 @@
 #include "game/fighters.hpp"
 #include "game/state_bind.hpp"
 #include "rt/abs.h"
+#include "rt/combat_pool.hpp"
+#include "rt/fight_roster.hpp"
+#include "rt/net_tick.hpp"
 #include "rt/sfx.hpp"
 
 extern "C" {
@@ -102,7 +105,8 @@ void cbEffect() { rtFighterEffect(); }
 void cbSfxFixed(uint8_t ubChannel, uint16_t uwSeq) { rt::sfxStartFixed(ubChannel, uwSeq); }   // SECSTRT_16 / 0A9B..0A9D
 void cbFadeA() { rtFighterFadeA(); }
 void cbFadeB() { rtFighterFadeB(); }
-uint16_t cbBeam() { return *(volatile uint16_t *)0x00DFF006; }       // VHPOSR
+// VHPOSR; deterministic mode (ROADMAP 12.4, NETPLAY B2): the low bits of the logical clock, the same on every machine (no RNG draw)
+uint16_t cbBeam() { return rt::netDeterministic() ? rt::netBeam() : *(volatile uint16_t *)0x00DFF006; }
 
 // The environment: pointers into the game's cells (constant for the life of the program) and the script addresses.  Built
 // once; only the creature heap base (LAB_05C3's value) is read again every call.
@@ -117,13 +121,13 @@ const FighterEnv &env() {
 		e.pMove = &mogMoveVars;
 		e.pToggle = &mogFlyerToggle;
 		e.pAimDist = &mogDaggerAimDist;
-		e.pJobs = reinterpret_cast<CombatJob *>(mogJobs);  // LAB_0649
 		e.pKnights = mogKnights;  // LAB_0613
 		e.pSlots = mogDaggerSlots;
 		e.pBlock = &mogDaggerBlock;
 		e.pHandlerTable = reinterpret_cast<uint8_t *>(mogHandlerTable);
 		e.pActive = &mogActive;  // LAB_05E4
 		e.pFirst = &mogFirstFighter;  // LAB_05F2
+		e.pRoster = &rt::fightRoster();   // Moonstone 2 (ROADMAP 8.4b): inactive outside a party fight
 		e.pSecond = &mogFightSecond;
 		e.pConfused = &mogConfusedKnight;
 		e.pConfusedOn = &mogBadLuck;
@@ -180,6 +184,7 @@ const FighterEnv &env() {
 		e.fadeB = cbFadeB;
 	}
 	g_env.pCreatures = jobPtr<Knight>(mogCreatureHeap);  // LAB_05C3
+	g_env.pJobs = rt::combatPool().pJobs;                // LAB_0649, or the co-op pool of a party fight
 	g_env.uwJunkA = rt_abs_a;
 	g_env.uwJunkC = rt_abs_c;
 	return g_env;
@@ -204,6 +209,17 @@ __attribute__((used, externally_visible)) bool rtFighterRun(uint32_t ulHandler, 
 // script engine (rtCombatCall saves what it keeps).
 __attribute__((used, externally_visible)) uint32_t rtFightOpRun(uint32_t ulFn, uint32_t ulOwner, uint32_t ulFrames,
                                                                 uint32_t ulX, uint32_t ulY, uint32_t ulZ, uint32_t ulFacing) {
+#ifdef MS_AUTOPLAY   // the boot scripts read which script op ends a fight (tests/boot/play_coop_death.mk)
+	if((ulFn & 0xFFFF0000u) == ms::game::FIGHT_OP_TAG && ((ulFn & 0xFFFFu) == 5 || (ulFn & 0xFFFFu) == 6 || (ulFn & 0xFFFFu) == 0xD)) {
+		const ms::game::FightRoster &r = rt::fightRoster();
+		logWrite("fightop %x owner=%lx type=%u hp=%d | roster on=%u party=%u hp0=%d hp1=%d active=%u\n", (unsigned)(ulFn & 0xFFFFu),
+			(unsigned long)ulOwner, (unsigned)ms::jobPtr<ms::game::Knight>(ulOwner)->ubType, (int)ms::jobPtr<ms::game::Knight>(ulOwner)->swHp, (unsigned)r.ubActive, (unsigned)r.ubParty,
+			r.ubParty > 0 ? (int)r.apParty[0]->swHp : 0, r.ubParty > 1 ? (int)r.apParty[1]->swHp : 0, (unsigned)env().pActive->ubFightActive);
+	}
+#endif
+	if(ms::game::fightOpPartyRun(env(), ulFn, ulOwner)) {   // Moonstone 2: a party knight's death script settles that knight (ROADMAP 8.4b)
+		return 1;
+	}
 	if((ulFn & 0xFFFF0000u) == ms::game::FIGHT_OP_TAG) {
 		switch(ulFn & 0xFFFFu) {
 			case 0x0005: rtFightDied(); return 1;

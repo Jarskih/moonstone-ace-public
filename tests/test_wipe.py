@@ -18,7 +18,7 @@ HAVE_EMU = TD.HAVE_EMU
 if HAVE_EMU:
     TI, be16, be32 = TD.TI, TD.be16, TD.be32
 
-SOURCES = ('src/rt/wipe.cpp', 'src/rt/prg_copy.cpp', 'src/engine/display_fx.cpp', 'tests/wipe_emu_support.cpp')
+SOURCES = ('src/rt/wipe.cpp', 'src/rt/prg_copy.cpp', 'src/rt/amiga/blit.cpp', 'src/engine/display_fx.cpp', 'tests/wipe_emu_support.cpp')
 BIG = (0x200000, 0x100000)
 PIC = [0x200000, 0x210000, 0x220000]
 DST = 0x230000
@@ -26,7 +26,28 @@ SCREEN = 0x250000
 
 
 def blit(r):
-    return [(a - TD.CUSTOM, s, v) for a, s, v in r.h.hwlog if TD.CUSTOM + 0x040 <= a < TD.CUSTOM + 0x070]
+    """The blits the chip would run, one tuple per BLTSIZE write: the register file at that moment (only the channels in use), with the pointer
+    run-on of the hardware applied between blits.  ROADMAP 11.10: rt::prgCopyScreen loads every register per plane through rt::platform::blitRun where
+    the original loaded them once and relied on the run-on; the blits are the same, the register traffic is not."""
+    reg = {}
+    out = []
+    for a, s, v in r.h.hwlog:
+        off = a - TD.CUSTOM
+        if not 0x040 <= off < 0x070:
+            continue
+        if off != 0x058:
+            reg[off] = v & (0xFFFFFFFF if s == 4 else 0xFFFF)
+            continue
+        con0, con1 = reg.get(0x40, 0), reg.get(0x42, 0)
+        words, rows = (v & 0x3F) or 64, (v >> 6) or 1024
+        used = [(ch, pt, mod) for ch, pt, mod in ((0x800, 0x50, 0x64), (0x400, 0x4C, 0x62), (0x200, 0x48, 0x60), (0x100, 0x54, 0x66)) if con0 & ch]
+        out.append((con0, con1, reg.get(0x44, 0), reg.get(0x46, 0), v, tuple((pt, reg.get(pt, 0), reg.get(mod, 0)) for ch, pt, mod in used)))
+        step_dir = -1 if con1 & 2 else 1
+        for ch, pt, mod in used:
+            m = reg.get(mod, 0)
+            m = m - 0x10000 if m & 0x8000 else m
+            reg[pt] = (reg.get(pt, 0) + step_dir * (words * 2 + m) * rows) & 0xFFFFFFFF
+    return out
 
 
 @unittest.skipUnless(HAVE_EMU, 'needs unicorn, the m68k toolchain, build/reasm/{program,mog}')
@@ -133,10 +154,10 @@ class WipeEmuTest(unittest.TestCase):
         regs = TD.with_sp(TD.rand_regs(rng))
         patches = self.state(rng, progress=100, step=2)
         r.run(r.syms['rt_prg_wipe_retreat'], regs, patches)
-        n5 = len([e for e in blit(r) if e[0] == 0x058])
+        n5 = len(blit(r))
         patches[-1] = (TD.CELL_PLANES, be16(6))
         r.run(r.syms['rt_prg_wipe_retreat'], regs, patches)
-        n6 = len([e for e in blit(r) if e[0] == 0x058])
+        n6 = len(blit(r))
         self.assertGreater(n6, n5)
 
 

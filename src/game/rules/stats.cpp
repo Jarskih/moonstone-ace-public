@@ -19,6 +19,10 @@ bool progressCanAfford(const Knight &k, uint16_t uwCost) {
 
 // LAB_0544..0545 (mog.asm 11694): the temple sells one stat point for progress points.
 void templeBuyStat(Knight &k, const Inventory &inv, uint16_t slot, uint16_t cost) {
+	if(slot == offsetof(Knight, ubDexterity)) {
+		if(!g_gameData.rules.ubDexterityEnabled || k.ubDexterity >= 5 || !progressCanAfford(k, cost)) return;
+		if(k.ubDexterity == 0) k.ubDexterity = 1;
+	}
 	uint8_t *p = reinterpret_cast<uint8_t *>(&k);
 	p[slot] = (uint8_t)(p[slot] + 1);                                 // ADDI.B #1,0(A0,D1.W)
 	if (slot == 0x47) k.swHp = (int16_t)(k.swHp + 10);                // CMP.W #$47,D1 ; ADDI.W #$a,80(A0)

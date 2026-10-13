@@ -6,9 +6,13 @@ namespace ms { namespace game {
 
 namespace {
 
-// LAB_06DD: y of the four menu items (word table, indexed by the cursor).  Same four values as the y of the item
-// list LAB_06AE.
-const uint16_t kItemY[4] = {0x0055, 0x006E, 0x0094, 0x00A8};
+// y of the cursor by item (the title list is built from these, src/rt/scene_menu.cpp).  The original's four rows were Players (0x55), Gore (0x6E),
+// Practice (0x94), Select Knight (0xA8) in LAB_06DD.  Now (owner 2026-10-11) the settings group Players and Mode comes first, then an empty line,
+// then Practice and Select Knight, then Back (below a main menu only): six lines of 20, from 66 so that the last one ends at line 184 of 200.
+// The cursor has no item for the empty line.  Without Mode (no co-op build, host traces) its line stays empty too.
+const uint16_t kItemY[5] = {66, 86, 126, 146, 166};
+// The main menu (LOCAL / MULTIPLAYER / SETTINGS): three rows, 25 lines apart.
+const uint16_t kMainRowY[MAIN_ITEMS] = {90, 115, 140};
 
 // SECSTRT_4 (DC.L $00030002,$00010001): LAB_06DE for 1, 2, 3, 4 players.
 const uint16_t kDamageDiv[4] = {3, 2, 1, 1};
@@ -19,6 +23,7 @@ const uint16_t kPortraitX[4] = {0x000C, 0x0058, 0x00A4, 0x00F0};
 const uint16_t kMenuCursorX = 0x0032;     // LAB_05D8 (written once at the head of the menu, only read by LAB_00C4)
 const uint8_t kCaretChar = 0x5C;          // MOVE.B #$5C,LAB_05D4: the caret glyph
 const uint16_t kNameMax = 13;             // CMPI.W #$D,LAB_05D6 ; BLT: at most 13 characters
+const uint16_t COOP_PLAYERS_MIN = 2;      // a co-op party has at least two knights (the Players row in co-op)
 
 }  // namespace
 
@@ -30,34 +35,20 @@ void menuSetPlayers(MenuState &s, int16_t swDelta) {
 	s.uwPlayers = (uint16_t)(s.uwPlayers + (uint16_t)swDelta);          // ADD.W D0,LAB_05C5 ; BNE
 	if (s.uwPlayers == 0) s.uwPlayers = 1;                              // MOVE.W #1,LAB_05C5
 	else if ((int16_t)s.uwPlayers > 4) s.uwPlayers = 4;                 // CMPI.W #4 ; BLE skip ; MOVE.W #4
+	if (s.bCoop) {                                                      // co-op (no original): two knights at least, PARTY_COOP_MAX at most
+		if (s.uwPlayers < COOP_PLAYERS_MIN) s.uwPlayers = COOP_PLAYERS_MIN;
+		else if (s.uwPlayers > PARTY_COOP_MAX) s.uwPlayers = PARTY_COOP_MAX;
+	}
 	s.uwDamageDiv = (s.pStatCost ? s.pStatCost : kDamageDiv)[(uint16_t)(s.uwPlayers - 1) & 3];   // SECSTRT_4[(players - 1) * 2]
 }
 
-// Co-op (ROADMAP 8.2, no original): one step of the Players item beyond 4.  Right: 4 -> "Coop 2" -> ... -> "Coop
-// PARTY_COOP_MAX"; left: back down to "Coop 2", then out of co-op to 4 players.  The party size is the player count, so the
-// knight screen picks that many knights and the damage divisor follows the count as in a classic game.
-static bool menuCoopStep(MenuState &s, int16_t swDelta) {
-	if (!s.bCoop) {
-		if (swDelta < 0) return false;
-		s.bCoop = true;
-		s.uwPlayers = 2;
-	} else if (swDelta > 0) {
-		if (s.uwPlayers < PARTY_COOP_MAX) s.uwPlayers = (uint16_t)(s.uwPlayers + 1);
-	} else if (s.uwPlayers > 2) {
-		s.uwPlayers = (uint16_t)(s.uwPlayers - 1);
-	} else {
-		s.bCoop = false;
-		s.uwPlayers = 4;
-	}
+// Co-op (ROADMAP 8.2, no original): the Mode row chooses Classic or Coop.  The count is the Players row's own: menuSetPlayers only raises a
+// single player to the two knights co-op needs, so Classic afterwards keeps whatever the count was.
+static bool menuSetMode(MenuState &s, bool bCoop) {
+	if (!s.bCoopAllowed || s.uwCursor != ITEM_MODE) return false;
+	s.bCoop = bCoop;
 	menuSetPlayers(s, 0);
 	return true;
-}
-
-// LAB_00C2 (mog.asm 1766)
-bool menuToggleGore(MenuState &s) {
-	if (s.uwCursor != ITEM_GORE) return false;                          // CMPI.W #1,LAB_06DC ; BNE (D0 stays 0)
-	s.ulGore ^= 1;                                                      // EORI.L #1,LAB_06DA
-	return true;                                                        // MOVEQ #1,D0
 }
 
 // LAB_00BA (mog.asm 1715)
@@ -65,23 +56,26 @@ bool menuMove(MenuState &s, uint16_t uwJoy) {
 	if (uwJoy == 0) return false;                                       // MOVE.W LAB_0630,D1 ; BNE
 	if (uwJoy & 8) {                                                    // up
 		s.uwCursor = (uint16_t)(s.uwCursor - 1);                        // SUBI.W #1,LAB_06DC ; BGE
+		if (!s.bCoopAllowed && s.uwCursor == ITEM_MODE) s.uwCursor = ITEM_PLAYERS;   // no Mode row: Practice -> Players
 		if ((int16_t)s.uwCursor < 0) { s.uwCursor = 0; s.uwMoved = 1; }
 		return true;
 	}
 	if (uwJoy & 4) {                                                    // down
 		s.uwCursor = (uint16_t)(s.uwCursor + 1);                        // ADDI.W #1 ; CMPI.W #3 ; BLE
-		if ((int16_t)s.uwCursor > 3) { s.uwCursor = 3; s.uwMoved = 1; }
+		if (!s.bCoopAllowed && s.uwCursor == ITEM_MODE) s.uwCursor = ITEM_PRACTICE;   // no Mode row: Players -> Practice
+		const int16_t swLast = s.bBack ? ITEM_BACK : ITEM_SELECT;
+		if ((int16_t)s.uwCursor > swLast) { s.uwCursor = (uint16_t)swLast; s.uwMoved = 1; }
 		return true;
 	}
 	if (uwJoy & 2) {                                                    // left
-		if (s.uwCursor != ITEM_PLAYERS) return menuToggleGore(s);       // BNE.W LAB_00C2
-		if (s.bCoop) return menuCoopStep(s, -1);                        // co-op (only with bCoopAllowed)
+		if (menuSetMode(s, false)) return true;
+		if (s.uwCursor != ITEM_PLAYERS) return false;                   // BNE.W LAB_00C2 (its Gore toggle is gone)
 		menuSetPlayers(s, -1);                                          // MOVE.W #$FFFF,D0 ; JSR LAB_00C6
 		return true;
 	}
 	if (uwJoy & 1) {                                                    // right
-		if (s.uwCursor != ITEM_PLAYERS) return menuToggleGore(s);       // BNE.S LAB_00C2
-		if (s.bCoopAllowed && (s.bCoop || (int16_t)s.uwPlayers >= 4)) return menuCoopStep(s, 1);   // co-op: past 4
+		if (menuSetMode(s, true)) return true;
+		if (s.uwCursor != ITEM_PLAYERS) return false;                   // BNE.S LAB_00C2
 		menuSetPlayers(s, 1);
 		return true;
 	}
@@ -92,15 +86,73 @@ bool menuMove(MenuState &s, uint16_t uwJoy) {
 MenuAction menuInput(MenuState &s, uint16_t uwJoy) {
 	if (uwJoy == 0) return MENU_IDLE;                                   // TST.W D1 ; BEQ LAB_00B5
 	if (uwJoy & 0x10) {                                                 // BTST #4,D1 (fire)
+		if (menuSetMode(s, !s.bCoop)) return MENU_REDRAW;
+		if (s.bBack && s.uwCursor == ITEM_BACK) return MENU_BACK;       // no original
 		if (s.uwCursor == ITEM_SELECT) return MENU_SELECT;              // CMPI.W #3 ; BEQ LAB_00B9
 		if (s.uwCursor == ITEM_PRACTICE) return MENU_PRACTICE;          // CMPI.W #2 ; BEQ LAB_00B8
-		if (menuToggleGore(s)) return MENU_REDRAW;                      // BSR LAB_00C2 ; BNE LAB_00B7
 	}
 	return menuMove(s, uwJoy) ? MENU_REDRAW : MENU_IDLE;                // LAB_00B6: BSR LAB_00BA ; BEQ LAB_00B5
 }
 
 uint16_t menuItemY(uint16_t uwCursor) {
-	return kItemY[uwCursor & 3];                                        // LAB_06DD[cursor]; the cursor is always 0..3
+	return kItemY[uwCursor > ITEM_BACK ? ITEM_BACK : uwCursor];
+}
+
+// The main menu: the cursor wraps at both ends, fire takes the row.
+MainAction mainMenuInput(MainMenuState &s, uint16_t uwJoy) {
+	if (uwJoy & 0x10) return (MainAction)(MAINACT_LOCAL + s.uwCursor);  // MAINACT_LOCAL, _MULTIPLAYER, _SETTINGS follow MainItem
+	if (uwJoy & 8) {                                                    // up
+		s.uwCursor = (uint16_t)(s.uwCursor == 0 ? MAIN_ITEMS - 1 : s.uwCursor - 1);
+		return MAINACT_REDRAW;
+	}
+	if (uwJoy & 4) {                                                    // down
+		s.uwCursor = (uint16_t)(s.uwCursor + 1 >= MAIN_ITEMS ? 0 : s.uwCursor + 1);
+		return MAINACT_REDRAW;
+	}
+	return MAINACT_IDLE;
+}
+
+uint16_t mainMenuItemY(uint16_t uwCursor) {
+	return kMainRowY[uwCursor >= MAIN_ITEMS ? MAIN_ITEMS - 1 : uwCursor];
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// SceneMainMenu (no original): the first screen after the intro, on the title picture with the banner and the arrow of the title menu.
+
+void SceneMainMenu::draw(const MenuOps &ops) {
+	ops.pfnSetPlanes();
+	ops.pfnBlitBackground();
+	ops.pfnClearHits();
+	ops.pfnSetTextFlag(1);
+	ops.pfnDrawSprite(MENUBANK_BACKDROP, 0x49, 5, 0x0A);                // the title banner
+	ops.pfnDrawSprite(MENUBANK_SPRITES, 0, kMenuCursorX, mainMenuItemY(state.uwCursor));   // the arrow
+	ops.pfnSetTextFlag(0);
+	ops.pfnDrawText(MENUTEXT_MAIN_MENU);
+	ops.pfnFlip();
+	ops.pfnWait(10);
+}
+
+void SceneMainMenu::enter(const MenuOps &ops, bool bFade) {
+	eResult = MAINACT_IDLE;
+	ops.pfnIrqOn();
+	ops.pfnClearHits();
+	ops.pfnFlip();
+	draw(ops);
+	if (bFade) ops.pfnPalette(MENUPAL_TITLE);                           // after a screen that faded out; from the title menu the palette stands
+}
+
+bool SceneMainMenu::update(const MenuOps &ops) {
+	const MainAction eAct = mainMenuInput(state, ops.pfnReadJoy());
+	if (eAct == MAINACT_REDRAW) { draw(ops); return false; }
+	if (eAct == MAINACT_IDLE) return false;
+	eResult = eAct;
+	return true;
+}
+
+bool SceneMainMenu::exit(const MenuOps &ops) {
+	if (eResult == MAINACT_LOCAL) return false;                         // the title menu is drawn on the same picture, no fade between them
+	ops.pfnFadeOut();
+	return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -111,43 +163,54 @@ void SceneMenu::draw(const MenuOps &ops) {
 	ops.pfnSetPlanes();                                                 // MOVE.L LAB_0D92,D0 ; JSR LAB_0426+2
 	ops.pfnBlitBackground();                                            // LAB_05C0 -> LAB_0D92, JSR LAB_0419
 	ops.pfnClearHits();                                                 // JSR LAB_03A7
-	uint16_t y = menuItemY(state.uwCursor);                             // LAB_05D9 := LAB_06DD[cursor]
+	const uint16_t y = menuItemY(state.uwCursor);
 	ops.pfnSetTextFlag(1);                                              // MOVE.W #1,LAB_0D05
 	ops.pfnDrawSprite(MENUBANK_BACKDROP, 0x49, 5, 0x0A);                // title banner: ActiveKnights+10, D0=$49 D1=5 D2=$A
 	ops.pfnDrawSprite(MENUBANK_SPRITES, 0, kMenuCursorX, y);            // cursor: LAB_05C4, D0=0 D1=LAB_05D8 D2=LAB_05D9
 	ops.pfnSetTextFlag(0);                                              // MOVE.W #0,LAB_0D05
-	if (state.bCoop && ops.pfnDrawPartyText) ops.pfnDrawPartyText(state.uwPlayers);   // co-op: "Coop N"
-	else ops.pfnDrawNumber(state.uwPlayers);                            // MOVE.W LAB_05C5,D0 ; LEA LAB_06B9,A2 ; JSR LAB_0442
-	ops.pfnSetGoreText(state.ulGore != 0);                              // LAB_06B3 := LAB_06BB, or LAB_06BA when LAB_06DA == 0
-	ops.pfnDrawText(MENUTEXT_MAIN);                                     // LEA LAB_06AE,A0 ; JSR LAB_0432
+	ops.pfnDrawNumber(state.uwPlayers);                                 // MOVE.W LAB_05C5,D0 ; LEA LAB_06B9,A2 ; JSR LAB_0442
+	ops.pfnDrawText(state.bBack ? MENUTEXT_MAIN_BACK : MENUTEXT_MAIN);  // LEA LAB_06AE,A0 ; JSR LAB_0432 (the Gore lines are not in the list)
+	if (state.bCoopAllowed) {                                           // no original: the Mode row, the party size is the Players row's
+		const uint8_t *pMode = reinterpret_cast<const uint8_t *>(state.bCoop ? "Mode  Coop" : "Mode  Classic");
+		ops.pfnDrawString(pMode, 0x58, menuItemY(ITEM_MODE), 0);
+	}
 	ops.pfnFlip();                                                      // JSR LAB_0416
 	ops.pfnWait(10);                                                    // MOVEQ #10,D0 ; JSR LAB_0D74
 }
 
 // mog.asm 1669-1690
-void SceneMenu::enter(const MenuOps &ops) {
+void SceneMenu::enter(const MenuOps &ops, bool bFade) {
 	eResult = MENU_IDLE;
 	ops.pfnIrqOn();                                                     // JSR LAB_0D7C (the MOVE #$2000,SR behind it is NOPed, mog.json sr-super)
 	ops.pfnClearHits();                                                 // JSR LAB_03A7
 	menuSetPlayers(state, 0);                                           // MOVEQ #0,D0 ; JSR LAB_00C6
+	if (state.bBack) ops.pfnClearKeyWord();                             // no original: a key pressed before this screen is not an Esc for it
 	ops.pfnFlip();                                                      // JSR LAB_0416
 	draw(ops);                                                          // BSR LAB_00C4
-	ops.pfnPalette(MENUPAL_TITLE);                                      // LEA LAB_0D2B,A0 ; JSR LAB_03F2
+	if (bFade) ops.pfnPalette(MENUPAL_TITLE);                           // LEA LAB_0D2B,A0 ; JSR LAB_03F2
 }
 
 bool SceneMenu::update(const MenuOps &ops) {
 	uint16_t uwJoy = ops.pfnReadJoy();                                  // LAB_00B5: JSR LAB_00EE
+	if (state.bBack && ops.pfnKeyWord() == MENUKEY_ESC) {               // no original: Esc is the Back row
+		ops.pfnClearKeyWord();
+		eResult = MENU_BACK;
+		return true;
+	}
 	switch (menuInput(state, uwJoy)) {
 	case MENU_REDRAW: draw(ops); return false;                          // LAB_00B7
 	case MENU_PRACTICE: eResult = MENU_PRACTICE; return true;
 	case MENU_SELECT: eResult = MENU_SELECT; return true;
+	case MENU_BACK: eResult = MENU_BACK; return true;
 	default: return false;
 	}
 }
 
-void SceneMenu::exit(const MenuOps &ops) {
+bool SceneMenu::exit(const MenuOps &ops) {
+	if (eResult == MENU_BACK) return false;                             // the main menu is drawn on the same picture, no fade between them
 	if (eResult == MENU_SELECT) ops.pfnPublishPlayerCount(state.uwPlayers);  // LAB_00B9: ActiveKnights +14 := LAB_05C5
 	ops.pfnFadeOut();                                                   // JSR LAB_03F0
+	return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -241,6 +304,7 @@ bool SceneKnights::finishName(const MenuOps &ops) {
 	k.ubInputPort = raw(InputPort::Joy1);                               // MOVE.B #2,11(A1)
 	if (coop()) {                                                       // co-op: this knight's controller first
 		ubPad = partyFirstFreePad(*env.pParty, (uint8_t)uwSlot);
+		if (env.pParty->isNet) env.pParty->ubFocus = (uint8_t)(uwSlot & (PARTY_MAX - 1));   // only the owner node's input moves its line
 		padText();
 		ePhase = KP_PAD_RELEASE;
 		draw(ops);
@@ -294,8 +358,11 @@ bool SceneKnights::coop() const {
 // "Control  Joystick 1": the line under the portraits (font: letters, digits, spaces only).
 void SceneKnights::padText() {
 	static const char kLabel[] = "Control  ";
+	static const char kPlayer[] = "Player N  ";   // network game: whose line this is (the N is replaced)
 	uint8_t i = 0;
-	for (const char *p = kLabel; *p; ++p) aubPadText[i++] = (uint8_t)*p;
+	const bool bNet = env.pParty && env.pParty->isNet;
+	for (const char *p = bNet ? kPlayer : kLabel; *p; ++p) aubPadText[i++] = (uint8_t)*p;
+	if (bNet) aubPadText[7] = (uint8_t)('1' + (uwSlot & (PARTY_MAX - 1)));
 	for (const char *p = ms::padName(ubPad); *p && i < sizeof(aubPadText) - 1; ++p) aubPadText[i++] = (uint8_t)*p;
 	aubPadText[i] = 0;
 }
@@ -303,6 +370,13 @@ void SceneKnights::padText() {
 // Co-op controller choice (no original).  The name may have been taken with fire: wait for its release first (as
 // LAB_00C9 does before the name editor), then left / right cycle the free controllers and fire binds the one on offer.
 bool SceneKnights::padChoice(const MenuOps &ops) {
+	if (env.pParty->isNet && partyPadTakenFor(*env.pParty, (uint8_t)uwSlot, ubPad)) {
+		// A drop moved this member to another node while its line was open (partyNetDrop): the pad on offer was free on the old node, but
+		// another member of the new one holds it.  Offer the next free one (same on every machine: the party is shared state).
+		ubPad = partyNextPad(*env.pParty, (uint8_t)uwSlot, ubPad, 1);
+		padText();
+		draw(ops);
+	}
 	uint16_t uwJoy = ops.pfnReadJoy();
 	if (ePhase == KP_PAD_RELEASE) {
 		if (!(uwJoy & 0x10)) ePhase = KP_PAD_CHOICE;
@@ -310,6 +384,7 @@ bool SceneKnights::padChoice(const MenuOps &ops) {
 	}
 	if (uwJoy & 0x10) {
 		env.pParty->aubPad[uwSlot & (PARTY_MAX - 1)] = ubPad;
+		if (env.pParty->isNet) env.pParty->ubFocus = PARTY_FOCUS_ANY;   // the next portrait is picked by anybody again
 		return nextPick(ops);
 	}
 	if (uwJoy & 3) {

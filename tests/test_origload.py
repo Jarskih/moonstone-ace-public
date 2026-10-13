@@ -168,7 +168,7 @@ int main(int argc, char **argv) {
     for(int i = 0; i < nr; ++i) total += strtoul(argv[5 + 3 * i + 2], 0, 0);
     uint8_t *out = (uint8_t *)calloc(total + 1, 1), *p = out;
     for(int i = 0; i < nr; ++i) {
-        runs[i].uwHunk = (uint16_t)strtoul(argv[5 + 3 * i], 0, 0);
+        runs[i].ubHunk = (uint8_t)strtoul(argv[5 + 3 * i], 0, 0);
         runs[i].ulSrc = strtoul(argv[5 + 3 * i + 1], 0, 0);
         runs[i].ulSize = strtoul(argv[5 + 3 * i + 2], 0, 0);
         runs[i].pDst = p; p += runs[i].ulSize;

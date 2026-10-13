@@ -58,6 +58,7 @@ BLOB_SIZE = 0x00010000
 LOW_BASE, LOW_SIZE = 0, 0x1000                     # the junk words at $A / $C (rt_abs_a / rt_abs_c)
 DATA_BASE, DATA_SIZE = 0x00140000, 0x00060000      # creature heap, cel tables, planes, misc of the test arena
 STUBS = BLOB_BASE + 0x8000                         # hand-written AI handler stubs (68000 machine code)
+RTS_STUB = STUBS + 0x80                            # a bare RTS: the link target of rt functions the rig does not run
 
 _BLOB = None
 
@@ -74,8 +75,8 @@ def build_blob():
              '-I', os.path.join(ROOT, 'include'), '-I', os.path.join(ROOT, 'src'), '-I', os.path.join(ACE, 'mini_std'), '-I', ACE,
              '-I', GCC_SUPPORT]
     objs = []
-    for src in ('src/game/creatures.cpp', 'src/rt/creatures.cpp'):
-        o = os.path.join(tmp, os.path.basename(os.path.dirname(src)) + '.o')
+    for src in ('src/game/creatures.cpp', 'src/rt/creatures.cpp', 'src/rt/fight_roster.cpp', 'src/rt/combat_pool.cpp'):
+        o = os.path.join(tmp, os.path.basename(os.path.dirname(src)) + '_' + os.path.basename(src) + '.o')   # (game/creatures.cpp and rt/creatures.cpp, rt/fight_roster.cpp, rt/combat_pool.cpp: the directory alone made three of them one file)
         r = subprocess.run([GXX] + flags + ['-c', os.path.join(ROOT, src), '-o', o], capture_output=True, text=True, env=env)
         if r.returncode != 0:
             raise RuntimeError('compile %s failed: %s' % (src, r.stderr[-3000:]))
@@ -100,6 +101,8 @@ def build_blob():
             cmd.append('--defsym=rt_abs_a=10')
         elif s == 'rt_abs_c':
             cmd.append('--defsym=rt_abs_c=12')
+        elif s == '_ZN2rt15partyColoursEndEv':    # combat_pool.cpp hands the second knight's colours back (Moonstone 2, rt/knight_colours.cpp): not under test
+            cmd.append('--defsym=%s=%d' % (s, RTS_STUB))
         else:
             raise RuntimeError('unresolved symbol ' + s)
     cmd += CN.defsym_aliases(cmd, und - defs)   # ROADMAP 7.1s: the C++ names of the cells resolve like their labels
@@ -143,7 +146,7 @@ class Emu:
             H.CPU_MODEL = saved
         self.image_lo, self.image_hi = H.IMAGE_BASE, H.IMAGE_BASE + len(self.h.image)
         self.stack_lo, self.stack_hi = H.STACK_BASE, H.STACK_BASE + H.STACK_SIZE
-        self.patches_static = [(BLOB_BASE, self.blob), (STUBS + 0x00, H_KEEP), (STUBS + 0x20, H_KILL), (STUBS + 0x40, H_RUN)]
+        self.patches_static = [(BLOB_BASE, self.blob), (STUBS + 0x00, H_KEEP), (STUBS + 0x20, H_KILL), (STUBS + 0x40, H_RUN), (RTS_STUB, bytes.fromhex('4E75'))]
         assert len(H_KEEP) <= 0x20 and len(H_KILL) <= 0x20 and len(H_RUN) <= 0x40
 
     def snapshot(self):

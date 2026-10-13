@@ -11,8 +11,37 @@ file: rules.ini
 title: Rule switches
 struct: RulesDef
 target: rules
-layout: [uwGoldCap, ubDaggerCap, ubWaveScaling, ubCoopAliveBonus, ubCoopTotalFactor, ubCoopWritebackDivisor, ubCoopEnabled]
+layout: [uwGoldCap, ubDaggerCap, ubWaveScaling, ubCoopAliveBonus, ubCoopTotalFactor, ubCoopWritebackDivisor, ubCoopEnabled, ubDexterityEnabled, ubDexterityStart, ubRecoveryFramesPerPoint]
 sections:
+  dexterity:
+    doc: Optional fourth character stat. Reduces the final repeated recovery pose of melee attacks, not their wind-up.
+    singleton: true
+    keys:
+      enabled:
+        member: ubDexterityEnabled
+        type: bool
+        size: 1
+        default: false
+        source: "decision: ROADMAP 8.8a (optional Dexterity mod)"
+        doc: Show and train Dexterity on the knight sheet and apply its recovery bonus.
+      starting:
+        member: ubDexterityStart
+        type: int
+        size: 1
+        min: 1
+        max: 5
+        default: 1
+        source: "decision: ROADMAP 8.8a (1 keeps original recovery)"
+        doc: Dexterity of each knight when a new game or practice fight starts.
+      recovery_frames_per_point:
+        member: ubRecoveryFramesPerPoint
+        type: int
+        size: 1
+        min: 0
+        max: 4
+        default: 1
+        source: "decision: ROADMAP 8.8a (frame-based recovery, minimum one repeat)"
+        doc: Repeats removed from the final melee recovery hold for each Dexterity point above 1. At least one repeat remains; 0 disables the timing bonus.
   waves:
     doc: Monster waves of the lair fights.
     singleton: true

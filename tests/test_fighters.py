@@ -616,7 +616,7 @@ def build_driver():
     cmd = [CXX] + os.environ.get('FIGHTERS_CXXFLAGS', '').split() + ['-std=c++17', '-O1', '-D_CRT_SECURE_NO_WARNINGS', '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH', '-fno-exceptions',
            '-fno-rtti', '-w', '-include', os.path.join(tmp, 'tcall.hpp'), '-I', os.path.join(ROOT, 'include'), '-I', tmp, drv,
            os.path.join(ROOT, 'src', 'game', 'fighters.cpp'), os.path.join(ROOT, 'src', 'game', 'creatures.cpp'),
-           os.path.join(ROOT, 'src', 'game', 'fight_creatures.cpp'), os.path.join(ROOT, 'src', 'game', 'fight_ops.cpp'),
+           os.path.join(ROOT, 'src', 'game', 'fight_creatures.cpp'), os.path.join(ROOT, 'src', 'game', 'fight_ops.cpp'), os.path.join(ROOT, 'src', 'game', 'roster.cpp'),
            os.path.join(ROOT, 'src', 'engine', 'util.cpp'), os.path.join(ROOT, 'src', 'game', 'rules', 'damage.cpp')] + [os.path.join(ROOT, 'src', 'game', 'rules', n + '.cpp') for n in ['ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight', 'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker']] + [GAMEDATA_SOURCE] + files + ['-o', exe]
     with open(os.path.join(tmp, 'tcall.hpp'), 'w') as f:
         f.write('#pragma once\n#include "ms/regs.hpp"\nvoid tcallAsm(ms::Regs &, ms::Mem &, unsigned);\n')

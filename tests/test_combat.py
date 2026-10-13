@@ -396,7 +396,7 @@ def run_driver(lines):
         p, exe = os.path.join(tmp, 'drv.cpp'), os.path.join(tmp, 'drv.exe')
         with open(p, 'w') as f:
             f.write(DRIVER.replace('%CELLTABLE%', celltable()).replace('%NCELLS%', str(len(CELLS))))
-        srcs = [p] + [os.path.join(ROOT, 'src', 'game', x) for x in ('combat.cpp', 'rules/stats.cpp', 'rules/healing.cpp', 'rules/settle.cpp', 'rules/clock.cpp', 'rules/turns.cpp', 'rules/waves.cpp')] + [GAMEDATA_SOURCE]
+        srcs = [p] + [os.path.join(ROOT, 'src', 'game', x) for x in ('combat.cpp', 'roster.cpp', 'rules/stats.cpp', 'rules/healing.cpp', 'rules/settle.cpp', 'rules/clock.cpp', 'rules/turns.cpp', 'rules/waves.cpp')] + [GAMEDATA_SOURCE]
         cmd = [CXX, '-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror', '-D_CRT_SECURE_NO_WARNINGS',
                '-Wno-unused-function', '-I', os.path.join(ROOT, 'include')] + srcs + ['-o', exe]
         r = subprocess.run(cmd, capture_output=True, text=True)

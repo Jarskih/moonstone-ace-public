@@ -177,7 +177,18 @@ struct FlowOps {
 	void (*pfnShowPicture)(void *pCtx, const char *szFile);   // load a .piv from disk into the shown screen, with its palette
 };
 
+// The map turn (ROADMAP M12 rejoin, docs/NETPLAY.md 4.5): the turn scene calls this once the next knight's turn has begun and before the map screen starts
+// again.  The network layer installs it (rt/mainloop.cpp); nothing is installed in a game that is not a network game, and then it is one compare.  Constant
+// initialised (no global constructor), header only like g_pfnTickIdle.
+inline void (*g_pfnTurnBoundary)() = nullptr;
+inline void turnBoundary() {
+	if(g_pfnTurnBoundary) {
+		g_pfnTurnBoundary();
+	}
+}
+
 // rt services of the manager (optional).
+
 struct FlowHost {
 	void *pCtx;
 	void (*pfnLog)(void *pCtx, const char *szScene, const char *szWhat, uint32_t ulValue);   // MS_AUTOPLAY: enter / exit / high water

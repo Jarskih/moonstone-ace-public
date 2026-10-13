@@ -475,7 +475,7 @@ class LoaderPatchTest(unittest.TestCase):
                 self.assertNotIn(gone, ids)
 
     def test_entries_are_defined(self):
-        src = readfile(os.path.join(ROOT, 'src', 'rt', 'loaders.cpp')).decode('utf-8')
+        src = (readfile(os.path.join(ROOT, 'src', 'rt', 'loaders.cpp')) + readfile(os.path.join(ROOT, 'src', 'rt', 'amiga', 'loaders_entries.cpp'))).decode('utf-8')   # the entries moved in 11.1d
         defined = set(re.findall(r'LOADER_SHIM\d\("(rt_\w+)"', src))
         used = set()
         for name in ('program', 'mog'):

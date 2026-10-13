@@ -24,7 +24,8 @@ struct WaveIn {
 	bool bSingleAlive;         // the spawn routine allows one creature at a time (LAB_0197 / LAB_019B)
 	bool bAliveCapTwo;         // the creature initialiser caps the alive count at two (LAB_019F)
 	uint8_t ubRow;             // the creature's row in the cut table (0..7), 8 = not one of the known kinds
-	bool bCoop;                // two knights play together ([coop] enabled)
+	bool bCoop;                // two or more knights play together ([coop] enabled, or a party fight)
+	uint8_t ubParty = 2;       // Moonstone 2 (ROADMAP 8.4b): knights on the party's side (2..4); the [coop] numbers are for two and grow per extra knight
 };
 
 // The fighter's damage class 0..7 (the column of the cut table); called only when the original would compute it.
@@ -35,6 +36,12 @@ void waveScale(WaveState &s, const WaveIn &in, const RulesDef &rules, WaveDamage
 
 // The value written back to the lair after a fight with `uwLeft` creatures still to come.  Single knight: unchanged; co-op:
 // divided by `[coop] writeback_divisor`, rounded up.
-uint16_t waveWriteback(const RulesDef &rules, bool bCoop, uint16_t uwLeft);
+uint16_t waveWriteback(const RulesDef &rules, bool bCoop, uint16_t uwLeft, uint8_t ubParty = 2);
+
+// The [coop] numbers are given for TWO knights; every knight beyond the second adds the same step again: alive at once +alive_bonus per
+// extra knight (2: +1, 3: +2, 4: +3), the total * (1 + (total_factor - 1) * (n - 1)) (2: x2, 3: x3, 4: x4), the write-back divisor likewise.
+uint16_t coopAliveBonus(const RulesDef &rules, uint8_t ubParty);
+uint16_t coopTotalFactor(const RulesDef &rules, uint8_t ubParty);
+uint16_t coopWritebackDivisor(const RulesDef &rules, uint8_t ubParty);
 
 }}  // namespace ms::game

@@ -174,6 +174,9 @@ void drawMoon(const Env &e);
 void loadAssets(const Env &e);
 // LAB_012D: Sel.cel, ch.piv screen, two screen copies, then SECSTRT_9 (Ops::hunk9, a tail jump: nothing after it runs).
 void selectScreen(const Env &e);
+// No original: the ch.piv screen of LAB_012D alone (from the raw copy LAB_05B9[14]: decoded, its palette in LAB_0D2B, copied to the shown screen, the
+// draw screen and the background LAB_05C0), for a screen that overwrote the menu background and returns to the title menus (the lobby).
+void restoreTitlePicture(const Env &e);
 // LAB_012E / LAB_012F: the place pictures HighWood.piv / WaterDeep.piv.
 void placeHighWood(const Env &e);
 void placeWaterDeep(const Env &e);

@@ -23,6 +23,7 @@ void rtClTroll(void);                        // LAB_0126  kind $40 (+ Kn5.ob)
 void rtClKiMi(void);                         // LAB_0128  ki.cel / mi.c into the map slots
 void rtClMoon(void);                         // LAB_012B  the moon over ch.piv
 void rtClAssets(void);                       // LAB_012C  message.piv, ch.piv, bold.f, Small.font
+void rtClTitlePicture(void);                 // no original  ch.piv screen alone (LAB_012D without Sel.cel): the title picture back in LAB_05C0
 void rtClSelect(void);                       // LAB_012D  Sel.cel + ch.piv screen (the caller leaves through the hunk-9 exit itself)
 void rtClHighWood(void);                     // LAB_012E  place picture HighWood.piv
 void rtClWaterDeep(void);                    // LAB_012F  place picture WaterDeep.piv

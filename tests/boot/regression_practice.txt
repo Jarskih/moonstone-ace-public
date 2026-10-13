@@ -9,12 +9,13 @@
 
 frame 300 key SPACE tap
 wait input 10 max 3000
-frame 10 joy1 down pulse
-frame 40 joy1 down pulse
-frame 100 shot reg-menu-practice
+frame 10 joy1 fire pulse
+frame 70 joy1 down pulse 20
+frame 120 joy1 down pulse 20
+frame 170 shot reg-menu-practice
 
 # fire: Practice loads (the load's frames do not count, 2000 are generous for the fight to start)
-frame 130 joy1 fire pulse
+frame 190 joy1 fire pulse
 frame 2000 shot reg-practice-start
 
 # hold right on port 0 for 190 frames: the knight walks to the right edge

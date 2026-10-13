@@ -129,3 +129,31 @@ The full table is the output of `py tools/perfx.py --model` (raw logs of this ru
 
 (owner "jobs" column: 29-45 lines in some bins is the dispatch loop spawning scripts, not a steady cost. The dragon job has type `$28`, so the "fighters" column counts its knight only.
 The owner dragon rows have a larger `post` (90-125) than stock: the repeated hp poke triggers the low-HP warning ramps.)
+
+### Co-op fights (ROADMAP 8.4b): measured 2026-10-10 (branch wt-coop_pass)
+
+Release `MS_AUTOPLAY` build (`build-autoplay-rel`), WinUAE 6 cycle-exact A1200 as in "How it is measured": **stock** = 2 MB chip, no fast RAM; **owner** = + 8 MB 32-bit fast RAM (`z3mem_size=8`, `cpu_24bit_addressing=false`; 68020 at 14.19 MHz, the real accelerator clock is not known).
+Scripts `tests/boot/perf_coop_lair.txt` (two knights, `mash joy1` + `mash joy0`, lair 0, wave doubled) and `perf_coop_bk.txt` (the party warps onto black knight record 2; arrival menu key 1); both logs checked: `waves: scaling=0 coop=1 total=36 alive=5` (lair) and `f=4` in `PERFX` (2 + 2 fighters, BK fight) - the boot part ran into the co-op game, not the practice duel.  Classic row = `perf_lair0.txt` (one knight vs the same lair) on the same build.  fps = the `PERF fps100` of the 250-VBL windows with at least 15 frames in a fight (budget 6); the PERFX bins give where the beam lines go.
+
+| fight | fighters f / jobs j | stock exact | owner exact | busiest bins W = work in beam lines (stock / owner) |
+|---|---|---|---|---|
+| classic practice duel (earlier table) | 2 / 2 | 10.0 fps | 10.0 fps | 1082 / 693 |
+| classic 1 knight vs lair 0 (ratmen), same build | 5-6 / 6-8 | 6.5 fps mean (6.0-8.4) | 9.4 fps mean (5.4-10.0) | 2229-2523 / 1060-1335 |
+| **co-op 2 knights vs lair 0 (wave doubled, +1 alive)** | 7-9 / 8-10 | **4.9 fps** mean (4.6-6.2; the windows at W 2900-3300) | **8.2 fps** mean (6.0-9.0) | 2204-2894 / 1762-2083 |
+| **co-op 2 knights vs 2 black knights** | 4 / 4-8 | **6.5 fps** mean (6.2-7.6, one 3.8 window at the arena load) | **9.4 fps** mean (7.6-10.0) | 1760-2639 / 1229-1586 |
+
+Reading: a fight frame is cel-draw bound (draw 1067-1674 of 1760-2639 lines for the 2 + 2 fight on stock); the frame is `W` lines when `W >= 1626` (fps = 15600 / W), so the co-op lair on stock sits at 4.6-5.4 fps while its owner-machine twin keeps 8+ fps.  The 2 + 2 black-knight fight is as fast as a classic ratmen lair on stock and at 10 fps on the owner config; the doubled ratmen wave of 5-6 creatures is the expensive one (7-9 live fighters).  Job slots used 8-10 of 16, dirty rects at most 34 of 64, no frame over the cap (`>45` column 0).
+
+Limits and chip memory as written in the preparation notes below; the colour copy of the second knight costs ~87 KB of chip while a creature fight lasts.
+
+#### What was prepared before the run (kept for reference)
+
+* **Measured 2026-10-10 (table above); the preparation notes were:**  The scripts are in place: `tests/boot/perf_coop_lair.txt` (two knights, `mash joy1` + `mash joy0`, against lair 0 with the wave doubled, +1 alive) and
+  `tests/boot/perf_coop_bk.txt` (two knights against the two black knights); run them on the Release `MS_AUTOPLAY` build with the cycle-exact configs of "How it is measured" (stock = no fast RAM, owner = `z3mem_size=8`) and read `PERFX` / `PERF` lines
+  where `frames > 0`.  The boot part of both scripts uses long fixed delays: under the cycle-exact CPU the menus come up later than in the debug config, an early press is `MISSED` and the game then starts the two-player practice duel instead of the co-op
+  game (`f=2 j=2`, `ty=8`, no creatures): check that `waves: ... coop=1` / `AUTOPLAY fight roster on=1` are in the log before trusting a window.
+* **The PERF counters work in party fights** (`frames`, `fps100` > 0 in every fight window of `build/shots/play_coop_fight-run1.log`, debug config 3.4-7 fps).  Windows with `frames=0` are the arena set-up: the file loads and, until 2026-10-09, the colour copy of the
+  second knight (a per-pixel loop, 16 s on the debug build; now byte-wise bit logic, `engine/celremap.cpp`).
+* **Limits in a party fight**: 16 job slots and 64 dirty rects (`game::g_combatLimits`, `rt/combat_pool.cpp`); the arrays are static (16 x 50 + 16 x 36 + 2 x 16 x 80 bytes and two 528-byte rect lists, chip or fast as the exe's BSS).  Two knights and a wave of five used 8-9 of the 10 classic slots and left no room for
+  daggers; the classic fight is untouched (10 / 45).
+* Chip memory: the second knight's colour copy takes ~87 KB while a creature fight lasts (stock A1200 spare: ~258 KB).

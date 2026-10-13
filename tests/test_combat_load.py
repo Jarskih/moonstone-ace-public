@@ -38,6 +38,7 @@ import unittest
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools'))
 import cellnames as CN  # noqa: E402  (ROADMAP 7.1s)
+_NONZERO_RUN = re.compile(rb'[^\x00]+')     # runs of differing bytes in an XOR of two memory images
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -334,16 +335,10 @@ class Oracle:
             now = bytes(uc.mem_read(base, len(init)))
             if now == init:
                 continue
-            i, n = 0, len(init)
-            while i < n:
-                if now[i] == init[i]:
-                    i += 1
-                    continue
-                j = i
-                while j < n and now[j] != init[j]:
-                    j += 1
-                out.append((base + i, now[i:j].hex()))
-                i = j
+            # maximal runs of differing bytes: the XOR of the two as one big integer has a non-zero byte exactly there
+            x = (int.from_bytes(now, 'big') ^ int.from_bytes(init, 'big')).to_bytes(len(init), 'big')
+            for m in _NONZERO_RUN.finditer(x):
+                out.append((base + m.start(), now[m.start():m.end()].hex()))
         return out
 
     def initial(self, pokes, data):
@@ -621,7 +616,7 @@ def test_runtime_asm():
     out.append('\trts')
     stub('rt_file_close', callee_id('FILE_CLOSE'), '')
     out.append('\trts')
-    stub('rt_mog_pack_done', callee_id('FILE_CLOSE'), '')
+    stub('rtEnhPackDone', callee_id('FILE_CLOSE'), '')
     out.append('\trts')
     # void rtSfxSynth(ULONG seq, ULONG channel): logs the low words
     stub('rtSfxSynth', callee_id('SYNTH'), '\tmove.w 10(%sp),(%a6)+\n\tmove.w 14(%sp),(%a6)+')
@@ -635,6 +630,28 @@ def test_runtime_asm():
     out.append('\t.globl rtSbLoad\nrtSbLoad:\n\tmove.l 4(%sp),%d0\n\tcmp.l #10,%d0\n\tbhi.s 9f\n\tmove.l %a6,-(%sp)\n\tmovea.l 0x' + ('%X' % LOGPTR) + ',%a6')
     out.append('\tlea 8f(%pc),%a0\n\tmove.b (%a0,%d0.w),%d0\n\textb.l %d0\n\tmove.l %d0,(%a6)+\n\tmove.l %a6,0x' + ('%X' % LOGPTR) + '\n\tmove.l (%sp)+,%a6\n9:\trts')
     out.append('8:\t.byte ' + ','.join(str(callee_id('MUSIC_' + b)) if b != '0AB0' else '0' for b in banks) + '\n\t.even')
+    # ROADMAP 11.1d: src/rt/combat_load.cpp calls the primitives of the game as C++ functions (rt/prim.hpp).  Each wrapper loads the registers
+    # of the ORIGINAL routine from the C arguments and calls the rt_mog_* entry, which the link defines to that routine (RT_LABELS), as the
+    # register trampoline rtClAsm did; D2-D7/A2-A6 are saved around it (the originals clobber freely).  First C argument at 48(%sp).
+    out.append('\t.macro CLW name, label, loads\n\t.globl BS_name\nBS_name:\n\tmovem.l %d2-%d7/%a2-%a6,-(%sp)\n\tBS_loads\n\tjsr BS_label\n'
+               '\tmovem.l (%sp)+,%d2-%d7/%a2-%a6\n\trts\n\t.endm'.replace('BS_', chr(92)))
+    for name, label, loads in (
+            ('rtCelSize_mog', 'rt_mog_cel_size', 'move.l 48(%sp),%a0'),
+            ('rtLoadCel_mog', 'rt_mog_cel_load', 'move.l 48(%sp),%a0; move.l 52(%sp),%a1'),
+            ('rtHitLoad_mog', 'rt_mog_hit_load', 'move.l 48(%sp),%a0; move.l 52(%sp),%a1'),
+            ('rtSetPlanes', 'rt_mog_set_planes', 'move.l 48(%sp),%d0'),
+            ('rtLoadPicMem_mog', 'rt_mog_pic_mem', 'move.l 48(%sp),%a0'),
+            ('rtLoadPicFile_mog', 'rt_mog_pic_file', 'move.l 48(%sp),%a0; move.l 52(%sp),%a1'),
+            ('rtMogFadeToC', 'rt_mog_fade_to', 'move.l 48(%sp),%a0'),
+            ('rtMogPaletteClearC', 'rt_mog_palette_clear', 'nop'),
+            ('rtMogFadeOutC', 'rt_mog_fade_out', 'nop'),
+            ('rtMogBlitScreenC', 'rt_mog_blit_screen', 'move.l 48(%sp),%a0; move.l 52(%sp),%a1'),
+            ('rtMogBlitBothC', 'rt_mog_blit_both', 'nop'),
+            ('rtMogTextList', 'rt_mog_text_list', 'move.l 48(%sp),%a0'),
+            ('rtDrawCel_mog', 'rt_mog_draw_cel', 'move.l 48(%sp),%d0; move.l 52(%sp),%d1; move.l 56(%sp),%d2; move.l 60(%sp),%a0'),
+            ('rtArenaLoad', 'rt_mog_arena_load', 'move.l 48(%sp),%a0'),
+            ('rtArenaDefault', 'rt_mog_arena_default', 'nop')):
+        out.append('\tCLW %s, %s, "%s"' % (name, label, loads))
     out.append(')");')
     out.append('''
 extern "C" {
@@ -813,7 +830,8 @@ class Static(unittest.TestCase):
 
     def test_every_routine_has_a_c_entry_a_header_declaration_and_a_test_shim(self):
         rt, hpp, sup = slurp(SRC_RT), slurp(HPP_RT), slurp(SRC_SUPPORT)
-        c_names = set(re.findall(r'RT_CL_ENTRY\((rtCl\w+),', rt)) | set(re.findall(r'void (rtClMessage\w+)\(uint32_t ulList\)', rt))
+        self.assertIn('rtClTitlePicture', hpp)    # no original (the lobby's restore): a C entry without an asm routine or shim
+        c_names = (set(re.findall(r'RT_CL_ENTRY\((rtCl\w+),', rt)) - {'rtClTitlePicture'}) | set(re.findall(r'void (rtClMessage\w+)\(uint32_t ulList\)', rt))
         self.assertEqual(len(c_names), len(SHIMS))     # 24 RT_CL_ENTRY uses (rtClSelect included) + the two message entries
         for n in c_names:
             self.assertRegex(hpp, r'\b%s\(' % n, n + ' not declared in src/rt/combat_load.hpp')

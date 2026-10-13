@@ -3,8 +3,10 @@
 // What was asm: the overlay's display init (SECSTRT_29 / SECSTRT_34), the screen swap (LAB_054C / LAB_0D71), the screen clear
 // (LAB_054D / LAB_0D72), the beam waits (LAB_0552 / LAB_0D77, LAB_054F / LAB_0D74), the word copy (LAB_055E / LAB_0D83), the
 // default-palette write (LAB_0565 / LAB_0D8A) and the keyboard table lookup (mog LAB_0D8D). The copper list, DIW/DDF/BPLCON
-// registers and bitplane pointers are ACE's (rt/display_ace.cpp); this file keeps the game's own screen cells
-// (SECSTRT_30 / LAB_056C, SECSTRT_35 / LAB_0D92) as the single owner of "which screen is shown / drawn".
+// registers and bitplane pointers are the platform's (rt/platform/display.hpp: ACE's view on the Amiga, rt/amiga/display_ace.cpp); this
+// file keeps the game's own screen cells (SECSTRT_30 / LAB_056C, SECSTRT_35 / LAB_0D92) as the single owner of "which screen is shown /
+// drawn".  Since ROADMAP 11.10 it is platform-neutral: the colour registers, the beam wait and the take-over of copper and DMA sit behind
+// rt/platform and rt/display_hw.hpp, the 68k register shims in src/rt/amiga/display_ops_entries.cpp.
 //
 // Register contracts of the asm entries (the replaced routines saved D0-D7/A0-A6 around their work, so every entry here
 // preserves ALL registers except the documented result; the flags are not preserved):
@@ -19,15 +21,15 @@
 //   rt_mog_key_xlat                                D0.w = index; D0 = (index << 16) | table[index] (LAB_0D8D); the rest kept
 #include "rt/display_ops.hpp"
 
-
-#include <ace/utils/custom.h>
-
 #include "rt/abs.h"
-#include "rt/copper_stub.hpp"
-#include "rt/display_ace.hpp"
+#include "rt/display_hw.hpp"
 #include "rt/enhanced.hpp"
 #include "rt/enhanced_cells.hpp"
+#include "rt/irq.hpp"
+#include "rt/net_tick.hpp"
 #include "rt/perf.hpp"
+#include "rt/platform/display.hpp"
+#include "rt/platform/timer.hpp"
 #include "rt/sprites.hpp"
 
 extern "C" {
@@ -48,17 +50,19 @@ extern ULONG rtEnhScrLongs asm("rt_enh_scr_longs");   // longs of one screen (5 
 
 namespace {
 
+constexpr UBYTE kBeamLine = 0xF5;   // the once-per-frame sync line: after the display window
+
 // program LAB_0325 (the overlay's interrupt install, ROADMAP 7.1q: the asm was `JSR LAB_0552` - the beam wait, which is
-// rt::displayWaitBeam: skip poll, line $F5 reached and left - then the patched `JMP rt_prg_irq_init`).
+// rt::displayWaitBeam: skip poll, line $F5 reached and left - then the patched `JMP rt_prg_irq_init`, whose body is irqInstall).
 void irqInitProgram() {
 	rt::displayWaitBeam();
-	rt_prg_irq_init();
+	rt::irqInstall(rt::inputProgramCells());
 }
 
-// mog LAB_0B49 (the overlay's irq install): a beam wait (the original's JSR LAB_0D77, rt::displayWaitBeam), then the install (rt_mog_irq_init).
+// mog LAB_0B49 (the overlay's irq install): a beam wait (the original's JSR LAB_0D77, rt::displayWaitBeam), then the install.
 void mogIrqInit() {
 	rt::displayWaitBeam();
-	rt_mog_irq_init();
+	rt::irqInstall(rt::inputMogCells());
 }
 
 const rt::DisplayCells s_aCells[2] = {
@@ -73,6 +77,7 @@ const rt::DisplayCells *s_pBound;   // the active overlay (set by the display in
 // The words the display init clears are the work block of the original ($6BEFA..$80000 in the original memory map): screen
 // pointers, text cursor, trap slot, copper list. rt_screen_clear / rt_screen_work_end alias it.
 void clearWorkBlock() {
+#if defined(__m68k__)
 	// CLR.W (A0)+ / CMPA.L #end,A0 / BNE.S, as the original (asm: GCC must not turn a clear loop into a memset call)
 	const UWORD *pWord = reinterpret_cast<const UWORD *>(rt_screen_clear);
 	asm volatile(
@@ -81,6 +86,12 @@ void clearWorkBlock() {
 		"	bne.s 1b"
 		: "+a"(pWord) : "a"(rt_screen_work_end) : "cc", "memory"
 	);
+#else
+	for(volatile UWORD *pWord = reinterpret_cast<volatile UWORD *>(rt_screen_clear); pWord != reinterpret_cast<volatile UWORD *>(rt_screen_work_end);
+	    ++pWord) {
+		*pWord = 0;
+	}
+#endif
 }
 
 }  // namespace
@@ -95,18 +106,25 @@ const DisplayCells &displayMogCells() {
 	return s_aCells[1];
 }
 
-void displayWaitBeam() {
+// noinline: the return address names the caller in the tick ring (MS_AUTOPLAY diagnostics, rt/net_tick netTickRingDump)
+__attribute__((noinline)) void displayWaitBeam() {
+	displayWaitBeamRaw();
+	netTick(1, reinterpret_cast<ULONG>(__builtin_return_address(0)));   // ROADMAP 12.4: the frame boundary of deterministic mode (a no-op otherwise); one VBL passed
+}
+
+__attribute__((noinline)) void netPaceSpin() {
+	if(netDeterministic()) {
+		displayWaitBeamRaw();
+		netTick(1, reinterpret_cast<ULONG>(__builtin_return_address(0)) | 1);
+		return;
+	}
+	platform::timerIdle();
+}
+
+void displayWaitBeamRaw() {
 	perfBeamWait();  // MS_AUTOPLAY perf log (rt/perf), a no-op otherwise
-	volatile UBYTE *pLine = reinterpret_cast<volatile UBYTE *>(&g_pCustom->vhposr);  // CMPI.B #$f5,VHPOSR: the high byte
-	if(s_pBound && s_pBound->pfnWaitLine) {
-		s_pBound->pfnWaitLine();  // program: the intro-skip poll + the first loop (leaves the overlay when the intro is skipped)
-	}
-	else {
-		while(*pLine != 0xF5) {
-		}
-	}
-	while(*pLine == 0xF5) {
-	}
+	// CMPI.B #$f5,VHPOSR: the high byte.  program: the intro-skip poll + the first loop (leaves the overlay when the intro is skipped)
+	platform::timerWaitBeam(kBeamLine, (s_pBound != nullptr && s_pBound->pfnWaitLine != nullptr) ? s_pBound->pfnWaitLine : nullptr);
 }
 
 void displayWaitFrames(ULONG ulFrames) {
@@ -116,10 +134,18 @@ void displayWaitFrames(ULONG ulFrames) {
 	}
 }
 
+void displayErrorFlash() {
+	displayWaitBeam();                                 // wait for the next frame line, then flash the border
+	platform::displaySetBackdrop(0x0C00);              // COLOR00
+	displayWaitFrames(2);
+	platform::displaySetBackdrop(0x0000);
+}
+
 void displayClearPasses(void *pBase, ULONG ulPasses) {
 	if(ulPasses == 0) {
 		return;
 	}
+#if defined(__m68k__)
 	// 50 CLR.L (A0)+ per pass, as the original (asm: GCC must not turn the clear into a memset call)
 	asm volatile(
 		"1:	.rept 50\n"
@@ -129,6 +155,12 @@ void displayClearPasses(void *pBase, ULONG ulPasses) {
 		"	bne.s 1b"
 		: "+a"(pBase), "+d"(ulPasses) : : "cc", "memory"
 	);
+#else
+	volatile ULONG *pLong = static_cast<volatile ULONG *>(pBase);
+	for(ULONG ulCount = ulPasses * 50; ulCount != 0; --ulCount) {
+		*pLong++ = 0;
+	}
+#endif
 }
 
 void displayClearScreen(void *pBase) {
@@ -138,12 +170,20 @@ void displayClearScreen(void *pBase) {
 
 void displayCopyScreenLongs(const void *pSrc, void *pDst) {
 	ULONG ulLongs = rtEnhScrLongs;   // MOVE.L rt_enh_scr_longs,D0 ; MOVE.L (A0)+,(A1)+ ; SUBQ.L #1,D0 ; BNE.S (asm: not a memcpy)
+#if defined(__m68k__)
 	asm volatile(
 		"1:	move.l (%0)+,(%1)+\n"
 		"	subq.l #1,%2\n"
 		"	bne.s 1b"
 		: "+a"(pSrc), "+a"(pDst), "+d"(ulLongs) : : "cc", "memory"
 	);
+#else
+	const ULONG *pFrom = static_cast<const ULONG *>(pSrc);
+	ULONG *pTo = static_cast<ULONG *>(pDst);
+	do {
+		*pTo++ = *pFrom++;
+	} while(--ulLongs != 0);
+#endif
 }
 
 void displayWritePalette(const UWORD *puwTable) {
@@ -152,29 +192,21 @@ void displayWritePalette(const UWORD *puwTable) {
 		enhPaletteWriteNow(puwTable);  // live := table, written as 24-bit values
 		return;
 	}
-	volatile UWORD *pColor = &g_pCustom->color[0];
-	for(UBYTE ubColor = 0; ubColor < 32; ++ubColor) {
-		pColor[ubColor] = puwTable[ubColor];
-	}
+	platform::displayWritePalette12(puwTable, 32);   // COLOR00..COLOR31
 }
 
 void displayInit(const DisplayCells &sCells) {
 	s_pBound = &sCells;
 	spritesReset();   // the sprite data table of the previous overlay is gone with its image
 	clearWorkBlock();
-	displayStubInit(reinterpret_cast<ULONG>(sCells.pulNullSprite));  // the old template copy; also COP1LC := the stub
+	displayHwPrepare(reinterpret_cast<ULONG>(sCells.pulNullSprite));      // the old template copy; also COP1LC := the stub (Amiga)
 	sCells.pfnIrqInit();                                                 // LAB_0325 / LAB_0B49 (LAB_0566/67: two RTS stubs)
-	displayShow(*sCells.pulShown);
+	platform::displayShow(*sCells.pulShown);
 	displayClearScreen(reinterpret_cast<void *>(*sCells.pulDraw));
 	displayClearScreen(reinterpret_cast<void *>(*sCells.pulShown));
 	rt_irq_disable();                                                    // LAB_0556: INTENA master off
 	displayWaitBeam();                                                   // LAB_0552
-	g_pCustom->cop1lc = reinterpret_cast<ULONG>(copperStub());    // MOVE.L #rt_copper_list,COP1LCH
-	(void)g_pCustom->copjmp1;                                            // MOVE.W COPJMP1,D0: the copper restarts at the stub
-	g_pCustom->dmacon = 0x8380;  // SET | DMAEN | BPLEN | COPEN
-	g_pCustom->dmacon = 0x8040;  // SET | BLTEN
-	g_pCustom->dmacon = 0x8020;  // SET | SPREN
-	g_pCustom->dmacon = 0x8400;  // SET | BLTPRI
+	displayHwStart();                                                    // COP1LC := the stub, COPJMP1, DMACON: copper, bitplanes, blitter, sprites (Amiga)
 	rt_irq_enable();                                                     // LAB_0557: INTENA master on
 	displayWritePalette(sCells.puwDefaultPalette);                       // LAB_0565 (A0 = the default palette)
 }
@@ -182,7 +214,7 @@ void displayInit(const DisplayCells &sCells) {
 void displaySwap(const DisplayCells &sCells) {
 	displayWaitBeam();
 	const ULONG ulDraw = *sCells.pulDraw;
-	displayShow(ulDraw);
+	platform::displayShow(ulDraw);
 	*sCells.pulDraw = *sCells.pulShown;
 	*sCells.pulShown = ulDraw;
 }
@@ -228,53 +260,3 @@ RT_USED ULONG rtMogKeyXlatC(ULONG ulD0) {
 	const UBYTE ubKey = mogKeyTranslation[static_cast<WORD>(ulD0)];
 	return ((ulD0 & 0xFFFF) << 16) | ubKey;
 }
-
-// ---- asm wrappers ---------------------------------------------------------------------------------------------------
-// The C ABI clobbers D0/D1/A0/A1 only; the original routines kept even those (MOVEM of everything), so each wrapper saves them.
-asm(R"(
-	.text
-	.macro RT_DISP_PLAIN cfn
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr \cfn
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-	.endm
-
-	.globl rt_prg_display_init
-rt_prg_display_init:
-	RT_DISP_PLAIN rtPrgDisplayInitC
-	.globl rt_mog_display_init
-rt_mog_display_init:
-	RT_DISP_PLAIN rtMogDisplayInitC
-	.globl rt_prg_display_swap
-rt_prg_display_swap:
-	RT_DISP_PLAIN rtPrgDisplaySwapC
-
-	.globl rt_display_wait_frames
-rt_display_wait_frames:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtDisplayWaitFramesC
-	addq.l #4,%sp
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_display_palette_write
-rt_display_palette_write:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtDisplayPaletteWriteC
-	addq.l #4,%sp
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_mog_key_xlat
-rt_mog_key_xlat:
-	movem.l %d1/%a0-%a1,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtMogKeyXlatC
-	addq.l #4,%sp
-	movem.l (%sp)+,%d1/%a0-%a1
-	rts
-)");
-
