@@ -27,6 +27,7 @@
 
 
 #include "game/api/data.hpp"
+#include "engine/endian.hpp"
 #include "engine/util.hpp"
 #include "game/creatures.hpp"
 #include "game/loot.hpp"
@@ -235,8 +236,8 @@ void registerRegion() {
 	d1 = (uint16_t)(d1 << 1);
 	d0 = (uint16_t)(d0 + d1);                                  // frame * 10: the cel table entry
 	const int32_t ofs = (int16_t)d0;                           // 0(A0,D0.W): the index is a signed word
-	st16(rec + 4, rd16(tab + 14 + ofs));                       // cel width
-	st16(rec + 6, rd16(tab + 16 + ofs));                       // cel height
+	st16(rec + 4, ms::be::ld16(reinterpret_cast<const uint8_t *>((uintptr_t)(tab + 14 + ofs))));   // cel width: the cel table is file data, big-endian words (PC_ENDIAN.md 1)
+	st16(rec + 6, ms::be::ld16(reinterpret_cast<const uint8_t *>((uintptr_t)(tab + 16 + ofs))));   // cel height
 	st16(rec + 12, (uint16_t)(mogUiIconX + mogUiXShift));
 	st16(rec + 14, mogUiIconY);
 	const uint32_t button = mogUiButton;
@@ -1074,7 +1075,8 @@ void cursorTick(uint32_t ulVbls) {
 	mogCursorLock = 1;
 	const rt::CallRegs j = call(RT_FN(rt_mog_joy_read));
 	uint16_t d1 = (uint16_t)j.rd1;
-	if(rd8(mogUiKnight + 11) == 1) {  // LAB_068B
+	// LAB_068B; no screen knight yet (the town menu runs the cursor hook before one is set) made the 68k read byte 11 of the vector table, address 0 is not readable on the PC
+	if(mogUiKnight != 0 && rd8(mogUiKnight + 11) == 1) {
 		d1 = (uint16_t)j.rd0;
 	}
 	ms::CursorState s = {mogCursorX, mogCursorY, 1};

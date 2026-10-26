@@ -19,9 +19,13 @@
 
 #include <string.h>
 
+#include <vector>
+
 #include "engine/copper.hpp"
 #include "engine/dispframe.hpp"
 #include "engine/planar.hpp"
+#include "rt/sdl/crt.hpp"
+#include "rt/sdl/imgdump.hpp"
 #include "rt/platform/log.hpp"
 #include "rt/sdl/chip.hpp"
 #include "rt/sdl/display.hpp"
@@ -33,8 +37,9 @@ namespace sdl {
 namespace {
 
 constexpr uint32_t kPlaneBytes = (platform::kDisplayWidth / 8u) * platform::kDisplayHeight;   // $1F40: the game's plane stride
-constexpr int32_t kAspectNum = 6;       // a pixel is 6/5 as tall as wide: 320x200 fills a 4:3 screen
+constexpr int32_t kAspectNum = 6;       // --aspect: a pixel is 6/5 as tall as wide, 320x200 fills a 4:3 screen
 constexpr int32_t kAspectDen = 5;
+bool s_isAspect = false;                // default: pixel-perfect square pixels
 constexpr uint16_t kFirstLine = 0x2C;   // line of the top row of the output rectangle (the standard window start)
 constexpr int32_t kFirstPixel = 0x81;   // horizontal position (low-res pixels) of its left column
 constexpr uint16_t kDefaultBplcon2 = 0x0024;     // Kickstart's value the original inherits: PF1P = PF2P = 4, sprites in front
@@ -56,6 +61,8 @@ struct State {
 	SDL_Renderer *pRenderer;
 	SDL_Texture *pTexture;
 	uint32_t ulFrames;
+	const char *szDumpOutput;           // --dump-output: PNG of the composed window at the ulDumpOutputAt-th presented frame
+	uint32_t ulDumpOutputAt;
 };
 State s_display;
 uint32_t s_aulFrame[platform::kDisplayWidth * platform::kDisplayHeight];
@@ -93,7 +100,38 @@ void initialRegs(ms::copper::Regs &sRegs) {
 	}
 }
 
+// --dump-output: reads the composed window back from the renderer (before the present) and writes it as a PNG.
+void dumpOutputIfDue() {
+	if(s_display.szDumpOutput == nullptr || s_display.ulFrames != s_display.ulDumpOutputAt) {
+		return;
+	}
+	const char *szPath = s_display.szDumpOutput;
+	s_display.szDumpOutput = nullptr;
+	SDL_Surface *pRead = SDL_RenderReadPixels(s_display.pRenderer, nullptr);
+	SDL_Surface *pSurface = pRead != nullptr ? SDL_ConvertSurface(pRead, SDL_PIXELFORMAT_XRGB8888) : nullptr;
+	if(pRead != nullptr) {
+		SDL_DestroySurface(pRead);
+	}
+	if(pSurface == nullptr) {
+		platform::logFormat("display: cannot read the output back: %s\n", SDL_GetError());
+		return;
+	}
+	const size_t ulW = static_cast<size_t>(pSurface->w);
+	std::vector<uint32_t> aPixels(ulW * static_cast<size_t>(pSurface->h));
+	for(int y = 0; y < pSurface->h; ++y) {
+		memcpy(&aPixels[static_cast<size_t>(y) * ulW], static_cast<const uint8_t *>(pSurface->pixels) + static_cast<size_t>(y) * static_cast<size_t>(pSurface->pitch),
+		       ulW * sizeof(uint32_t));
+	}
+	imgDumpWrite(szPath, aPixels.data(), static_cast<uint32_t>(pSurface->w), static_cast<uint32_t>(pSurface->h));
+	SDL_DestroySurface(pSurface);
+}
+
 }  // namespace
+
+void displayDumpOutputAt(const char *szPath, uint32_t ulFrame) {
+	s_display.szDumpOutput = szPath;
+	s_display.ulDumpOutputAt = ulFrame;
+}
 
 void displayAttach(SDL_Renderer *pRenderer, SDL_Texture *pTexture) {
 	s_display.pRenderer = pRenderer;
@@ -101,6 +139,7 @@ void displayAttach(SDL_Renderer *pRenderer, SDL_Texture *pTexture) {
 }
 
 void displayDetach() {
+	crtRelease();
 	s_display.pRenderer = nullptr;
 	s_display.pTexture = nullptr;
 }
@@ -178,12 +217,26 @@ void displayPresent() {
 	int wWidth = 0;
 	int wHeight = 0;
 	SDL_GetCurrentRenderOutputSize(s_display.pRenderer, &wWidth, &wHeight);
-	const ms::planar::Rect sRect = ms::planar::fitRect(wWidth, wHeight, platform::kDisplayWidth, platform::kDisplayHeight, kAspectNum, kAspectDen);
+	const ms::planar::Rect sRect = displayFit(wWidth, wHeight);
 	const SDL_FRect sDst = {static_cast<float>(sRect.x), static_cast<float>(sRect.y), static_cast<float>(sRect.w), static_cast<float>(sRect.h)};
 	SDL_SetRenderDrawColor(s_display.pRenderer, 0, 0, 0, 255);
 	SDL_RenderClear(s_display.pRenderer);
-	SDL_RenderTexture(s_display.pRenderer, s_display.pTexture, nullptr, &sDst);
+	crtDrawPicture(s_display.pRenderer, s_display.pTexture, sDst);   // plain nearest draw unless the CRT effect is on
+	dumpOutputIfDue();
 	SDL_RenderPresent(s_display.pRenderer);
+}
+
+void displaySetAspect(bool isAspect) {
+	s_isAspect = isAspect;
+}
+
+ms::planar::Rect displayFit(int32_t lWinW, int32_t lWinH) {
+	return ms::planar::fitRect(lWinW, lWinH, platform::kDisplayWidth, platform::kDisplayHeight, s_isAspect ? kAspectNum : 1,
+	                           s_isAspect ? kAspectDen : 1);
+}
+
+int32_t displayScaledHeight(int32_t lScale) {
+	return s_isAspect ? (platform::kDisplayHeight * kAspectNum * lScale + kAspectDen / 2) / kAspectDen : platform::kDisplayHeight * lScale;
 }
 
 uint32_t displayFrameCount() {

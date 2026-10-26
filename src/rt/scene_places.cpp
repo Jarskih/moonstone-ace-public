@@ -55,8 +55,11 @@ void copyItemName(uint32_t ulSlot) {
 	for (int i = 0; i < 16; ++i, pEntry += 6) {
 		const uint16_t uwKey = (uint16_t)((pEntry[0] << 8) | pEntry[1]);
 		if (uwKey != (uint16_t)ulSlot) continue;
-		const uint32_t ulText = ((uint32_t)pEntry[2] << 24) | ((uint32_t)pEntry[3] << 16) | ((uint32_t)pEntry[4] << 8) | pEntry[5];
-		const uint8_t *pSrc = reinterpret_cast<const uint8_t *>((uintptr_t)ulText);
+		// The pointer is a native `const char *` member of the generated image (LAB_090F_1, ...), not big-endian bytes: a native load
+		// (the 68k reads the same value; the PC would read a byte-swapped address with a big-endian compose).
+		const char *szText;
+		__builtin_memcpy(&szText, pEntry + 2, sizeof(szText));
+		const uint8_t *pSrc = reinterpret_cast<const uint8_t *>(szText);
 		uint8_t *pDst = mogMathItemName;
 		do {
 			*pDst++ = *pSrc;                                          // MOVE.B (A4)+,(A5)+ ; BNE

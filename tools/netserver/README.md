@@ -144,6 +144,13 @@ Restarting also disconnects running relayed games. Tests: `py -m unittest tests.
   a TICK_UDP counts as the host's only from the IP that registered the game; 3 clients per session; oversized, undecodable and other datagrams are dropped; 400 datagrams per second
   per source IP (burst 800).  If the UDP port cannot be opened the server says so once and carries on (the games stay on TCP); `--no-udp` switches it off.  The statistics line
   counts `udp_in`, `udp_forwarded`, `udp_dropped`, `udp_limited`.
+* **Direct path (hole punching)** (docs/NETPLAY.md 2.2b): the same UDP socket also answers `PUNCH_REG` (type 23) with `PUNCH_INFO` (type 24).  A node of a relayed game registers the
+  link (session, the client's token, its role, its own LAN address); when both ends of a link did, each is told the other's public address and port (as seen on the datagrams, so
+  **the server now hands addresses to the players of a game**: the client learns the host's public IP and the host the clients') and, only when both come from the same public IP and the
+  address is a private/link-local/loopback one, the other's LAN address.  A host's registration only counts from the IP that registered the game; tokens and sessions are checked as for
+  the per-tick datagrams (the token must have passed a forwarded CONFIG); 3 links per session; registrations expire with the UDP registration (60 s).  Nothing is logged.  The statistics
+  line counts `punch_reg` and `punch_info`.  `--no-punch` makes the server ignore `PUNCH_REG` (games then stay on the relay, exactly as with a server from before this feature).
+  Old games (no `PUNCH_REG`) and old servers (they drop the unknown type) work together with new ones; the nodes just stay on the relay.
 * **Logging**: start-up, errors and one statistics line every 10 minutes (connection, listing and session counts, relayed
   messages and bytes). No IP address is ever written to the log; the only address memory is the in-RAM rate limiter, which
   forgets an address when its allowance is full again.
@@ -166,11 +173,31 @@ forwards the types 1..20 as before.  The server now reads the token in each CONF
 open UDP 6510** (copy `netproto.py` and `server.py`, restart, `sudo ufw allow 6510/udp`; a Docker container needs `-p 6510:6510/udp`): a protocol-5 server refuses every protocol-6
 header.  `selftest.py` has a "UDP relay" leg (it reports a missing UDP path and the firewall hint).
 
+## Deploying the direct-path version (2026-10-26)
+
+The wire protocol version does not change (`NET_PROTO_VERSION` stays 6): a server of this version and games of any protocol-6 build work together in every combination (see
+docs/NETPLAY.md 2.2b), so the server and the games can be updated in either order.  Only **new games on a new server** use the direct path.  To deploy, as for any update:
+
+```sh
+# from this repository, copy the two changed files (dashboard.* and the unit file are unchanged)
+scp tools/netserver/server.py tools/netserver/netproto.py user@moonstone.shatteredallegiance.com:~/
+# on the server
+sudo install -m 644 ~/server.py ~/netproto.py /opt/moonstone-netserver/
+sudo systemctl restart moonstone-netserver
+journalctl -u moonstone-netserver -n 5            # "protocol 6, listening on ...:6510 (tcp + udp)"
+py tools/netserver/selftest.py --server moonstone.shatteredallegiance.com --require-punch   # from any machine: leg 5 must say OK, not "skipped"
+```
+
+Nothing else changes: the same TCP and UDP 6510, no new port, no new package.  The restart drops running relayed games (hosts re-register within 30 s).  The firewall needs nothing new:
+the direct datagrams never touch the server.  (A Docker container is rebuilt from the same two files.)
+
 ## Self-test
 
 `py tools/netserver/selftest.py [--server HOST] [--port 6510]` plays a host and a client against a running server: a direct
 game (register, connect-back, list, join, HELLO over the game connection), a relayed game (relay session, HELLO and INPUT
 through the relay), the UDP relay (a relayed game's INPUT_UDP and TICK_UDP datagrams reach the other end unchanged, a datagram with an unknown token does not), a playing game
-(rejoin flag) and a join with another build (refused with the host's version). Locally: start `py tools/netserver/server.py`
+(rejoin flag), the direct path (PUNCH_REG from both ends of a relayed link is answered with PUNCH_INFO; nothing for one end alone, a wrong token or session; `--require-punch`
+turns "an old server that ignores PUNCH_REG" from a skip into a failure) and a join with another build (refused with the host's version).  `--bind 127.0.0.1` keeps the test's own
+sockets off the network when the server is local. Locally: start `py tools/netserver/server.py`
 in one terminal, run the self-test in another. Against a remote server the direct test needs the server to reach this
 machine's game port; otherwise it reports that the game was listed as relay.

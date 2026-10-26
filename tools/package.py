@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """package.py -- the release archives (ROADMAP 10.6 ready-to-play Amiga release, 11.12 PC release zip).
 
-    py tools/package.py [--version 0.2.0] [--amiga] [--pc] [--dry-run]           (neither --amiga nor --pc: both)
+    py tools/package.py [--version 0.2.0] [--amiga] [--netplay] [--pc] [--dry-run]    (none of the three: --amiga and --pc)
 
 Writes into build/release/ (git-ignored, local):
-  moonstone-ace-<ver>-amiga.zip             Moonstone/ (the HD drawer: moonstone, s/startup-sequence, disks/, mods/defaults, mods_examples),
-                                            README.txt, moonstone-ace-a1200.uae + start-winuae.bat (WinUAE, bsdsocket on), docs/, SHA256SUMS.txt
+  moonstone-ace-<ver>-amiga.zip             the STOCK A1200 game (build/, MS_NET=OFF: no network play, fits 2 MB chip and no fast RAM, ROADMAP 2.11a):
+                                            Moonstone/ (the HD drawer: moonstone, s/startup-sequence, disks/, mods/defaults, mods_examples),
+                                            README.txt, moonstone-ace-a1200.uae + start-winuae.bat (WinUAE), docs/, SHA256SUMS.txt
+  moonstone-ace-<ver>-amiga-netplay.zip     (--netplay) the same with network play (build-net/, MS_NET=ON): needs fast RAM; WinUAE config with 8 MB fast + bsdsocket
   moonstone-ace-<ver>-windows[-preview].zip moonstone.exe, SDL3.dll, README.txt, disks/ (the player's ADFs go here), mods_examples, SHA256SUMS.txt
   <archive>.sha256                          the archive's own hash
   RELEASE_NOTES_<ver>_DRAFT.md              the release notes template filled from the ROADMAP release plan (a draft for the owner)
@@ -37,7 +39,7 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-PC_PREVIEW = True            # flip to False (or pass --pc-final) when the PC build plays a whole game (ROADMAP 11.1d / 11.11)
+PC_PREVIEW = False           # 0.3.0: the PC build plays the whole game (True names the Windows zip "preview")
 ZIP_TIME = (2026, 10, 12, 0, 0, 0)   # fixed: a repeat build is byte-identical
 REL = os.path.join(ROOT, 'docs', 'packaging')
 
@@ -272,18 +274,65 @@ def check_release_build(build_dir):
             raise PackageError(f'{build_dir} is a {m.group(1) or "default"} build; releases ship the Release build (--allow-debug to override)')
 
 
-def amiga_entries(ver, a):
-    root = f'moonstone-ace-{ver}-amiga/'
+def check_net_build(build_dir, want_net):
+    """ROADMAP 2.11a: the stock archive ships the MS_NET=OFF build, the netplay archive the MS_NET=ON one.  No cache / no MS_NET entry (a tree
+    configured before the option existed, or a copied exe): not checked."""
+    cache = os.path.join(build_dir, 'CMakeCache.txt')
+    if not os.path.isfile(cache):
+        return
+    with open(cache, encoding='utf-8', errors='replace') as f:
+        m = re.search(r'^MS_NET:\w+=(\w+)', f.read(), re.M)
+    if m and (m.group(1).upper() in ('ON', '1', 'TRUE', 'YES')) != want_net:
+        raise PackageError(f'{build_dir} is configured MS_NET={m.group(1)}; the {"netplay" if want_net else "stock"} archive needs '
+                           f'MS_NET={"ON" if want_net else "OFF"} (BUILD.md "Amiga builds")')
+
+
+# The two Amiga games differ in memory and in the network section of the README (ROADMAP 2.11a, docs/MEMORY.md "MS_NET").
+AMIGA_TEXT = {
+    False: {   # stock: MS_NET off
+        'NET_FEATURE': '',
+        'BUILD_KIND': 'This is the standard build: it runs on a stock A1200 (2 MB chip RAM, no fast RAM).  It has no network play (that needs the\n'
+                      'separate "-amiga-netplay" archive and fast RAM, or the Windows build).',
+        'HW_MEMORY': '2 MB chip RAM; fast RAM is a bonus',
+        'MEMORY_BULLET': '  - Memory: this build is made for a stock 2 MB machine with no fast RAM; with fast RAM it keeps about 0.6 MB of chip RAM.\n'
+                         '    Start it from a Shell or the startup-sequence rather than from a crowded Workbench.\n',
+        'NET_SECTION': 'Network play\n------------\nNot in this build: the network code does not fit the memory of a stock A1200.  The "-amiga-netplay" archive has it\n'
+                       '(an A1200 with fast RAM, or WinUAE with fast RAM), and so does the Windows build.\n\n\n',
+        'WINUAE_MEMORY': 'no fast RAM',
+        'WINUAE_TWO_WINDOWS': '',
+        'Z3MEM': '0', 'BSDSOCKET': 'false', 'UAE_DESC': 'A1200 (68020, AGA, 2MB chip, no fast RAM)',
+    },
+    True: {    # netplay: MS_NET on
+        'NET_FEATURE': 'network play and ',
+        'BUILD_KIND': 'This is the NETWORK-PLAY build: it needs fast RAM (it does not fit a stock 2 MB chip-only A1200).  Without fast RAM use the\n'
+                      'standard archive, which has no network play.',
+        'HW_MEMORY': '2 MB chip RAM and at least 2 MB of fast RAM',
+        'MEMORY_BULLET': '  - Memory: this build needs about 1.5 MB of fast RAM (so a 2 MB or larger board); it keeps about 0.6 MB of chip RAM.  It does not start on a machine with\n'
+                         '    chip RAM only: use the standard archive there.\n',
+        'NET_SECTION': None,   # docs/packaging/net_section_on.txt
+        'WINUAE_MEMORY': '8 MB fast RAM, bsdsocket on',
+        'WINUAE_TWO_WINDOWS': 'For two windows on one PC (network test) keep win32.inactive_pause=false, as the config does.\n',
+        'Z3MEM': '8', 'BSDSOCKET': 'true', 'UAE_DESC': 'A1200 (68020, AGA, 2MB chip + 8MB fast, bsdsocket)',
+    },
+}
+
+
+def amiga_entries(ver, a, net=False):
+    root = f'moonstone-ace-{ver}-amiga' + ('-netplay' if net else '') + '/'
     sub = {'VERSION': ver}
+    sub.update({k: v for k, v in AMIGA_TEXT[net].items() if v is not None})
+    if net:
+        sub['NET_SECTION'] = read_template('net_section_on.txt').decode('utf-8')
+    exe, bdir = (a.net_exe, a.net_build_dir) if net else (a.amiga_exe, a.build_dir)
     e = [
         Entry(root + 'README.txt', data=fill(read_template('README_AMIGA.txt'), sub), eol='lf'),
         Entry(root + 'moonstone-ace-a1200.uae', data=fill(read_template('moonstone-ace-a1200.uae.in'), sub), eol='crlf'),
         Entry(root + 'start-winuae.bat', data=fill(read_template('start-winuae.bat.in'), sub), eol='crlf'),
-        Entry(root + 'Moonstone/moonstone', path=a.amiga_exe),
+        Entry(root + 'Moonstone/moonstone', path=exe),
         Entry(root + 'Moonstone/s/startup-sequence', data=b'moonstone\n'),     # LF only: AmigaOS breaks on CRLF
         Entry(root + 'Moonstone/disks/README.txt', data=read_template('disks_README.txt'), eol='lf'),
     ]
-    dd = os.path.join(a.build_dir, 'gen', 'defaults')
+    dd = os.path.join(bdir, 'gen', 'defaults')
     if os.path.isdir(dd):
         for n in sorted(os.listdir(dd)):
             if n.endswith('.ini'):
@@ -407,7 +456,10 @@ def release_notes(ver, a, archives):
 def parse(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1] if len(__doc__.splitlines()) > 1 else '')
     ap.add_argument('--version', help='MAJOR.MINOR.PATCH; major.minor must equal include/engine/version.hpp (default: the header, patch 0)')
-    ap.add_argument('--amiga', action='store_true', help='the Amiga archive')
+    ap.add_argument('--amiga', action='store_true', help='the stock Amiga archive (MS_NET=OFF, no network play)')
+    ap.add_argument('--netplay', action='store_true', help='the netplay Amiga archive (MS_NET=ON build, needs fast RAM) in addition')
+    ap.add_argument('--net-build-dir', default=os.path.join(ROOT, 'build-net'), help='the Amiga Release build with -DMS_NET=ON (--netplay)')
+    ap.add_argument('--net-exe')
     ap.add_argument('--pc', action='store_true', help='the Windows zip')
     ap.add_argument('--dry-run', action='store_true', help='list the contents (with sizes and hashes), write nothing')
     ap.add_argument('--out', default=os.path.join(ROOT, 'build', 'release'))
@@ -425,9 +477,10 @@ def parse(argv):
     ap.add_argument('--no-notes', action='store_true')
     ap.add_argument('--date', default=None, help='release-notes date (default: today)')
     a = ap.parse_args(argv)
-    if not (a.amiga or a.pc):
+    if not (a.amiga or a.pc or a.netplay):
         a.amiga = a.pc = True
     a.amiga_exe = a.amiga_exe or os.path.join(a.build_dir, 'moonstone')
+    a.net_exe = a.net_exe or os.path.join(a.net_build_dir, 'moonstone')
     a.pc_exe = a.pc_exe or os.path.join(a.pc_build_dir, 'moonstone.exe')
     a.sdl_dll = a.sdl_dll or os.path.join(a.pc_build_dir, 'SDL3.dll')
     if a.sdl_license is None:
@@ -447,8 +500,18 @@ def main(argv=None):
             check_exe(a.amiga_exe, 'amiga')
             if not a.allow_debug:
                 check_release_build(a.build_dir)
+            check_net_build(a.build_dir, False)
             root, ent = amiga_entries(ver, a)
             p = build_one('amiga', root, ent, a)
+            if p:
+                archives.append(p)
+        if a.netplay:
+            check_exe(a.net_exe, 'amiga')
+            if not a.allow_debug:
+                check_release_build(a.net_build_dir)
+            check_net_build(a.net_build_dir, True)
+            root, ent = amiga_entries(ver, a, net=True)
+            p = build_one('amiga netplay', root, ent, a)
             if p:
                 archives.append(p)
         if a.pc:

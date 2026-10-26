@@ -1,11 +1,14 @@
-// rt/options_io - see rt/options_io.hpp.  The Amiga half of the Options screen (ROADMAP 9.9).
+// rt/options_io - see rt/options_io.hpp.  The Options screen's machine side (ROADMAP 9.9, 11.9): the Amiga and the PC share it.
 #include "rt/options_io.hpp"
 
-#include <ace/managers/log.h>
 #include "game/data/modbuild.hpp"
 #include "game/data/modschema.hpp"
-#include "rt/guards.hpp"
+#include "rt/file_handle.hpp"
+#include "rt/files.hpp"
+#include "rt/logwrite.hpp"
 #include "rt/modload.hpp"
+#include "rt/osaccess.hpp"
+#include "rt/scratchalloc.hpp"
 
 namespace rt {
 
@@ -83,7 +86,8 @@ void load(OptionsMenu &m) {
 	rt_file_list_dirs("PROGDIR:packs", onDrawer, &sc);
 	if(sc.bFull) logWrite("options: more than %u pack folders, the rest are not listed\n", (unsigned)OPT_MAX_PACKS);
 	{
-		rt::MemBlock sBuf(MODS_MAX_FILE_BYTES + 1, MEMF_ANY);
+		rt::ScratchBlock sBuf;
+		sBuf.acquire(MODS_MAX_FILE_BYTES + 1, false);
 		char *const pBuf = static_cast<char *>(sBuf.get());
 		if(pBuf) {
 			for(uint8_t i = 0; i < m.ubPacks; ++i) scanPack(m.aPack[i], pBuf);

@@ -37,6 +37,13 @@ struct PartyConfig {
 
 extern PartyConfig g_party;
 
+// Platform hint for the knight screen of a LOCAL co-op game (the PC build sets it, the Amiga never does: null = every controller is
+// offered as before).  Returns false for a controller that cannot be driven on this machine right now (the PC: Joystick 2 without a
+// second gamepad is only the mouse port, Keys arrows share their keys with the keyboard joystick), so the offer skips it: the first
+// knight gets Joystick 1, the second Keys WASD.  Only the order of the offer changes; a controller nobody can use is still offered
+// when no usable one is left, and nothing is ever refused.
+extern bool (*g_pfnPadUsable)(uint8_t ubPad);
+
 // Back to classic: inactive, no members, pads unbound, focus ANY.
 void partyReset(PartyConfig &p);
 // Co-op with n members (clamped to 1..PARTY_MAX), each on its default controller, focus ANY (the knight screen follows).
@@ -48,8 +55,21 @@ bool partyPadTaken(const PartyConfig &p, uint8_t ubBefore, uint8_t ubPad);
 // The same question for the controller of member ubMember: one of the members 0..ubMember-1 uses ubPad.  In a net game only members
 // at the SAME node count (each machine has its own Joystick 1, so members on different nodes may pick the same controller).
 bool partyPadTakenFor(const PartyConfig &p, uint8_t ubMember, uint8_t ubPad);
-// The next selectable controller (ms::PAD_SELECTABLE_COUNT of them) from ubFrom in direction swDir (+1 / -1, wrapping)
-// that no member before ubMember uses (per node in a net game); ubFrom itself when there is none.
+// Computer knights (ROADMAP 8.3b, docs/MOONSTONE2.md 9): a member whose controller is PAD_COMPUTER is played by the computer.  It fights with the
+// knight AI (game/party_ai.hpp), never leads the map round (the human steers the party), and every screen that would wait for its pad reads
+// the pad of the first human member instead (partySlot / partyPadBits), so the status sheets, the loot screens and "Next Day" go to the
+// human.  Only members 1.. of a local co-op game may be computer knights.
+bool partyIsComputer(const PartyConfig &p, uint8_t ubMember);
+// The knight screen offers "Computer" to this member (active, local, not the first knight).
+bool partyMayBeComputer(const PartyConfig &p, uint8_t ubMember);
+// Bit i set = member i is played by the computer.
+uint8_t partyComputerMask(const PartyConfig &p);
+// The member whose pad drives member ubMember's screens: itself, or for a computer knight the first human member.
+uint8_t partyHumanFor(const PartyConfig &p, uint8_t ubMember);
+
+// The next selectable controller (ms::PAD_SELECTABLE_COUNT of them, then PAD_COMPUTER for a member that may be one) from ubFrom in direction
+// swDir (+1 / -1, wrapping) that no member before ubMember uses (per node in a net game); ubFrom itself when there is none.
+
 uint8_t partyNextPad(const PartyConfig &p, uint8_t ubMember, uint8_t ubFrom, int8_t sbDir);
 // The first free controller for a member: its default when free, else the next free one.  Net game: the default is Joystick 1
 // (every player has one), then the next free one on the member's node.

@@ -20,9 +20,9 @@
 //   rt_screen_run        LAB_04CF  D0 = scene id (long); also entered by JMP from the loot handlers
 //   rt_screen_redraw     LAB_04D4  no inputs
 //
-// Call helper rtFightAsm(fn, regs): loads D0-D3/A0-A2 from `regs`, JSRs `fn`, stores D0/D1/A0/A1 back and preserves
-// D2-D7/A2-A6 for the C++ side (the primitives clobber freely: LAB_0CDA uses D0-D7/A0-A5).  The register contracts of
-// every primitive are named next to its trampoline and in include/game/combat.hpp.
+// The primitives the loops call (palette, blitter, input, job passes, ...) are typed C++ calls of their bodies (rt/prim.hpp, ROADMAP 11.1d part 2).  The call helper
+// rtFightAsm(fn, regs) is left for the two arena-table dispatches (opCallSpawn, opCreatureArena): it loads D0-D3/A0-A2 from `regs`, JSRs `fn`, stores D0/D1/A0/A1 back and
+// preserves D2-D7/A2-A6 (src/rt/amiga/combat_entries.cpp; the PC adapter is src/rt/sdl/combat_entries.cpp).  The entries rt_fight_run ... rt_screen_redraw are there too.
 
 #include "game/api/data.hpp"
 #include "game/flow/scenes.hpp"
@@ -39,10 +39,14 @@
 #include "rt/combat_pool.hpp"
 #include "rt/fight_roster.hpp"
 #include "rt/loot.hpp"
+#include "rt/net_tick.hpp"
 #include "rt/logwrite.hpp"
 #include "rt/party_turn.hpp"
 #include "rt/perf.hpp"
 #include "rt/sfx.hpp"
+#include "rt/mog_display.hpp"
+#include "rt/platform/blit.hpp"
+#include "rt/prim.hpp"
 #include "rt/stubfn.h"
 
 // Labels not bound in state_bind.hpp.
@@ -74,22 +78,8 @@ extern "C" void rtFightAsm(uint32_t ulFn, AsmRegs *pRegs);
 extern "C" void rtOwColourStop(void);      // src/rt/overworld.cpp
 extern "C" void rtOwSceneSetup(void);
 extern "C" void rtOwModeRestore(void);
+extern "C" void rtScreenRun(uint32_t ulScene);   // below
 
-asm(R"(
-	.text
-	.globl rtFightAsm
-rtFightAsm:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a5
-	move.l 52(%sp),%a6
-	move.l %a6,-(%sp)
-	movem.l (%a6),%d0-%d3/%a0-%a2
-	jsr (%a5)
-	move.l (%sp)+,%a6
-	movem.l %d0-%d1/%a0-%a1,28(%a6)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-)");
 
 namespace rt { void dragonLog(int hp, int hpMax, unsigned reach, unsigned d1, unsigned d2, unsigned d5, unsigned d8); }   // rt/modload.cpp (serial log)
 
@@ -98,13 +88,6 @@ namespace {
 using namespace ms::game;
 
 inline uint32_t addr(const void *p) { return (uint32_t)(uintptr_t)p; }
-
-AsmRegs call(const void *pFn, uint32_t d0 = 0, uint32_t d1 = 0, uint32_t d2 = 0, uint32_t d3 = 0, uint32_t a0 = 0,
-             uint32_t a1 = 0, uint32_t a2 = 0) {
-	AsmRegs r = {d0, d1, d2, d3, a0, a1, a2, 0, 0, 0, 0};
-	rtFightAsm(addr(pFn), &r);
-	return r;
-}
 
 Knight *kn(uint32_t a) { return reinterpret_cast<Knight *>((uintptr_t)a); }
 Inventory *inv(uint32_t a) { return reinterpret_cast<Inventory *>((uintptr_t)a); }
@@ -117,57 +100,69 @@ void opKeyReset() {
 		*rt::inputMogCells().puwKeyAny = 0;
 		return;
 	}
-	call(RT_FN(rt_mog_key_reset));
+	rtMogKeyResetC();
 }
-void opClearScriptSlots() { call(RT_FN(rt_mog_dagger_clear)); }
+void opClearScriptSlots() { rtDaggerClear(); }
 void opFlip() {
 	rt::perfTickDone();                                                     // MS_AUTOPLAY perf split (8.4a); no-op otherwise
 	rt::perfEnter(rt::PERF_FLIP);
-	call(RT_FN(rt_mog_display_flip));
+	rt::displayFlip();
 	rt::perfEnter(rt::PERF_POST);
 }
-void opTogglePause(uint32_t ulRecord) { call(RT_FN(rt_mog_job_toggle), ulRecord); }       // D0 = record
-void opInitFightScreen() { call(RT_FN(rt_mog_fight_palette_init)); }
-void opFrameStart() { call(RT_FN(rt_mog_frame_start)); }
+void opTogglePause(uint32_t ulRecord) { rtMogJobToggle(ulRecord); }                         // D0 = record
+void opInitFightScreen() { rtMogFightPaletteInitC(); }
+void opFrameStart() { rtMogFrameStart(); }
 void opJobPass() {
 	const rt::PerfSect ePrev = rt::perfEnter(rt::PERF_JOBS);
-	call(RT_FN(rt_creature_dispatch));
+	rtCreatureDispatch();
 	rt::perfLeave(ePrev);
 }
 void opTick() {
 	const rt::PerfSect ePrev = rt::perfEnter(rt::PERF_SCRIPT);
-	call(RT_FN(rt_combat_tick));
+	rtCombatTick();
 	rt::perfLeave(ePrev);
 }
 void opContactPass() {
 	const rt::PerfSect ePrev = rt::perfEnter(rt::PERF_CONTACT);
-	call(RT_FN(rt_contact_scan));
+	rtContactScan();
 	rt::perfLeave(ePrev);
 }
 void opDrawPass() {
 	const rt::PerfSect ePrev = rt::perfEnter(rt::PERF_RESTORE);
-	call(RT_FN(rt_mog_restore_pass));
+	rtRestorePass_mog();
 	rt::perfLeave(ePrev);
 }
-void opExtraPass() { call(RT_FN(rt_mog_key_wait)); }
+void opExtraPass() { rtMogKeyWaitC(); }
+// The fight pause key ($20, Space) is ignored in a network game: the lockstep delivers key events of ONE node only (the owner of the stick,
+// game/net_state), so a pause started by one player could not be ended by the other one and both machines hung in the poll-free pause spin;
+// on a Keys-arrows pad Space is also the fire button.  Every node ignores it the same way (no state difference).  Classic play: unchanged.
 uint16_t opTranslateKey(uint16_t uwCode) {                                     // D0.w = code -> D0.w
-	return (uint16_t)call(RT_FN(rt_mog_key_xlat), uwCode).rd0;
+	const uint16_t uwKey = (uint16_t)rtMogKeyXlatC(uwCode);
+	return (uwKey == 0x20 && rt::netDeterministic()) ? 0 : uwKey;
 }
-void opFrameWait() { call(RT_FN(rt_mog_frame_wait)); }
+void opFrameWait() { rtMogFrameWait(); }
 uint32_t opSpawnWarning(uint16_t uwType, uint16_t uwColour) {                  // D0 = type, D1 = colour, D2 = 1, D3 = 0
-	return call(RT_FN(rt_palette_ramp_add_mog), uwType, uwColour, 1, 0).rd0;
+	const uint32_t ulSlot = rtPaletteRampAdd(1, uwType, uwColour, 1, 0);
+	return ulSlot != 0 ? ulSlot : uwType;                                         // the register entry gave D0 back unchanged when every slot is busy
 }
-void opKillJob(uint32_t ulJob) { *reinterpret_cast<uint32_t *>((uintptr_t)ulJob) = 0; }   // CLR.L (A0)
+// CLR.L (A0).  A warning job that found no free palette ramp slot came back as its TYPE (opSpawnWarning above: 6..11), and the original then cleared
+// the long at that low address (the bus-error vector, harmless on the Amiga).  On the PC it is an access violation: a co-op fight in which both
+// party fighters ran low (up to six warning jobs) and every ramp slot was busy ended in a crash (mudmen lair 12, 2026-10-26).  No job lives below $100.
+void opKillJob(uint32_t ulJob) {
+	if(ulJob >= 0x100) {
+		*reinterpret_cast<uint32_t *>((uintptr_t)ulJob) = 0;
+	}
+}
 void opSoundTick() { rt::sfxStopAll(); }                                        // LAB_0AA9, now C++ (src/rt/sfx.cpp)
-void opAfterFight() { call(RT_FN(rt_mog_fight_palette_done)); }
-void opFadeIn() { call(RT_FN(rt_mog_fade_out_silent)); }
-void opClearJobs() { call(RT_FN(rt_mog_jobs_reset)); }
+void opAfterFight() { rtMogFightPaletteDoneC(); }
+void opFadeIn() { rtMogFadeOutSilentC(); }
+void opClearJobs() { rtMogJobsReset(); }
 void opResetScreen() { rtOwColourStop(); }                                      // LAB_0DC8, C++ (src/rt/overworld.cpp, 7.1l)
-void opScreen(uint32_t ulScene) { call(RT_FN(rt_screen_run), ulScene); }               // D0 = scene (long)
+void opScreen(uint32_t ulScene) { rtScreenRun(ulScene); }                                  // D0 = scene (long)
 void opReturnToMap() { rtOwSceneSetup(); }                                     // SECSTRT_36, C++ (src/rt/overworld.cpp, 7.1l)
-void opClearObjects() { call(RT_FN(rt_mog_creature_clear)); }
+void opClearObjects() { rtCreatureClear(); }
 void op0155() { rtClTables(); }                                              // LAB_0155, C++ (rt/combat_load.hpp, 7.1o)
-void opFadeOut() { call(RT_FN(rt_mog_fade_out)); }
+void opFadeOut() { rtMogFadeOutC(); }
 void opCopyName(uint32_t ulName) {                                             // LAB_0059: MOVE.B (A2)+,(A3)+ ; BNE
 	const uint8_t *s = reinterpret_cast<const uint8_t *>((uintptr_t)ulName);
 	uint8_t *d = mogAvoidNameLine;
@@ -176,8 +171,8 @@ void opCopyName(uint32_t ulName) {                                             /
 	} while (*s++ != 0);
 }
 void opShowAvoidText() { rtClMessageRecoloured(addr(mogTextAvoidBattle)); }           // LAB_0137, A0 = text list
-void opWaitFire() { call(RT_FN(rt_mog_wait_fire)); }
-void op03EB() { call(RT_FN(rt_mog_palette_clear)); }
+void opWaitFire() { rtMogWaitFireC(); }
+void op03EB() { rtMogPaletteClearC(); }
 void opMapStep() { rtOwModeRestore(); }                                        // LAB_0E03, C++ (src/rt/overworld.cpp)
 void opCallSpawn(uint32_t ulFn) {                                              // JSR (A0): the spawn routine of the arena
 	AsmRegs r = {0, 0, 0, 0, ulFn, 0, 0, 0, 0, 0, 0};
@@ -198,7 +193,7 @@ void opPaletteMode(uint32_t ulMode) {
 		const uint32_t *pDmg = reinterpret_cast<const uint32_t *>(mogDragonDamageTable);
 		rt::dragonLog(dr.swHp, dr.swHpMax, dr.uwReachX, pDmg[1], pDmg[2], pDmg[5], pDmg[8]);
 	}
-	call(RT_FN(rt_mog_palette_scene), ulMode);
+	rtMogPaletteSceneC(ulMode);
 }            // D0
 void opPoke32(uint32_t ulAddr, uint32_t ulValue) { *reinterpret_cast<uint32_t *>((uintptr_t)ulAddr) = ulValue; }
 void opCreatureArena(int32_t slOffset) {                                       // MOVEA.L 0(A1,D0.L),A1 ; JSR (A1) with A0 = lair
@@ -294,20 +289,20 @@ void buildFightEnv(FightEnv &e) {
 
 // ---- ScreenOps -----------------------------------------------------------------------------------------------
 
-void sFadeOut() { call(RT_FN(rt_mog_fade_out)); }
-void sOp0575() { call(RT_FN(rt_mog_cursor_on)); }
+void sFadeOut() { rtMogFadeOutC(); }
+void sOp0575() { rtMogCursorOnC(); }
 void sOp0588() { rt::uiButtonTables(); }                                   // LAB_0588, C++ since ROADMAP 7.1j (src/rt/combat_ui.cpp)
-void sOp057B() { call(RT_FN(rt_mog_cursor_off)); }
+void sOp057B() { rtMogCursorOffC(); }
 uint32_t sHitTest(uint32_t ulX, uint32_t ulY) { return rt::uiHitTest(ulX, ulY); }   // LAB_0451 -> the region or 0
 void sClick(uint32_t ulRegion) { if(!rt::turnArrowClick(ulRegion)) rtLootClick(ulRegion); }   // LAB_052A: A0 = region (C++, rt/loot.hpp, 7.1q)
-void sFlip() { call(RT_FN(rt_mog_display_flip)); }
-void sDrawPass() { call(RT_FN(rt_mog_restore_pass)); }
+void sFlip() { rt::displayFlip(); }
+void sDrawPass() { rtRestorePass_mog(); }
 void sOp044E() { rt::uiPoolClear(); }                                       // LAB_044E
 void sOp04EA() { rt::uiList(); }                                           // LAB_04EA
-void sBlitBackground() { call(RT_FN(rt_mog_blit_screen), 0, 0, 0, 0, mogBackground, mogDrawScreen); }   // A0 = LAB_05C0, A1 = LAB_0D92
-void sSetTarget() { call(RT_FN(rt_mog_set_planes), mogDrawScreen); }                   // D0 = LAB_0D92
+void sBlitBackground() { rtMogBlitScreenC(mogBackground, mogDrawScreen); }                // A0 = LAB_05C0, A1 = LAB_0D92
+void sSetTarget() { rt::setDrawTarget(mogDrawScreen); }                                       // D0 = LAB_0D92
 void sLootSetup() { rtLootScreenSetup(); }                                  // LAB_058A (C++, rt/loot.hpp, 7.1q)
-void sOp03A7() { call(RT_FN(rt_mog_draw_buf_clear)); }
+void sOp03A7() { rtDrawBufClear(); }
 void sDrawStats() { rt::uiStats(); }                                     // LAB_04F8 (reads LAB_0632, LAB_0680, LAB_0985, LAB_0688)
 void sOp051B() { rt::uiLootLair(); }                                       // LAB_051B
 void sOp0524() { rt::uiNextButton(); }                                     // LAB_0524
@@ -315,11 +310,11 @@ void sOp0522() { rt::uiShop(); }                                           // LA
 void sOp04FE() { rt::uiItems(); }                                          // LAB_04FE
 void sOp051F(uint32_t ulKnight) { rt::uiLootPick(ulKnight); }                // LAB_051F, A0 = LAB_0632
 void sOp051D() { rt::uiLootDragon(); }                                     // LAB_051D
-void sBlitScreen() { call(RT_FN(rt_mog_blit_screen), 0, 0, 0, 0, mogShownScreen, mogDrawScreen); }     // A0 = SECSTRT_35, A1 = LAB_0D92
-void sWaitBlitter() { call(RT_FN(rt_blit_wait)); }
-void sOp0D8A() { call(RT_FN(rt_display_palette_write), 0, 0, 0, 0, addr(mogLootPalette)); }        // A0 = LAB_09F0
+void sBlitScreen() { rtMogBlitScreenC(mogShownScreen, mogDrawScreen); }                  // A0 = SECSTRT_35, A1 = LAB_0D92
+void sWaitBlitter() { rt::platform::blitWait(); }
+void sOp0D8A() { rtDisplayPaletteWriteC(reinterpret_cast<const uint16_t *>(mogLootPalette)); }   // A0 = LAB_09F0
 void sOp03EE() {
-	call(RT_FN(rt_mog_pal_copy_live), 0, 0, 0, 0, addr(mogLootPalette));
+	rtPalCopyLive_mog(reinterpret_cast<const uint16_t *>(mogLootPalette));
 	logWrite("screen ready %lu\n", static_cast<unsigned long>(mogSceneId));   // after the redraw and palette, unlike the scene-id store before fade-out
 }
 void sTurnBanner() { rt::turnBannerScreen(); }
@@ -454,72 +449,3 @@ __attribute__((used, externally_visible)) void rtScreenRedraw(void) {
 }
 
 }  // extern "C"
-
-// The patch targets.  All of them keep every register (see the header comment) and end with RTS.
-asm(R"(
-	.text
-	.globl rt_fight_run
-rt_fight_run:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtFightRun
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_fight_meet
-rt_fight_meet:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %a1,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtFightMeet
-	addq.l #8,%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	moveq #1,%d0
-	rts
-
-	.globl rt_fight_creature
-rt_fight_creature:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %a1,-(%sp)
-	jsr rtFightCreature
-	addq.l #4,%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	moveq #1,%d0
-	rts
-
-	.globl rt_fight_dragon
-rt_fight_dragon:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtFightDragon
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_arena_meet
-rt_arena_meet:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtArenaMeet
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_arena_dragon
-rt_arena_dragon:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtArenaDragon
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_screen_run
-rt_screen_run:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %d0,-(%sp)
-	jsr rtScreenRun
-	addq.l #4,%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_screen_redraw
-rt_screen_redraw:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtScreenRedraw
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-)");

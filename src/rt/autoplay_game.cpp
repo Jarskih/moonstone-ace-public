@@ -11,8 +11,11 @@
 #include "game/state_bind.hpp"
 #include "rt/combat_pool.hpp"
 #include "rt/fight_roster.hpp"
+#include "engine/net_cfg.hpp"
+#if MS_NET
 #include "rt/net_box.hpp"
 #include "rt/net_session.hpp"
+#endif
 #include "rt/net_stub.hpp"
 #include "rt/net_tick.hpp"
 #include "rt/party.hpp"
@@ -258,6 +261,7 @@ bool autoplayPoke(const char *szName, ULONG ulValue) {
 	if(eqName(szName, "menuact")) {   // the title menu opens Multiplayer (1), Options (2) or Select Knight (3) at once
 		return menuActionPoke(ulValue);
 	}
+#if MS_NET
 	if(eqName(szName, "netsilent")) {   // the lockstep node sends nothing (the peer's WAITING FOR box, the drop check of tests/boot/net_pair_*.txt)
 		netSessionAutoplaySilence(ulValue != 0);
 		return true;
@@ -267,6 +271,7 @@ bool autoplayPoke(const char *szName, ULONG ulValue) {
 		serLogf("AUTOPLAY netstats %lu\n", static_cast<unsigned long>(ulValue));
 		return true;
 	}
+#endif
 	if(netFakePoke(szName, ulValue)) {   // the Multiplayer screen's fake network (ROADMAP 12.8a, rt/net_stub)
 		return true;
 	}

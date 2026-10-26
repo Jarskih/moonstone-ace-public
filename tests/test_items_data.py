@@ -38,7 +38,7 @@ static Inventory g_inv;
 static int dmg(uint32_t sword) {
 	memset(&g_k, 0, sizeof g_k);
 	memset(&g_inv, 0, sizeof g_inv);
-	g_table[0] = 0; g_table[1] = 0; g_table[2] = 0; g_table[3] = 10;      // big-endian long 10 at action 0
+	g_table[0] = 10; g_table[1] = 0; g_table[2] = 0; g_table[3] = 0;       // native long 10 at action 0 (a u32 cell, PC_ENDIAN.md 2)
 	g_k.uwAction = 0;
 	g_k.ubStrength = 4;
 	g_k.ulSword = sword;

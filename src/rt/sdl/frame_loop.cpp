@@ -3,6 +3,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "rt/sdl/crt.hpp"
 #include "rt/sdl/display.hpp"
 #include "rt/sdl/input.hpp"
 #include "rt/sdl/timer.hpp"
@@ -27,6 +28,21 @@ bool pumpEvents() {
 		// Escape leaves only while no game has registered a key handler (then it is the game's key)
 		if(sEvent.type == SDL_EVENT_QUIT || (sEvent.type == SDL_EVENT_KEY_DOWN && sEvent.key.key == SDLK_ESCAPE && !inputHasKeyHandler())) {
 			isQuit = true;
+		}
+		if((sEvent.type == SDL_EVENT_KEY_DOWN || sEvent.type == SDL_EVENT_KEY_UP) && sEvent.key.key == SDLK_F11) {
+			// F11 toggles fullscreen (the Amiga keyboard has no F11, so the game never sees it); the picture keeps its whole scale
+			SDL_Window *pWindow = SDL_GetWindowFromID(sEvent.key.windowID);
+			if(sEvent.type == SDL_EVENT_KEY_DOWN && !sEvent.key.repeat && pWindow != nullptr) {
+				SDL_SetWindowFullscreen(pWindow, (SDL_GetWindowFlags(pWindow) & SDL_WINDOW_FULLSCREEN) == 0);
+			}
+			continue;
+		}
+		if((sEvent.type == SDL_EVENT_KEY_DOWN || sEvent.type == SDL_EVENT_KEY_UP) && sEvent.key.key == SDLK_F12) {
+			// F12 toggles the CRT effect (the Amiga keyboard ends at F10, so the game never sees it)
+			if(sEvent.type == SDL_EVENT_KEY_DOWN && !sEvent.key.repeat) {
+				crtToggle();
+			}
+			continue;
 		}
 		inputHandleEvent(sEvent);
 	}

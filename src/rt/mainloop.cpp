@@ -59,7 +59,8 @@ extern "C" {
 extern uint8_t mog_LAB_08D6[], mogTextGameOver[];  // LAB_06E6 (LAB_08D6 stays spelled: tests/test_mainloop.py parses the step table by label)
 // cells
 extern uint32_t mogChipFree, mogChipSize, mogFastFree, mogFastSize, mogArenaRegion, mogHitData, mogHitPairs,  // LAB_05BC, LAB_05BD, LAB_05BE, LAB_05BF, LAB_08C4, LAB_0A4D, LAB_0A4E
-	mogHitDataBase, mogHitPairsBase, mogFrame, mogRandomSeed, mogSeedTable[4];  // LAB_0A4F, LAB_0A50, LAB_0B9D, LAB_0973, LAB_0974
+	mogHitDataBase, mogHitPairsBase, mogFrame, mogRandomSeed;  // LAB_0A4F, LAB_0A50, LAB_0B9D, LAB_0973
+extern uint8_t mogSeedTable[];  // LAB_0974: four longs, big-endian bytes (PC_ENDIAN.md 2)
 extern uint16_t mogMenuCursor, mogFrameBudget;  // LAB_06DC, LAB_05BA
 extern uint8_t mogJobWork[], mogDrawBuffer[], mogAttackLists[], mogHurtLists[];  // LAB_064B, LAB_064D, LAB_064F, LAB_0650
 }
@@ -250,7 +251,7 @@ extern "C" __attribute__((used, externally_visible)) void rtMogRngSeed(void) {
 		mogRandomSeed = ulProvided;
 		return;
 	}
-	mogRandomSeed = mainRngSeed(rt::platform::timerBeamVhposr(), mogSeedTable);   // VHPOSR
+	mogRandomSeed = mainRngSeedBe(rt::platform::timerBeamVhposr(), mogSeedTable);   // VHPOSR
 }
 
 extern "C" __attribute__((used, externally_visible)) uint32_t rtMogJobToggle(uint32_t ulOwner) {

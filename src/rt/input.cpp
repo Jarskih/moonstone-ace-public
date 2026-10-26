@@ -8,6 +8,7 @@
 
 #include "rt/input.hpp"
 
+#include "engine/endian.hpp"
 #include "engine/input.hpp"
 #include "engine/nettick.hpp"
 #include "engine/pad.hpp"
@@ -16,7 +17,10 @@
 #include "rt/abs.h"
 #include "rt/autoplay.hpp"
 #include "rt/irq.hpp"
+#include "engine/net_cfg.hpp"
+#if MS_NET
 #include "rt/net_box.hpp"
+#endif
 #include "rt/net_tick.hpp"
 #include "rt/platform/input.hpp"
 #include "rt/sprites.hpp"
@@ -48,15 +52,24 @@ namespace rt {
 
 namespace {
 
+// The "last key" byte is the LOW byte of the "any key" word (LAB_0B86 = SECSTRT_21 + 1 on the 68k, where the low byte is the odd one).  On a
+// little-endian CPU the odd byte is the HIGH byte of the native word, so the word read as 0x0200 for key 2 and indexed the key table at +512
+// (docs/PC_ENDIAN.md 1: a ByteSlot inside a native cell).  The PC stores the byte at the word's own low byte.
+#if MS_BIG_ENDIAN
+#define MS_KEY_LAST(ANY, LAST) (&(LAST))
+#else
+#define MS_KEY_LAST(ANY, LAST) (reinterpret_cast<volatile UBYTE *>(&(ANY)))
+#endif
+
 // One row per overlay; the two copies of the engine are identical (program.asm:6245 / mog.asm:20421).
 const IrqCells s_pOverlays[] = {
 	{
-		"program", &prgKeyAny, &prgKeyLast, &prgFrameOn, &prgBlitDone, &prgPrevV, &prgPrevH, &prgIdleWord,
+		"program", &prgKeyAny, MS_KEY_LAST(prgKeyAny, prgKeyLast), &prgFrameOn, &prgBlitDone, &prgPrevV, &prgPrevH, &prgIdleWord,
 		&prgIdleLong, prgKeyXlat, prgKeyDown, prgHooks, &prgMouseX, &prgMouseY,
 		&prgButton, &prgButton2, &prgFrame,
 	},
 	{
-		"mog", &mogKeyAny, &mogKeyLast, &mogFrameOn, &mogBlitDone, &mogPrevV, &mogPrevH, &mogIdleWord,
+		"mog", &mogKeyAny, MS_KEY_LAST(mogKeyAny, mogKeyLast), &mogFrameOn, &mogBlitDone, &mogPrevV, &mogPrevH, &mogIdleWord,
 		&mogIdleLong, mogKeyXlat, mogKeyDown, mogHooks, &mogMouseX, &mogMouseY,
 		&mogButton, &mogButton2, &mogFrame,
 	},
@@ -213,6 +226,7 @@ static void deliverKey(UBYTE ubAceCode) {
 
 // The platform's key event (rt::platform::inputSetKeyHandler): ubRawCode = the Amiga raw key, the keyboard ISR's (key << 1) | released encoding follows.
 static void onKeyEvent(UBYTE ubRawCode, bool isDown) {
+#if MS_NET
 	if(ubRawCode == kRawF10 && netDeterministic()) {   // a network game: F10 shows / hides the ping and loss line on THIS machine; it is not an input of the lockstep
 		static bool s_isF10Down;   // a held key (repeat events) toggles once
 		if(isDown && !s_isF10Down) {
@@ -221,6 +235,7 @@ static void onKeyEvent(UBYTE ubRawCode, bool isDown) {
 		s_isF10Down = isDown;
 		return;
 	}
+#endif
 	deliverKey(static_cast<UBYTE>((ubRawCode << 1) | (isDown ? 0 : 1)));
 }
 

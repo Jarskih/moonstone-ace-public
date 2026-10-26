@@ -139,6 +139,19 @@ bool fightOpPartyRun(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner) {
 	return false;
 }
 
+uint32_t fightOpRemap(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner) {
+	if(!rosterOn(e.pRoster) || (ulFn & 0xFFFF0000u) != FIGHT_OP_TAG || (ulFn & 0xFFFFu) != OP_END) {
+		return ulFn;
+	}
+	const Knight &owner = *rec(ulOwner);
+	if(owner.ubType != raw(ActorType::Mudmen) || rosterTeam(*e.pRoster, owner) != TEAM_CREATURES || (*e.pSnatchFlags & SNATCH_GONE) == 0 ||
+	   rosterPartyDown(*e.pRoster)) {
+		return ulFn;                                               // not a grab, or the last knight went under: the fight is over (LAB_0006)
+	}
+	*e.pSnatchFlags &= (uint8_t)~SNATCH_GONE;                      // the other mudmen carry on
+	return FIGHT_OP_TAG | OP_DIED;
+}
+
 bool fightOpRun(const FighterEnv &e, uint32_t ulFn, uint32_t ulOwner, uint32_t ulFrames, uint16_t uwX, uint16_t uwY,
                 uint16_t uwZ, uint8_t ubFacing) {
 	if((ulFn & 0xFFFF0000u) != FIGHT_OP_TAG) {

@@ -216,6 +216,7 @@ Workbench cleanly and the game can be started again.
   > Reconciled 2026-10-07: text rewritten to what is left today; the notes below are history.
   > Target note (2026-10-06): the owner's real machine is an A1200 with an accelerator (68020, 8 MB 32-bit fast RAM + 2 MB chip), so "A1200 + 68020 + 8 MB fast" is the primary hardware config (also what the boot regression runs: fastmem 4). The stock no-fast budget stays a Release-build goal, not a blocker.
   > 2026-10-07: Release fits a stock 68020 / 2 MB chip / no-fast A1200 (WinUAE, bare KS 3.1 boot): 264,584 B chip free at the low point; owner machine 1.4 MB chip + 7.2 MB fast free. `rt::bootLogMemory` logs, `rt::fatal` fails loudly (verified with 1 MB chip). Budget in `docs/MEMORY.md`. Open: arena tails could shrink ~145 KB after 7.4; a Workbench-started run on real hardware.
+- [x] **2.11a** Memory on a stock A1200 after network play (owner decision 2026-10-25): the unconditional net code (about 294 KB in memory: `.text` 204 KB, `.bss` 90 KB) pushed the Release exe to 1,016,042 B and the arenas no longer fitted 2 MB chip (`rtGameRun: arena alloc failed`). New CMake option `MS_NET` (OFF for the Amiga, ON for `MS_PLATFORM=SDL` and for the Debug autoplay tree): OFF does not link the net sources, drops the main menu's MULTIPLAYER row and gives the Release exe 721,904 B; `-DMS_NET=ON` (`build-net/`, `py tools/package.py --netplay`) is the netplay exe for machines with fast RAM. Stock boot (WinUAE, 2 MB chip, no fast): shipped build 158 KB chip free at the low point, gate build (`build-autoplay-rel`) 66,368 B, `regression.txt` + `regression_practice.txt` boot through; arena tails not trimmed (docs/MEMORY.md). `integrate.py` configures the Debug autoplay tree `-DMS_NET=ON` (net scripts, `netpair.py` checks it) and the Release one OFF. Result notes: `build/shots/regression-run1.log`, `regression_practice-run1.log`, `docs/MEMORY.md`. Open: `ref-rel/` shots predate the 2026-10-11 menu rework (the integrator blesses new ones from the main checkout) - S
 - [x] **2.12** Overlay re-entry: the ending/diag pass re-enters program and then mog (`$3E0` bit 7). `image_tab` restores DATA/BSS but not mog's self-modifying CODE (`LAB_0F76`, `LAB_0F7C`, `LAB_0FC2`, all in S_44, the section that also holds the INT4 audio handler `LAB_0F69`). Either snapshot those CODE sections too or make the three sites write a DATA cell (patch in `mog.json`). Needed before 7.4, cheap now — S
   > Reconciled 2026-10-07: superseded by 7.1g/7.1r: the self-modifying synth code is C++ (`ms::Synth`, cleared on each mog entry) and the overlay reset runs from `rt::g_imageProgram/g_imageMog`; no self-modifying CODE is left to snapshot. The ending/diag re-entry itself is exercised by 7.4.
 - [~] **2.13** M2 gate: `check.py` green (about 4 min) and both `.uae` configs boot; C1-C4 reached. Boot check pending: C5 (lair fight returns to the map), C6 (shop) and C7 (exit, needs 2.1) screenshots in `build/shots/`, and C2 sound parity (2.6)
@@ -631,6 +632,18 @@ behind a build/game option so the original single-player rules stay intact for p
   > extra-half-brite shadows 8.4g. Estimate for 4 + 4 (8.4a model, rough): 8.4c-e give ~6.5 fps stock / ~10 fps owner (8.4f, frame
   > skip, cut by the owner). Each task proves pixel identity (frame hashes on/off over the perf scripts) and reports PERFX before/after.
   > Emulator pass 2026-10-10: see 8.4. fps (docs/PERF.md "Co-op fights", cycle-exact WinUAE): 2 knights vs a ratmen wave (lair 0, 7-9 fighters) 4.6-5.0 fps stock / 8-9 fps owner; 2 knights vs 2 black knights 6.2-7.6 fps stock / 9.6-10 fps owner (classic fights 10.0 fps).
+- [~] **8.3b** Computer knights in co-op ("AI partners"; owner request 2026-10-25) - M
+  > A party knight 2..4 can be played by the computer: **Computer** is one more stop of the controller line on the knight screen
+  > (`ms::PAD_COMPUTER`, `partyIsComputer`; Amiga and PC share the code, behind the co-op switch; classic and the default offers unchanged; not persisted, not in netplay).
+  > Owner rules: the human always walks the party (`partyRotateLeader` skips computer knights, the first human's pad answers every screen that waits for them, `partyHumanFor`);
+  > in fights a computer knight runs the black knights' brain on the party's side (`fighterComputerThink`, `partyAiPickFoe`: nearest living enemy, sticky, no extra RNG; friendly fire off as before);
+  > in towns it does not shop: whatever the human buys (smith, market, temple stat, healer) each computer knight buys too from its own gold if it can (`partyEchoBuy`, no debt, no substitute).
+  > Design call (not the owner's): a computer knight's odds byte is capped at 30 (`PARTY_AI_ODDS_CAP`), the black knights' day-0 odds (70) made it too passive to help.
+  > Deliberate deviation in shared code, found by the soak: `rt::diwShakeStart` no longer takes a second VBL hook slot for a shake that overlaps a running one (the original leaked a slot per
+  > overlapped hit and the nine-slot list overflowed after a long fight: PC crash at 39 000 frames); the only visible difference is one restarted shake instead of two ticking it.
+  > Details and the policy per screen: `docs/MOONSTONE2.md` section 9.
+  Tests: `tests/test_party_ai.py`, `tests/pc_play/pc_play.sh coopai*`, `tests/pc_play/coop_soak.py`
+  > (1 human + 3 computers, random keys, 40k-90k frames).  Open: Amiga emulator run, valley / dragon / duel wins with computer knights, netplay.
 - [ ] **8.4c** Blitter nasty (`BLTPRI` in `DMACON`) during the cel draw pass only, restored after; quick measurement first (perf_duel,
   perf_lair0 on stock and owner configs), keep it only if it gains - S
 - [ ] **8.4d** Precomputed cel masks: build each cel's mask once at cel load (chip, ~+1/5 of the cel data) instead of the OR blits per
@@ -783,11 +796,16 @@ ADFs (10.2a/b), nothing original in the PC build either.
   > Part 1 done 2026-10-10 (`docs/PC_PORT.md` 6.1): shim asm blocks moved unchanged to `src/rt/amiga/<file>_entries.cpp`, C++
   > callers call bodies through `src/rt/prim.hpp` instead of `RT_FN` + `jsr (An)` helpers, trampolines/inline `jsr` became C++.
   > Host-clean rt files 17 -> 38, 11.1d stubs 26 -> 8, `RT_FN` 306 -> 236; Amiga Release `.text` -336 B, Debug -1118 B; unicorn
-  > tests prove the typed hosts (`test_engine_scenes`, `test_prog_main_emu`, `test_wipe`, `test_combat_load`). Open (part 2): the
-  > mog scene cluster (`arena`, `combat`, `combat_ui`, `creatures`, `fighters`, `screens`, `overworld`, `loot`, `mainloop`,
-  > `combat_script`: 8 stubs, 236 `RT_FN`, 8 register-block helpers, handler tables like `LAB_08C8` need typed tables). Its
-  > emulator tests (`test_places_emu`, `test_boot_map_emu`, `test_mainloop_emu`, `test_creatures_emu`, `test_fighters_emu`, ...)
-  > skip or fail to set up in worktrees: repair them first as the safety net.
+  > tests prove the typed hosts (`test_engine_scenes`, `test_prog_main_emu`, `test_wipe`, `test_combat_load`).
+  > Part 2 done 2026-10-12 (`docs/PC_PORT.md` 6.1): the mog scene cluster is host-clean (`combat`, `combat_script`, `creatures`,
+  > `fighters`, `loot`, `overworld`, `screens` join `arena`, `combat_ui`, `mainloop`): shim asm to `src/rt/amiga/<file>_entries.cpp`,
+  > PC entries in `src/rt/sdl/<file>_entries.cpp` (every `rt_x` reached by address now has a PC definition; creature handlers are
+  > typed `rt/sdl/handlers.hpp` entries), `combat` / `screens` call `rt/prim.hpp` bodies (64 `RT_FN` -> 1). Host-clean 57 -> 64,
+  > `MS_STUB("11.1d")` 8 -> 0, `RT_FN` lines 228 -> 165, register-block helpers 8 -> 3, Release `.text` -116 B; the rigs of the
+  > seven files pass with the entries files in their source lists. **Open (part 3, optional for 11.4):** `arena` (58), `combat_ui` (53),
+  > `overworld` (51) still call by address (`rtAsmCall` / `rtOwAsm` -> the PC `CallRegs` adapters) because their unicorn tests
+  > intercept the `rt_*` labels; typed calls there need a reverse shim per primitive in the rigs (~55), and make the arena
+  > set-up / swap / init tables typed function-pointer tables. 11.4 is unblocked: the PC links the map and the fights.
 - [x] **11.1e** Host `ace/types.h` shim + ratchet test compiling the host-clean rt files with host clang - S
 - [x] **11.2** Pointers held as 32-bit 68k addresses (`state_bind.hpp`, `Knight::ulInventory`, `mogHeapTable`, ...): decide
   between a 32-bit PC build (`-m32`, quick) and base-relative offsets/handles (portable, continues 9.3d); first PC builds may use
@@ -865,6 +883,13 @@ ADFs (10.2a/b), nothing original in the PC build either.
   > reach the SDL callback through a lock-free SPSC ring; `--dump-audio` writes the deterministic WAV. Usage survey in
   > `docs/PC_PORT.md` "Paula usage". `tests/test_paula.py`: independent Python models, real synth's 167 sequences, exe WAV
   > sample-exact, 38 mutations. Open: owner A/B listening vs WinUAE (music, mog banks, filter) once 11.1d wires the callers.
+- [x] **11.8a** PC audio quality: band-limited Paula synthesis, stereo separation, A500/A1200 output filters, settings, output robustness - S
+  > Done 2026-10-26 (code and measurements; owner listening open): `--audio-render blep|box` (BLEP default: every byte / volume step of the
+  > staircase is inserted band-limited, 32-tap half-band Kaiser kernel, aliasing of a 28.6 kHz staircase -42 dB -> -113 dB; the box renderer
+  > stays selectable and byte-identical to before; both share one chip-time loop, interrupts identical, 236 in the fight run), `--audio-separation`
+  > default 70, `--audio-filter off|a500|a500led|a1200|a1200led` (default a1200: 5.2 Hz AC coupling + 34.4 kHz; the game never switches the LED
+  > filter on), `audio.txt` in the user directory (`--audio-save`), device buffer 512 + 50 ms prefill with a growing pad, queue-level drift steering, `least queued`
+  > in the exit log. `tests/test_paula_blep.py` (independent BLEP model within 1 LSB, filters, settings), docs/PC_PORT.md "PC audio quality".
 - [x] **11.9** Input (SDL keyboard + joystick/gamepad mapped to the Amiga keys/ports), files (stdio + the 10.2b ADF reader),
   crash/serlog to stderr and a log file - S
   > Done 2026-10-10: `engine/pcinput` (pure: SDL scancode -> Amiga raw key, no repeat as on the Amiga, focus loss releases
@@ -887,6 +912,12 @@ ADFs (10.2a/b), nothing original in the PC build either.
   > audio A/B listening; the disk scan does not find the ADFs in a folder with many other files (e.g. `moonshard/`).
 - [ ] **11.11** Parity: `integrate.py --boot` and the play scripts run headless on the PC build (autoplay, no window); frame hashes
   or shots compared with the WinUAE run at checkpoints - M
+- [~] **11.11a** Local co-op on the PC (M8 on one PC; 2026-10-25, branch wt-pc-coop) - S
+  > Plays headless with `--keys` from the title menu (Players / Mode rows) through the party map (leader rotation, one pad per knight), the status sheets, the co-op town (turn banner, corner box, arrows),
+  > a lair fight with two knights in their own colours (one falls, the other wins), the shared loot, the next day, a black-knight duel, four knights; `tests/pc_play/pc_play.sh coop*`; input scheme in
+  > `docs/PC_PORT.md` ("Local co-op on one PC"): knight 1 arrows + Right Ctrl / Space, knight 2 W A S D + Alt (offered by the knight screen first: `ms::game::g_pfnPadUsable`, null on the Amiga), gamepads 1 / 2 =
+  > Joystick 1 / 2.  Soak: ~80 random-key runs of 40 000-90 000 frames.  Fixed: a wild read in `partyColoursApply` (stale creature cel slots after a dragon fight, then a duel), a null text pointer in a
+  > hit record's text list (the 68k read address 0).  Open: no gamepad run (SDL dummy only), the duel's second black knight is drawn blue like knight 1 (to compare with the Amiga), valley / dragon wins need pokes.
 - [~] **11.12** Release: Windows zip (exe + SDL3.dll, user adds the ADFs to `disks/`), README section; fits M10's no-originals
   rule and the leak scan - S
   > Done 2026-10-12 as a **preview** (`py tools/package.py --pc`): `moonstone-ace-<ver>-windows-preview.zip` = moonstone.exe, SDL3.dll + licence, README, `disks/`,

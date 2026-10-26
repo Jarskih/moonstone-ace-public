@@ -661,7 +661,9 @@ def members_of(sec, prefix, regions=(), strings=False):
                 total = sum(c[1] for c in group)
                 w = min(c[1] for c in group)
                 if off0 % w or total % w:
-                    w = 1
+                    # a run of longs that starts on a word boundary (behind a DS.W / DC.W) is still a run of words: the endian units
+                    # (tools/data_units.yaml) can then cut it to u16 cells instead of leaving u8 bytes (LAB_09F0)
+                    w = 2 if (w == 4 and not off0 % 2 and not total % 2) else 1
                 raw = bytearray()
                 for o, cw, v in group:
                     raw += v.to_bytes(cw, 'big')
@@ -752,20 +754,55 @@ def rewidth(m, w):
 def apply_units(sec, members, unit_of):
     """The element size of every plain data member becomes the unit the C++ reads it in: the narrowest of the units of the labels
     inside it (a label nobody reads directly = a byte blob: scripts, text, tables read with engine/endian.hpp -> u8).  A
-    member can only be re-cut finer (u32 -> u16 -> u8); a unit wider than the member (a run of mixed cells) is left as it is
-    and counted by endian_fill_check."""
+    member is re-cut finer (u32 -> u16 -> u8) or, when the section builder cut it finer than the unit (code-hunk cells are made of
+    bytes; a DS.L listed as DC.W words), joined to the unit up to the last whole element (the rest keeps its width as `<name>_w`)."""
     inv = {}
     for lab, off in sec.labels.items():
         inv.setdefault(off, []).append(lab)
     if sec.kind == 'BSS':
         return members
+    ends_ptr = {mm.off + mm.size for mm in members if mm.kind == 'ptr'}
+    starts_ptr = {mm.off for mm in members if mm.kind == 'ptr'}
+    out = []
     for m in members:
+        if m.kind == 'data' and not m.explicit_width and m.width < 4:
+            # a unit WIDER than the member (the section builder cut the cell finer than the C++ reads it: a code-hunk cell is made of
+            # bytes, a DS.L listed as DC.W words): the head that is a multiple of the unit joins; a rest stays as it is (PC_ENDIAN.md 2)
+            wu = [unit_of[l] for o in range(m.off, m.off + m.size) for l in inv.get(o, []) if l in unit_of]
+            if m.name in unit_of:                  # a member the run of a label was cut into (`LAB_090A_2`): curated by its member name
+                wu.append(unit_of[m.name])
+            u = min(wu) if wu else 1
+            if u > m.width and m.size >= u:
+                head = m.size // u * u
+                raw = b''.join(v.to_bytes(m.width, 'big') for v in m.cells)
+                if head < m.size:
+                    t = Member(m.name + '_w', m.off + head, m.width, (m.size - head) // m.width, 'data',
+                               [int.from_bytes(raw[i:i + m.width], 'big') for i in range(head, len(raw), m.width)])
+                    m.cells = [int.from_bytes(raw[i:i + m.width], 'big') for i in range(0, head, m.width)]
+                    m.count = head // m.width
+                    rewidth(m, u)
+                    out.extend([m, t])
+                else:
+                    rewidth(m, u)
+                    out.append(m)
+                continue
+        out.append(m)
         if m.kind != 'data' or m.explicit_width or m.width < 2:
             continue
         us = [unit_of[l] for o in range(m.off, m.off + m.size) for l in inv.get(o, []) if l in unit_of]
+        if m.name in unit_of:
+            us.append(unit_of[m.name])
         unit = min(us) if us else 1
+        # A text list record (DC.L text, DC.W x, DC.W y, DC.W style, DC.L next): the words between the two pointers are what
+        # rt/gtext.cpp (rt::TextRec) reads as native uint16_t, so they are u16 cells (PC_ENDIAN.md 2).  The last record's `next`
+        # is a DC.L 0 inside the run (10 bytes: the cells are word, word, word, long).  The shape of the original cells decides, never
+        # their values: the layout of the generated header must be the same with and without the executables' bytes.
+        if m.width == 2 and m.off in ends_ptr and (m.size == 6 and m.off + m.size in starts_ptr or m.size == 10 and
+                                                    [c[1] for c in sec.cells if m.off <= c[0] < m.off + m.size] == [2, 2, 2, 4]):
+            unit = 2
         if unit < m.width:
             rewidth(m, unit)
+    members[:] = out
     return members
 
 
@@ -1025,7 +1062,8 @@ def generate(patch_dir=None, asm_dir=None, types_path=None, tables_path=None, as
     hpp.append('')
     for e in objs:
         hpp.append(f'extern "C" ms::owned::{e["type"]} {e["object"]};')
-    cpp = [GEN_HEAD, '#include "owned_data.hpp"', '#include "rt/image.hpp"', '#include "rt/origload.hpp"', '']
+    cpp = [GEN_HEAD, '#include "owned_data.hpp"', '#include "rt/image.hpp"', '#include "rt/origload.hpp"'] + (
+        ['#include "engine/addrcell.hpp"'] if PC32 else []) + ['']
     for e in objs:
         pre = PREFIX[e['binary']]
         sec = asms[e['binary']][e['section']]
@@ -1157,6 +1195,27 @@ def object_list(objs, asms):
         sec = asms[e['binary']][e['section']]
         out.append(f'	{{reinterpret_cast<unsigned char *>(&{e["object"]}), {sec.size}u}},')
     out += ['};', 'const unsigned g_ownedObjectCount = sizeof(g_ownedObjects) / sizeof(g_ownedObjects[0]);', '}  // namespace rt', '']
+    if PC32:
+        out += ptr_cell_list(objs, asms)
+    return out
+
+
+def ptr_cell_list(objs, asms):
+    """rt::g_ownedPtrCells (pc32 only): every owned object that holds pointer cells and their offsets, for ms::addr::ld32
+    (include/engine/addrcell.hpp): on a little-endian CPU a DC.L LABEL cell is a native pointer among big-endian bytes."""
+    out = ['// Pointer cells of the owned objects (engine/addrcell.hpp: native longs among big-endian bytes on a little-endian CPU).',
+           'namespace rt {']
+    rows = []
+    for e in objs:
+        sec = asms[e['binary']][e['section']]
+        offs = sorted(o for o, w, v in sec.cells if isinstance(v, tuple))
+        if not offs:
+            continue
+        name = f'k_ptrCells_{len(rows)}'
+        out.append(f'const uint32_t {name}[] = {{{", ".join(str(o) for o in offs)}}};  // {e["object"]}')
+        rows.append(f'	{{reinterpret_cast<const unsigned char *>(&{e["object"]}), {sec.size}u, {name}, {len(offs)}u}},')
+    out += ['const ms::addr::CellObject g_ownedPtrCells[] = {'] + rows + [
+        '};', 'const unsigned g_ownedPtrCellCount = sizeof(g_ownedPtrCells) / sizeof(g_ownedPtrCells[0]);', '}  // namespace rt', '']
     return out
 
 

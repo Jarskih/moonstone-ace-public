@@ -36,7 +36,9 @@ struct PartyMap {
 	uint8_t ubSize;            // party members: records 0..ubSize-1 (1..4)
 	uint8_t ubLeader;          // record index of the leader: carries the party token, steers with its pad; rotates each round
 	uint8_t ubBk;              // fight extras: pool records 5..5+ubBk-1 (= the party size); the map's black knights are the knight records ubSize..3
+	uint8_t ubComputer;        // bit i = member i is played by the computer (ROADMAP 8.3b): never the leader, no shop turn; 0 in a classic or all-human party
 };
+
 
 // The record indices of the generalised set.  0..3 the knights' slots (LAB_0613..0616), 4 the dragon (LAB_0617, hard-wired as
 // mogKnights[4] in the runtime: it never moves), 5..8 the co-op black-knight pool (not in the original).

@@ -12,7 +12,13 @@ namespace {
 // The cursor has no item for the empty line.  Without Mode (no co-op build, host traces) its line stays empty too.
 const uint16_t kItemY[5] = {66, 86, 126, 146, 166};
 // The main menu (LOCAL / MULTIPLAYER / SETTINGS): three rows, 25 lines apart.
-const uint16_t kMainRowY[MAIN_ITEMS] = {90, 115, 140};
+const uint16_t kMainRowY[MAIN_ROWS] = {
+#if MS_NET
+	90, 115, 140
+#else
+	102, 127          // two rows (no MULTIPLAYER): centred on the same band
+#endif
+};
 
 // SECSTRT_4 (DC.L $00030002,$00010001): LAB_06DE for 1, 2, 3, 4 players.
 const uint16_t kDamageDiv[4] = {3, 2, 1, 1};
@@ -100,20 +106,20 @@ uint16_t menuItemY(uint16_t uwCursor) {
 
 // The main menu: the cursor wraps at both ends, fire takes the row.
 MainAction mainMenuInput(MainMenuState &s, uint16_t uwJoy) {
-	if (uwJoy & 0x10) return (MainAction)(MAINACT_LOCAL + s.uwCursor);  // MAINACT_LOCAL, _MULTIPLAYER, _SETTINGS follow MainItem
+	if (uwJoy & 0x10) return (MainAction)(MAINACT_LOCAL + mainMenuItem(s.uwCursor));  // MAINACT_LOCAL, _MULTIPLAYER, _SETTINGS follow MainItem
 	if (uwJoy & 8) {                                                    // up
-		s.uwCursor = (uint16_t)(s.uwCursor == 0 ? MAIN_ITEMS - 1 : s.uwCursor - 1);
+		s.uwCursor = (uint16_t)(s.uwCursor == 0 ? MAIN_ROWS - 1 : s.uwCursor - 1);
 		return MAINACT_REDRAW;
 	}
 	if (uwJoy & 4) {                                                    // down
-		s.uwCursor = (uint16_t)(s.uwCursor + 1 >= MAIN_ITEMS ? 0 : s.uwCursor + 1);
+		s.uwCursor = (uint16_t)(s.uwCursor + 1 >= MAIN_ROWS ? 0 : s.uwCursor + 1);
 		return MAINACT_REDRAW;
 	}
 	return MAINACT_IDLE;
 }
 
 uint16_t mainMenuItemY(uint16_t uwCursor) {
-	return kMainRowY[uwCursor >= MAIN_ITEMS ? MAIN_ITEMS - 1 : uwCursor];
+	return kMainRowY[uwCursor >= MAIN_ROWS ? MAIN_ROWS - 1 : uwCursor];
 }
 
 // ---------------------------------------------------------------------------------------------------------

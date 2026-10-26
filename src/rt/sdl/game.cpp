@@ -195,6 +195,7 @@ void rtGameRun() {
 	if(!rt::origLoad()) {   // ROADMAP 10.2a: program and mog from the player's disks; no disks, no game
 		return;
 	}
+	ms::addr::setCells(rt::g_ownedPtrCells, rt::g_ownedPtrCellCount);   // native pointer cells among big-endian bytes (engine/addrcell)
 	rt::platform::MemBlock sChip, sFast;   // the game arenas; freed fast first, then chip
 	uint8_t *pChip = static_cast<uint8_t *>(sChip.acquireChip(kArenaChip));
 	uint8_t *pFast = static_cast<uint8_t *>(sFast.acquireFast(kArenaFast));

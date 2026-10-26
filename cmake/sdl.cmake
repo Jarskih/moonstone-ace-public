@@ -85,13 +85,13 @@ target_include_directories(moonstone PRIVATE
 	${MS_GEN_DIR})
 target_include_directories(moonstone SYSTEM PRIVATE ${MS_SDL3_DIR}/include)
 target_compile_definitions(moonstone PRIVATE
-	MS_PLATFORM_SDL=1 MS_GAME_BUILD=1 MS_ENHANCED=0 MS_SYNTH_ASM=0 MS_COOP=1 MS_DATA_COMPILED=0 MS_DATA_DUMP=0
+	MS_PLATFORM_SDL=1 MS_GAME_BUILD=1 MS_ENHANCED=0 MS_SYNTH_ASM=0 MS_COOP=1 MS_NET=1 MS_DATA_COMPILED=0 MS_DATA_DUMP=0
 	SDL_MAIN_HANDLED _CRT_SECURE_NO_WARNINGS)
 target_compile_options(moonstone PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions;-fno-rtti>)
 # the shared rt files carry GCC attributes (externally_visible, optimize) that clang ignores; the Amiga build needs them
 target_compile_options(moonstone PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-unknown-attributes>)
 target_link_directories(moonstone PRIVATE ${MS_SDL3_DIR}/lib/${MS_SDL3_ARCH})
-target_link_libraries(moonstone PRIVATE SDL3)
+target_link_libraries(moonstone PRIVATE SDL3 ws2_32)
 add_custom_command(TARGET moonstone POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MS_SDL3_DIR}/lib/${MS_SDL3_ARCH}/SDL3.dll $<TARGET_FILE_DIR:moonstone>
 	COMMENT "SDL3.dll next to moonstone.exe")

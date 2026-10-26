@@ -6,9 +6,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "engine/pad.hpp"
 #include "engine/planar.hpp"
+#include "game/party.hpp"
 #include "rt/platform/display.hpp"
 #include "rt/platform/log.hpp"
+#include "rt/sdl/display.hpp"
 #include "rt/sdl/timer.hpp"
 
 // The engine tables are keyed by USB HID usage; SDL's scancodes are those numbers.  Spot-check the ones the table leans on.
@@ -22,9 +25,8 @@ namespace sdl {
 
 namespace {
 
-constexpr int kDefaultWinW = 640, kDefaultWinH = 512;   // the window of main.cpp, used when an event has no window
-constexpr int32_t kAspectNum = 6, kAspectDen = 5;       // as rt/sdl/display: a pixel is 6/5 as tall as wide
-constexpr uint32_t kMaxScript = 512;
+constexpr int kDefaultWinW = 640, kDefaultWinH = 400;   // used when an event has no window (2x, the smallest window main.cpp opens)
+constexpr uint32_t kMaxScript = 32768;   // events of one --keys / --keys-file script (a soak: ~6000 key taps)
 constexpr unsigned kPads = 2;                           // slot 0 -> port 1, slot 1 -> port 0
 
 enum ScriptKind : uint8_t { SK_KEY_DOWN, SK_KEY_UP, SK_KEY_REPEAT, SK_MOUSE, SK_LMB, SK_RMB };
@@ -106,7 +108,7 @@ void mouseMotion(const SDL_MouseMotionEvent &sMotion) {
 	if(pWindow != nullptr) {
 		SDL_GetWindowSize(pWindow, &wWidth, &wHeight);
 	}
-	const ms::planar::Rect sRect = ms::planar::fitRect(wWidth, wHeight, platform::kDisplayWidth, platform::kDisplayHeight, kAspectNum, kAspectDen);
+	const ms::planar::Rect sRect = displayFit(wWidth, wHeight);   // the picture as rt/sdl/display draws it (pixel-perfect or --aspect)
 	if(sRect.w <= 0 || sRect.h <= 0) {
 		return;
 	}
@@ -169,6 +171,19 @@ uint16_t padBitsOf(SDL_Gamepad *pPad, bool *pIsSecond) {
 	}
 	*pIsSecond = SDL_GetGamepadButton(pPad, SDL_GAMEPAD_BUTTON_EAST) || SDL_GetGamepadButton(pPad, SDL_GAMEPAD_BUTTON_NORTH);
 	return ms::joyCancelOpposites(uwBits);
+}
+
+// Local co-op on one PC (docs/PC_PORT.md "Local co-op"): which of the game's four controllers can be driven right now.  Joystick 1 is the
+// keyboard joystick (arrows) or gamepad 1, Joystick 2 is only gamepad 2 (without one port 0 is the mouse), Keys arrows share their keys
+// with the keyboard joystick (usable with --joykeys none), Keys WASD (W A S D + Alt) is always there.  The knight screen offers the usable
+// ones first, so two keyboard players are Joystick 1 and Keys WASD without touching the Control line.
+bool padUsable(uint8_t ubPad) {
+	switch(ubPad) {
+		case ms::PAD_JOY1: return s_in.pJoyKeySet != &ms::kJoyKeysNone || s_in.apPad[0] != nullptr;
+		case ms::PAD_JOY0: return s_in.apPad[1] != nullptr;
+		case ms::PAD_KEYS_ARROWS: return s_in.pJoyKeySet == &ms::kJoyKeysNone;
+		default: return true;
+	}
 }
 
 // ---- script ------------------------------------------------------------------------------------------------------------------------
@@ -252,12 +267,14 @@ InputSession::InputSession(const InputOptions &sOptions) : m_isPadSystem(SDL_Ini
 	}
 	s_in.pJoyKeySet = sOptions.pJoyKeys != nullptr ? sOptions.pJoyKeys : &ms::kJoyKeysNone;
 	s_in.isGrabWanted = sOptions.isGrabMouse;
+	ms::game::g_pfnPadUsable = padUsable;
 	if(!m_isPadSystem) {
 		platform::logFormat("input: game controllers unavailable: %s\n", SDL_GetError());
 	}
 }
 
 InputSession::~InputSession() {
+	ms::game::g_pfnPadUsable = nullptr;
 	setGrab(false);
 	for(unsigned i = 0; i < kPads; ++i) {
 		if(s_in.apPad[i] != nullptr) {

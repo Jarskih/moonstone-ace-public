@@ -27,7 +27,7 @@ ROOT = E.ROOT
 import sys as _smd
 _smd.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
 from moddata_lib import GAMEDATA_SOURCE, GAMEDATA_REL  # noqa: E402,F401
-FIGHT_SOURCES = ['src/rt/fighters.cpp', 'src/game/fighters.cpp', 'src/game/fight_ops.cpp', 'src/game/fight_creatures.cpp', 'src/game/roster.cpp', 'src/rt/fight_roster.cpp', 'src/rt/combat_pool.cpp',
+FIGHT_SOURCES = ['src/rt/fighters.cpp', 'src/rt/amiga/fighters_entries.cpp', 'src/game/fighters.cpp', 'src/game/fight_ops.cpp', 'src/game/fight_creatures.cpp', 'src/game/party_ai_fight.cpp', 'src/game/roster.cpp', 'src/rt/fight_roster.cpp', 'src/rt/combat_pool.cpp',
                  'src/game/creatures.cpp', 'src/engine/util.cpp', 'tests/ops_emu_support.cpp', 'src/game/rules/damage.cpp'] + ['src/game/rules/' + n + '.cpp' for n in ['ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight', 'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker']] + [GAMEDATA_REL]
 TAGS = {0x0005: [(1, 0, 0, 0)], 0x0006: [(2, 0, 0, 0)], 0x000A: [(3, 0, 0, 0)], 0x000D: [(4, 0, 0, 0)], 0x0A9E: [(5, 0, 0, 0)],
         0x0A9F: [(5, 1, 0, 0)], 0x0427: [(6, 0, 0, 0)]}

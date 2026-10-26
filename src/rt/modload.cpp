@@ -1,12 +1,14 @@
-// rt/modload - the Amiga half of the mod loader; the pure half is game/data/modload.cpp. See modload.hpp.
+// rt/modload - the mod loader (both platforms, ROADMAP 9.4c / 9.9 / 11.9); the pure half is game/data/modload.cpp. See modload.hpp.
+// Platform-neutral since ROADMAP 11.9: the OS bracket and the scratch memory come from rt/osaccess.hpp and rt/scratchalloc.hpp.
 #include "rt/modload.hpp"
 
-#include <ace/managers/log.h>
-#include <ace/managers/memory.h>
 #include "game/data/modbuild.hpp"
 #include "game/data/modload.hpp"
+#include "rt/file_handle.hpp"
 #include "rt/files.hpp"
-#include "rt/guards.hpp"
+#include "rt/logwrite.hpp"
+#include "rt/osaccess.hpp"
+#include "rt/scratchalloc.hpp"
 
 namespace ms {
 namespace game {
@@ -105,7 +107,8 @@ bool modsOptionsRead(OptionsSaved &out) {
 	if(!sFile.isOpen()) return false;
 	const ULONG ulSize = sFile.size();
 	if(ulSize == 0 || ulSize > OPTIONS_MAX) return false;
-	rt::MemBlock sText(ulSize + 1, MEMF_ANY);
+	rt::ScratchBlock sText;
+	sText.acquire(ulSize + 1, false);
 	char *const pText = static_cast<char *>(sText.get());
 	if(!pText) return false;
 	sFile.read(pText, ulSize);
@@ -116,7 +119,8 @@ bool modsOptionsRead(OptionsSaved &out) {
 
 bool modsOptionsWrite(const OptionsSaved &in) {
 	ULONG ulOld = 0;
-	rt::MemBlock sBuf(OPTIONS_MAX + 1 + OPTIONS_OUT_MAX, MEMF_ANY);
+	rt::ScratchBlock sBuf;
+	sBuf.acquire(OPTIONS_MAX + 1 + OPTIONS_OUT_MAX, false);
 	char *const pOld = static_cast<char *>(sBuf.get());
 	if(!pOld) return false;
 	char *const pNew = pOld + OPTIONS_MAX + 1;
@@ -140,7 +144,8 @@ const OptionsSaved &modsOptionsCurrent() { return s_saved; }
 ModsSummary modsRebuild(const OptionsSaved &saved) {
 	rt::OsAccess sOs;   // one OS window for the whole rebuild (the calls below nest inside it): a few dozen small reads, one DMA / interrupt switch
 	s_saved = saved;
-	rt::MemBlock sBlock(sizeof(Block), MEMF_ANY | MEMF_CLEAR);
+	rt::ScratchBlock sBlock;
+	sBlock.acquire(sizeof(Block), true);
 	Block *const pBlk = static_cast<Block *>(sBlock.get());
 	ModsSummary sEmpty = {0, 0, 0};
 	if(!pBlk) {

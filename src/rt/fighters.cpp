@@ -33,6 +33,7 @@
 #include "rt/combat_pool.hpp"
 #include "rt/fight_roster.hpp"
 #include "rt/net_tick.hpp"
+#include "rt/platform/timer.hpp"
 #include "rt/sfx.hpp"
 
 extern "C" {
@@ -106,7 +107,7 @@ void cbSfxFixed(uint8_t ubChannel, uint16_t uwSeq) { rt::sfxStartFixed(ubChannel
 void cbFadeA() { rtFighterFadeA(); }
 void cbFadeB() { rtFighterFadeB(); }
 // VHPOSR; deterministic mode (ROADMAP 12.4, NETPLAY B2): the low bits of the logical clock, the same on every machine (no RNG draw)
-uint16_t cbBeam() { return rt::netDeterministic() ? rt::netBeam() : *(volatile uint16_t *)0x00DFF006; }
+uint16_t cbBeam() { return rt::netDeterministic() ? rt::netBeam() : rt::platform::timerBeamVhposr(); }
 
 // The environment: pointers into the game's cells (constant for the life of the program) and the script addresses.  Built
 // once; only the creature heap base (LAB_05C3's value) is read again every call.
@@ -217,6 +218,7 @@ __attribute__((used, externally_visible)) uint32_t rtFightOpRun(uint32_t ulFn, u
 			r.ubParty > 0 ? (int)r.apParty[0]->swHp : 0, r.ubParty > 1 ? (int)r.apParty[1]->swHp : 0, (unsigned)env().pActive->ubFightActive);
 	}
 #endif
+	ulFn = ms::game::fightOpRemap(env(), ulFn, ulOwner);
 	if(ms::game::fightOpPartyRun(env(), ulFn, ulOwner)) {   // Moonstone 2: a party knight's death script settles that knight (ROADMAP 8.4b)
 		return 1;
 	}
@@ -249,56 +251,3 @@ __attribute__((used, externally_visible)) void rtFightTablesInit(void) { fightTa
 __attribute__((used, externally_visible)) void rtKnightDefaults(uint32_t ulRecord) { knightDefaults(*jobPtr<Knight>(ulRecord)); }
 
 }  // extern "C"
-
-// Trampolines.  The asm routines clobber freely, so each saves D2-D7/A2-A6 (the C ABI's callee-saved registers).
-//   LAB_00EE  no input; D0.w = port 0 bits, D1.w = port 1 bits  -> returned as (port0 << 16) | port1
-//   LAB_0A71  A0 = record, D0.w = x step, D1.w = depth step (clears the blocked direction bits of 63(A0))
-//   LAB_0427  none
-asm(R"(
-	.text
-
-	.globl rtFighterJoystick
-rtFighterJoystick:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	jsr rt_mog_joy_read
-	swap %d0
-	move.w %d1,%d0
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rtFighterObstacles
-rtFighterObstacles:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a0
-	move.l 52(%sp),%d0
-	move.l 56(%sp),%d1
-	jsr rt_mog_obstacles
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rtFighterEffect
-rtFighterEffect:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	jsr rt_mog_diw_shake_start
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	| LAB_0D8A / LAB_03EE with A0 = LAB_08D9 (the demon's death fade, LAB_0EF7)
-	.globl rtFighterFadeA
-rtFighterFadeA:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	lea mogScenePalette,%a0
-	jsr rt_display_palette_write
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rtFighterFadeB
-rtFighterFadeB:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	lea mogScenePalette,%a0
-	jsr rt_mog_pal_copy_live
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-)");
-

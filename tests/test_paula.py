@@ -34,6 +34,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CXX = shutil.which('clang++') or (r'C:\Program Files\LLVM\bin\clang++.exe' if os.path.exists(r'C:\Program Files\LLVM\bin\clang++.exe') else None)
 SRC_PAULA = os.path.join(ROOT, 'src', 'engine', 'paula.cpp')
 SRC_MOD = os.path.join(ROOT, 'src', 'engine', 'modplay.cpp')
+SRC_BLEP = os.path.join(ROOT, 'src', 'engine', 'paulablep.cpp')
 SRC_SYNTH = os.path.join(ROOT, 'src', 'engine', 'synth.cpp')
 DRIVER = os.path.join(ROOT, 'tests', 'paula_driver.cpp')
 
@@ -231,6 +232,7 @@ class PyPaula:
                     self.advance(c, ch.byte_end)
         for c in range(4):
             self.close(c, nframes * CLOCK)
+        self.vols = vols
         integ = [[0] * nframes for _ in range(4)]
         for c in range(4):
             for (a, b, val) in self.segs[c]:
@@ -259,8 +261,9 @@ class PyPaula:
 # Scenarios.
 # ---------------------------------------------------------------------------------------------------------------------------------
 class Scn:
-    def __init__(self, n, mem=b'', origin=0x1000, rate=48000, sep=100, lp=0, size=None):
+    def __init__(self, n, mem=b'', origin=0x1000, rate=48000, sep=100, lp=0, size=None, blep=False):
         self.n, self.mem, self.origin, self.rate, self.sep, self.lp = n, mem, origin, rate, sep, lp
+        self.blep = blep                 # render with the band-limited steps (the model() of the Python side is the box filter)
         self.size = len(mem) if size is None else size
         self.events = []
         self.actions = [[], [], [], []]
@@ -284,7 +287,7 @@ class Scn:
         self.w(frame, aud(ch, VOL), vol)
 
     def text(self):
-        t = ['Z', 'C %d %d %d %x %x' % (self.rate, self.sep, self.lp, self.origin, self.size), 'M ' + (self.mem.hex() or '00')]
+        t = ['Z', 'B %d' % (1 if self.blep else 0), 'C %d %d %d %x %x' % (self.rate, self.sep, self.lp, self.origin, self.size), 'M ' + (self.mem.hex() or '00')]
         for ch in range(4):
             for (lc, ln, off) in self.actions[ch]:
                 t.append('H %d %x %x %d' % (ch, lc, ln, 1 if off else 0))
@@ -306,7 +309,7 @@ class Scn:
 
 def build_driver(tmp, name='drv', mutate=None, with_synth=False):
     """Compiles the driver; mutate = (file, old, new) replaces text in a copy of that engine file."""
-    srcs = [SRC_PAULA, SRC_MOD]
+    srcs = [SRC_PAULA, SRC_BLEP, SRC_MOD]
     if with_synth:
         import sys
         sys.path.insert(0, os.path.join(ROOT, 'tests'))
@@ -1045,14 +1048,14 @@ MUTATIONS = [
     ('word pointer advances by one', P, 'ch.ulPtr += 2;', 'ch.ulPtr += 1;'),
     ('DMA off drops the output to zero', P, 'ch.ubState = CH_IDLE;\n\t\t}\n\t}\n}', 'ch.ubState = CH_IDLE;\n\t\t\tch.bOut = 0;\n\t\t}\n\t}\n}'),
     ('division truncates toward zero', P, '&& llA < 0)', '&& false)'),
-    ('separation sign', P, 'llR * (100 - llSep), llDen)));\n\t\tint32_t lR', 'llR * (100 + llSep), llDen)));\n\t\tint32_t lR'),
-    ('low-pass shift', P, '* p.cfg.ulLowPass) >> 16);\n\t\t\tp.lLpR', '* p.cfg.ulLowPass) >> 15);\n\t\t\tp.lLpR'),
+    ('separation sign', P, 'llR * (100 - llSep), llDen)));\n\t\t\tlR', 'llR * (100 + llSep), llDen)));\n\t\t\tlR'),
+    ('low-pass shift', P, '* p.cfg.ulLowPass) >> 16);\n\t\tp.lLpR', '* p.cfg.ulLowPass) >> 15);\n\t\tp.lLpR'),
     ('DMAEN ignored', P, 'return (p.uwDmacon & kDmaEn) != 0 && (p.uwDmacon & (1u << ubCh)) != 0;', 'return (p.uwDmacon & (1u << ubCh)) != 0;'),
     ('INTENA master ignored', P, '|| (p.uwIntena & kIntEn) == 0) {', ') {'),
     ('platform master ignored', P, 'hooks.pfnMasterOn != nullptr && !hooks.pfnMasterOn(hooks.pCtx)', 'false'),
     ('view end off by one word', P, 'ulOff > mem.size - 2u', 'ulOff > mem.size - 1u'),
     ('LC halves swapped', P, 'ch.ulLc = (ch.ulLc & 0x0000FFFFu) | (static_cast<uint32_t>(uwValue) << 16);', 'ch.ulLc = (ch.ulLc & 0xFFFF0000u) | uwValue;'),
-    ('period of channel 0 for every channel', P, '\tch.ullRem = periodUnits(p, ch);\n}\n\n// Integral', '\tch.ullRem = periodUnits(p, p.ch[0]);\n}\n\n// Integral'),
+    ('period of channel 0 for every channel', P, '\tch.ullRem = periodUnits(p, ch);\n}\n\n// The steps of one', '\tch.ullRem = periodUnits(p, p.ch[0]);\n}\n\n// The steps of one'),
     ('module stop leaves the volumes', M, 'hw.pfnWrite16(hw.pCtx, static_cast<uint16_t>(regBase(c) + 8), 0);\n\t}\n}', '}\n}'),
     ('module stop leaves DMA on', M, 'hw.pfnWrite16(hw.pCtx, kRegDmacon, 0x000F);', ''),
     ('module master does not rewrite volumes', M, 'mp.ubMaster = ubMaster > 64 ? 64 : ubMaster;\n\tif(!mp.isPlaying) {', 'mp.ubMaster = ubMaster > 64 ? 64 : ubMaster;\n\tif(true) {'),
@@ -1159,6 +1162,9 @@ def read_wav(path):
     return ch, rate, bits, [(vals[i], vals[i + 1]) for i in range(0, len(vals), 2)]
 
 
+BOX = ('--audio-render', 'box', '--audio-filter', 'off', '--audio-separation', '100')     # what the exe defaulted to before the BLEP renderer
+
+
 @unittest.skipUnless(sdl_exe(), 'build-sdl/moonstone.exe missing (py -m unittest tests.test_sdl_build builds it)')
 class SmokeAudio(unittest.TestCase):
     def run_exe(self, *args):
@@ -1167,7 +1173,7 @@ class SmokeAudio(unittest.TestCase):
     def test_wav_is_the_model_sample_for_sample(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, 'tone.wav')
-            r = self.run_exe('--smoke', '14', '--fast', '--dump-audio', out)
+            r = self.run_exe('--smoke', '14', '--fast', '--dump-audio', out, *BOX)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             ch, rate, bits, smp = read_wav(out)
             self.assertEqual((ch, rate, bits), (2, 48000, 16))
@@ -1175,21 +1181,17 @@ class SmokeAudio(unittest.TestCase):
             self.assertEqual(smp, smoke_tone_model(14).model()[1])
             self.assertTrue(any(l for l, _ in smp) and any(r_ for _, r_ in smp))
 
-    def test_separation_and_filter_options(self):
+    def test_separation_option(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, 'tone.wav')
-            r = self.run_exe('--smoke', '14', '--fast', '--dump-audio', out, '--audio-separation', '30')
+            r = self.run_exe('--smoke', '14', '--fast', '--dump-audio', out, '--audio-render', 'box', '--audio-filter', 'off', '--audio-separation', '30')
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertEqual(read_wav(out)[3], smoke_tone_model(14, sep=30).model()[1])
-            r = self.run_exe('--smoke', '14', '--fast', '--dump-audio', out, '--audio-filter', 'a500')
-            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-            coef = int((1.0 - math.exp(-2.0 * math.pi * 4421 / 48000)) * 65536.0 + 0.5)
-            self.assertEqual(read_wav(out)[3], smoke_tone_model(14, lp=coef).model()[1])
 
     def test_dump_is_deterministic(self):
         with tempfile.TemporaryDirectory() as tmp:
             a, b = os.path.join(tmp, 'a.wav'), os.path.join(tmp, 'b.wav')
-            self.run_exe('--smoke', '20', '--fast', '--dump-audio', a)
+            self.run_exe('--smoke', '20', '--fast', '--dump-audio', a)       # the defaults: band-limited steps, separation 70, A1200 filter
             self.run_exe('--smoke', '20', '--fast', '--dump-audio', b)
             with open(a, 'rb') as fa, open(b, 'rb') as fb:
                 self.assertEqual(fa.read(), fb.read())
@@ -1199,6 +1201,7 @@ class SmokeAudio(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('audio: driver dummy', r.stderr)
         self.assertIn('audio: 5 vblanks, 4800 frames', r.stderr)
+        self.assertIn('audio: render blep, separation 70, filter a1200', r.stderr)      # the defaults
 
     def test_unwritable_dump_path_fails_cleanly(self):
         r = self.run_exe('--smoke', '2', '--fast', '--dump-audio', os.path.join(tempfile.gettempdir(), 'no_such_dir_xyz', 'a.wav'))
@@ -1219,6 +1222,13 @@ class Sources(unittest.TestCase):
         self.assertIn('class SdlAudioStream', guards)
         self.assertIn('MS_GUARD_PINNED(SdlAudioStream)', guards)
         self.assertIn('MS_GUARD_PINNED(SdlSubsystem)', guards)
+
+    def test_blep_renderer_shares_the_chip_time_loop_with_the_box(self):
+        """The interrupts the game hears must not depend on the renderer: both go through stepFrame / integrateFrame, the one owner of chip time."""
+        src = self.read('src/engine/paula.cpp')
+        self.assertEqual(src.count('integrateFrame(p, c, hooks'), 1)
+        self.assertEqual(src.count('stepFrame(p, hooks'), 2)
+        self.assertEqual(src.count('hooks.pfnInterrupt('), 1)
 
     def test_no_audio_thread_code_of_ours(self):
         """SDL3 push model: no callback, no hand-made ring or atomics; the game thread puts one rendered vblank per boundary."""

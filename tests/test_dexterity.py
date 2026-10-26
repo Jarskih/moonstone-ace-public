@@ -27,6 +27,8 @@ void *ms::jobHostPtr(uint32_t a) { return mem + a; }
 uint32_t ms::jobHostAddr(const void *p) { return (uint32_t)((const uint8_t *)p - mem); }
 static void w16(uint32_t a, uint16_t v) { mem[a] = v >> 8; mem[a+1] = v; }
 static void w32(uint32_t a, uint32_t v) { w16(a, v >> 16); w16(a+2, v); }
+// u32 cells of the owned data (the action table, a frame set) are read natively (PC_ENDIAN.md 2): stored natively.
+static void n32(uint32_t a, uint32_t v) { memcpy(mem + a, &v, 4); }
 static void prep(uint32_t, uint16_t) {}
 static void target(uint32_t) {}
 static void wait() {}
@@ -59,8 +61,8 @@ static void replay(int dex, bool enabled) {
     CombatJob &j = *reinterpret_cast<CombatJob *>(mem + 0x200);
     k.ubDexterity = dex; k.swHp = 20; k.ubType = raw(ActorType::KnightFight);
     k.uwAction = raw(Action::Heavy); k.ulActionScripts = 0x800;
-    w32(0x820, 0x1000); script(0x1000, 4);
-    w32(0x900, 0xa00);
+    n32(0x820, 0x1000); script(0x1000, 4);
+    n32(0x900, 0xa00);
     for(int f = 0; f < 3; ++f) {
         w16(0xa00 + 10 + f*10 + 4, 8); w16(0xa00 + 10 + f*10 + 6, 8);
         mem[0xa00 + 10 + f*10 + 8] = 1;
@@ -147,7 +149,7 @@ class DexterityTest(unittest.TestCase):
                    ('combat_script.cpp', 'rules/recovery.cpp', 'rules/stats.cpp')]
         subprocess.run([CXX, '-std=c++17', '-O1', '-fno-exceptions', '-fno-rtti',
                         '-I', os.path.join(ROOT, 'include'), drv, *sources,
-                        GAMEDATA_SOURCE, '-o', exe], check=True, capture_output=True, text=True)
+                        os.path.join(ROOT, 'src/engine/addrcell.cpp'), GAMEDATA_SOURCE, '-o', exe], check=True, capture_output=True, text=True)
         cls.lines = subprocess.run([exe], check=True, capture_output=True, text=True).stdout.splitlines()
         out = os.path.join(ROOT, 'build/shots')
         os.makedirs(out, exist_ok=True)

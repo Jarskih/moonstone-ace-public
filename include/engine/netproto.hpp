@@ -43,6 +43,11 @@
 //                     client's input for every tick below this one), u8 drop sequence (DROPs the host has sent: a client that has received fewer
 //                     DROPs over TCP ignores the datagram), u8 nodes n (2..4), u32 first, u8 count c (0..8), c * n * input frame (11): the merged
 //                     TICKs first .. first + c - 1, oldest first   (21 + 11nc)   host -> client; c = 0 is the probe / an ack alone
+//   ---- relay-assisted direct connection (NETPLAY.md 2.2b): two datagram-only messages between a node and the relay server, never on a TCP stream ----
+//   23    PUNCH_REG   u32 session, u32 token (the client's rejoin token: it names the link), u8 role (NetRelayRole: who sends), u8 caps (NET_PUNCH_CAP_*),
+//                     u32 local address, u16 local port (this node's own address of its datagram socket, 0 = unknown)   (16)   node -> relay
+//   24    PUNCH_INFO  u32 session, u32 token, u8 flags (NET_PUNCH_INFO_LOCAL), u32 peer public address, u16 peer public port (as the relay sees the peer's
+//                     datagrams), u32 peer local address, u16 peer local port (only valid with the flag)   (21)   relay -> node, sent when both ends of the link registered
 //   ---- rejoin (protocol 5, NETPLAY.md 4.5): a dropped player comes back at the next map turn --------------------------------------
 //   14    REJOIN      u32 build hash, u32 data checksum, u16 game version, u8 rule options, u8 node (1..3), u32 token (16)
 //                     client -> host, the first message of a reconnect (instead of HELLO): "I am node n, this is my token"
@@ -111,6 +116,11 @@ constexpr uint16_t NET_CHUNK_BYTES = 384;                                  // th
 constexpr uint16_t NET_SNAP_MAX = 6144;                                    // the world state of a rejoin, at most this many bytes (16 chunks)
 constexpr uint8_t NET_UDP_HISTORY_MAX = 8;                                 // ticks one INPUT_UDP / TICK_UDP datagram carries (the redundancy that covers lost datagrams)
 constexpr uint8_t NET_UDP_HEARS = 1;                                       // datagram flags: "I have received a valid datagram from you" (the probe handshake is two-way)
+constexpr uint8_t NET_UDP_DIRECT = 2;                                      // datagram flag: "this datagram travelled the direct path (no relay in between)" (hole punching, NETPLAY.md 2.2b)
+constexpr uint8_t NET_UDP_DHEARS = 4;                                      // datagram flag: "I have received a valid DIRECT datagram from you" (the direct handshake is two-way)
+constexpr uint8_t NET_UDP_FLAGS_ALL = NET_UDP_HEARS | NET_UDP_DIRECT | NET_UDP_DHEARS;
+constexpr uint8_t NET_PUNCH_CAP_DIRECT = 1;                                // PUNCH_REG capability bit: "I can connect directly to my peer"
+constexpr uint8_t NET_PUNCH_INFO_LOCAL = 1;                                // PUNCH_INFO flag: the peer's local address is valid (the peer is behind the same public address)
 constexpr uint8_t NET_JOIN_FLAG_REJOIN = 1;                                // JOIN_REQ flags: the joiner holds the rejoin token of that (playing) game
 
 enum NetMsgType : uint8_t {
@@ -136,6 +146,8 @@ enum NetMsgType : uint8_t {
 	NET_MSG_BOUNDARY = 20,
 	NET_MSG_INPUT_UDP = 21,
 	NET_MSG_TICK_UDP = 22,
+	NET_MSG_PUNCH_REG = 23,
+	NET_MSG_PUNCH_INFO = 24,
 	NET_MSG_ANNOUNCE = 32,
 	NET_MSG_REGISTER = 33,
 	NET_MSG_REFRESH = 34,
@@ -262,7 +274,7 @@ struct NetTick { uint32_t ulTick; uint8_t ubCount; NetFrame aFrames[NET_NODE_MAX
 struct NetInputUdp {
 	uint32_t ulSession, ulToken;            // who this belongs to: the relay session (0 = direct) and the sender's rejoin token (a stray datagram is ignored)
 	uint8_t ubNode;                         // the sender (1..3)
-	uint8_t ubFlags;                        // NET_UDP_HEARS
+	uint8_t ubFlags;                        // NET_UDP_HEARS | NET_UDP_DIRECT | NET_UDP_DHEARS
 	uint32_t ulAck;                         // every merged TICK below this tick is held by the sender
 	uint32_t ulFirst;                       // tick of aFrames[0]
 	uint8_t ubCount;                        // 0..NET_UDP_HISTORY_MAX
@@ -279,6 +291,8 @@ struct NetTickUdp {
 	uint8_t ubCount;                        // 0..NET_UDP_HISTORY_MAX
 	NetFrame aaFrames[NET_UDP_HISTORY_MAX][NET_NODE_MAX];   // tick ulFirst + i, node j
 };
+struct NetPunchReg { uint32_t ulSession, ulToken; uint8_t ubRole; uint8_t ubCaps; uint32_t ulLocalAddr; uint16_t uwLocalPort; };
+struct NetPunchInfo { uint32_t ulSession, ulToken; uint8_t ubFlags; uint32_t ulPubAddr; uint16_t uwPubPort; uint32_t ulLocalAddr; uint16_t uwLocalPort; };
 struct NetHash { uint32_t ulTick, ulCrc; };
 struct NetPing { uint32_t ulToken; };       // PING and PONG
 struct NetBye { uint8_t ubReason; uint16_t uwVersion; };   // the sender's game version (0 = not a game node)
@@ -323,6 +337,8 @@ struct NetMsg {
 		NetTick tick;
 		NetInputUdp inputUdp;
 		NetTickUdp tickUdp;
+		NetPunchReg punchReg;
+		NetPunchInfo punchInfo;
 		NetHash hash;
 		NetPing ping;
 		NetBye bye;

@@ -10,9 +10,12 @@
 #include "game/combat_script.hpp"
 #include "rt/combat_pool.hpp"
 #include "rt/irq.hpp"
+#include "engine/net_cfg.hpp"
+#if MS_NET
 #include "rt/net.hpp"
 #include "rt/net_box.hpp"
 #include "rt/net_session.hpp"
+#endif
 #include "rt/amiga/serlog.hpp"
 
 extern "C" {
@@ -262,10 +265,18 @@ void perfHeartbeat(ULONG ulWindowVbls) {
 	s_isTainted = true;   // the serial output stalls the interrupt: the frame in progress is not a frame
 	const ULONG ulFrames = s_ulFrames;
 	const ULONG ulAvg = ulFrames ? s_ulWorkSum / ulFrames : 0;
+#if MS_NET
+	const unsigned long ulNetTick = netSessionTraceTick();
+	const unsigned uNetStage = netSessionTraceStage(), uNetCall = netTransportCall(), uNetSub = g_ubNetSub, uNetNode = netSessionTraceNode();
+#else
+	const unsigned long ulNetTick = 0;   // no network play in this build: the field stays so the PERF parsers need no case
+	const unsigned uNetStage = 0, uNetCall = 0, uNetSub = 0, uNetNode = 0;
+#endif
 	serLogf("PERF vbls=%lu frames=%lu fps100=%lu budget=%lu work_avg=%lu work_max=%lu late=%lu beam=%lu slip=%lu maxdelta=%lu net=%lu/%u/%u/%u/%u ie=%04x ir=%04x\n", (unsigned long)ulWindowVbls,
 		(unsigned long)ulFrames, (unsigned long)(ulFrames * 5000UL / ulWindowVbls), (unsigned long)s_ulBudget, (unsigned long)ulAvg,
 		(unsigned long)s_ulWorkMax, (unsigned long)s_ulLate, (unsigned long)s_ulBeamCalls, (unsigned long)s_ulBeamSlip,
-		(unsigned long)s_ulBeamMaxDelta, (unsigned long)netSessionTraceTick(), (unsigned)netSessionTraceStage(), (unsigned)netTransportCall(), (unsigned)g_ubNetSub, (unsigned)netSessionTraceNode(), (unsigned)g_pCustom->intenar, (unsigned)g_pCustom->intreqr);
+		(unsigned long)s_ulBeamMaxDelta, ulNetTick, uNetStage, uNetCall, uNetSub, uNetNode, (unsigned)g_pCustom->intenar, (unsigned)g_pCustom->intreqr);
+#if MS_NET
 	ms::NetUdpStats sUdp;
 	if(netSessionUdpStats(sUdp)) {   // a network session with UDP (ROADMAP 12.21): datagrams sent / received, losses the history covered, ticks that also went over TCP
 		serLogf("PERFU udp tx=%lu rx=%lu covered=%lu esc=%lu bad=%lu active=%u tcp=%u\n", (unsigned long)sUdp.ulTx, (unsigned long)sUdp.ulRx, (unsigned long)sUdp.ulCovered,
@@ -274,6 +285,7 @@ void perfHeartbeat(ULONG ulWindowVbls) {
 	if(netStatsLineText()[0] != 0) {   // a network session: the link line as drawn (ping and loss of the worst link, NETPLAY.md 4.7)
 		serLogf("PERFN %s%s\n", netStatsLineText(), netStatsLineEnabled() ? "" : " (hidden)");
 	}
+#endif
 	s_ulBeamCalls = 0;
 	s_ulBeamSlip = 0;
 	s_ulBeamMaxDelta = 0;

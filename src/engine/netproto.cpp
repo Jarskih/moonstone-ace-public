@@ -165,12 +165,12 @@ bool isListingValid(const NetListing &l) {
 }
 
 bool isKnownType(uint8_t ubType) {
-	return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_TICK_UDP) || (ubType >= NET_MSG_ANNOUNCE && ubType <= NET_MSG_REGISTER_REPLY);
+	return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_PUNCH_INFO) || (ubType >= NET_MSG_ANNOUNCE && ubType <= NET_MSG_REGISTER_REPLY);
 }
 
 // The part both UDP messages share: a client node, a token (0 = none, nobody has it), the known flag bits, and a window of ticks that does not wrap.
 bool isUdpHeaderValid(uint8_t ubNode, uint32_t ulToken, uint8_t ubFlags, uint32_t ulFirst, uint8_t ubCount) {
-	return ubNode >= 1 && ubNode < NET_NODE_MAX && ulToken != 0 && (ubFlags & ~NET_UDP_HEARS) == 0 && ubCount <= NET_UDP_HISTORY_MAX &&
+	return ubNode >= 1 && ubNode < NET_NODE_MAX && ulToken != 0 && (ubFlags & ~NET_UDP_FLAGS_ALL) == 0 && ubCount <= NET_UDP_HISTORY_MAX &&
 		ulFirst <= 0xFFFFFFFFu - ubCount;
 }
 
@@ -237,6 +237,14 @@ bool isMsgValid(const NetMsg &m) {
 		case NET_MSG_TICK_UDP: {
 			const NetTickUdp &u = m.u.tickUdp;
 			return isUdpHeaderValid(u.ubNode, u.ulToken, u.ubFlags, u.ulFirst, u.ubCount) && u.ubNodes >= 2 && u.ubNodes <= NET_NODE_MAX && u.ubNode < u.ubNodes;
+		}
+		case NET_MSG_PUNCH_REG: {
+			const NetPunchReg &u = m.u.punchReg;
+			return u.ulToken != 0 && u.ubRole < NET_ROLES && (u.ubCaps & ~NET_PUNCH_CAP_DIRECT) == 0;
+		}
+		case NET_MSG_PUNCH_INFO: {
+			const NetPunchInfo &u = m.u.punchInfo;
+			return u.ulToken != 0 && (u.ubFlags & ~NET_PUNCH_INFO_LOCAL) == 0;
 		}
 		case NET_MSG_BYE:
 			return m.u.bye.ubReason < NET_BYE_REASONS;
@@ -431,6 +439,27 @@ void writeBody(Writer &w, const NetMsg &m) {
 					w.frame(u.aaFrames[i][k]);
 				}
 			}
+			break;
+		}
+		case NET_MSG_PUNCH_REG: {
+			const NetPunchReg &u = m.u.punchReg;
+			w.u32(u.ulSession);
+			w.u32(u.ulToken);
+			w.u8(u.ubRole);
+			w.u8(u.ubCaps);
+			w.u32(u.ulLocalAddr);
+			w.u16(u.uwLocalPort);
+			break;
+		}
+		case NET_MSG_PUNCH_INFO: {
+			const NetPunchInfo &u = m.u.punchInfo;
+			w.u32(u.ulSession);
+			w.u32(u.ulToken);
+			w.u8(u.ubFlags);
+			w.u32(u.ulPubAddr);
+			w.u16(u.uwPubPort);
+			w.u32(u.ulLocalAddr);
+			w.u16(u.uwLocalPort);
 			break;
 		}
 		case NET_MSG_HASH:
@@ -655,6 +684,27 @@ void readBody(Reader &r, NetMsg &m) {
 			}
 			break;
 		}
+		case NET_MSG_PUNCH_REG: {
+			NetPunchReg &u = m.u.punchReg;
+			u.ulSession = r.u32();
+			u.ulToken = r.u32();
+			u.ubRole = r.u8();
+			u.ubCaps = r.u8();
+			u.ulLocalAddr = r.u32();
+			u.uwLocalPort = r.u16();
+			break;
+		}
+		case NET_MSG_PUNCH_INFO: {
+			NetPunchInfo &u = m.u.punchInfo;
+			u.ulSession = r.u32();
+			u.ulToken = r.u32();
+			u.ubFlags = r.u8();
+			u.ulPubAddr = r.u32();
+			u.uwPubPort = r.u16();
+			u.ulLocalAddr = r.u32();
+			u.uwLocalPort = r.u16();
+			break;
+		}
 		case NET_MSG_HASH:
 			m.u.hash.ulTick = r.u32();
 			m.u.hash.ulCrc = r.u32();
@@ -775,6 +825,8 @@ uint32_t netPayloadSize(const NetMsg &m) {
 			const uint32_t ulN = m.u.tickUdp.ubNodes > NET_NODE_MAX ? NET_NODE_MAX : m.u.tickUdp.ubNodes;
 			return 21 + NET_FRAME_BYTES * ulN * ulC;
 		}
+		case NET_MSG_PUNCH_REG: return 16;
+		case NET_MSG_PUNCH_INFO: return 21;
 		case NET_MSG_HASH: return 8;
 		case NET_MSG_PING:
 		case NET_MSG_PONG: return 4;

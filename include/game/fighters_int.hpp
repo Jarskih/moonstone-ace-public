@@ -34,9 +34,16 @@ inline Knight *rec(uint32_t a) { return jobPtr<Knight>(a); }
 inline uint32_t addr(const void *p) { return jobAddr(p); }
 inline bool bit(uint32_t v, unsigned n) { return ((v >> n) & 1u) != 0; }
 inline void subHp(Knight &k, uint16_t d) { k.swHp = (int16_t)((uint16_t)k.swHp - d); }
+// A u32 cell of the owned data (the knight / creature script, damage and walk tables are u32 cells, filled native by the
+// start-up loader): a native load, the same long the 68k reads. Not big-endian bytes (ROADMAP 11.3, PC_ENDIAN.md 2).
+inline uint32_t cell32(const uint8_t *p) {
+	uint32_t v;
+	__builtin_memcpy(&v, p, 4);
+	return v;
+}
 // MOVE.L 0(A,D.W),X: a long at a base address plus the sign-extended word index.
 inline uint32_t tab32(uint32_t ulBase, uint16_t uwIndex) {
-	return rd32(jobPtr<const uint8_t>(ulBase + (uint32_t)(int32_t)(int16_t)uwIndex));
+	return cell32(jobPtr<const uint8_t>(ulBase + (uint32_t)(int32_t)(int16_t)uwIndex));
 }
 
 HandlerResult finish(const FighterEnv &e);                              // LAB_02BA

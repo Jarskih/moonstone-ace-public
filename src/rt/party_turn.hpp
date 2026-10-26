@@ -4,7 +4,7 @@
 //
 //   turnActivate()      a co-op shop queue starts / ends (rt::ShopVisit); every other entry is inert while it is off.
 //   turnBegin()         a member's turn starts: the banner is due.
-//   turnCorner()        the knight's token and name in the upper-left corner of a town picture (drawn into the clean background, so every
+//   turnCorner()        the knight's name (and the arrows) in the upper-left corner of a town picture (drawn into the clean background, so every
 //                       redraw keeps it); turnCornerScreen() the same on the black shop / temple / wizard sheets (after each redraw).
 //   turnBanner()        the banner "SIR <NAME>'S TURN" over the picture (once per turn), then restore.
 #pragma once
@@ -23,7 +23,7 @@ void turnBegin();
 void turnCorner(bool bTownA);
 void turnBanner(bool bTownA);
 
-// The corner arrows (owner 2026-10-10): "<" / ">" in the corner box switch the active knight to the previous / next living member.
+// The corner arrows (owner 2026-10-10): "<" / ">" in the corner switch the active knight to the previous / next living member.
 // They are live from the moment a corner with them is drawn until turnArrowsOff() (the town screen is left) or the visit ends.
 //   turnArrowHit()    the hit test: the cursor is over a live arrow -> true and *pRegion = a record whose long at +16 is 6 / 7
 //                     (TB_PREV / TB_NEXT of game/scene_places.hpp), no text list at +8.

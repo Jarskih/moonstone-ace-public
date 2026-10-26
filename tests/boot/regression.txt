@@ -30,8 +30,10 @@ frame 230 joy1 down pulse 20
 frame 280 joy1 down pulse 20
 frame 330 shot reg-menu-knight
 
-# fire: the knight screen loads (the press is consumed by the menu, never seen by the next screen)
-frame 360 joy1 fire pulse
+# the knight screen loads (the press is consumed by the menu, never seen by the next screen).  Taken with `poke menuact 3` and not with a
+# fire on the row: at real host speed one of the down pulses above is now and then taken twice by the menu (the cursor stood on Back
+# or wrapped to Players in about a third of the real-speed Debug runs), and the fire then left the menu on the wrong row.
+frame 360 poke menuact 3
 frame 760 shot reg-knight-select
 
 # fire on the first knight: name entry ("SIR GODBER_" preset)

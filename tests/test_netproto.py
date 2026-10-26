@@ -73,6 +73,9 @@ def expected_messages():
     m['INPUT_UDP'] = header(21, struct.pack('>IIBBIIB', 0xA1B2C3D4, 0xC0FFEE11, 2, 1, 1000, 1003, 2) + frame(3) + frame(4))
     m['TICK_UDP'] = header(22, struct.pack('>IIBBIBBIB', 0, 0xC0FFEE11, 2, 0, 1005, 3, 3, 1001, 2) +
                            b''.join(frame(10 * i + k) for i in range(2) for k in range(3)))
+    # relay-assisted direct connection (docs/NETPLAY.md 2.2b)
+    m['PUNCH_REG'] = header(23, struct.pack('>IIBBIH', 0xA1B2C3D4, 0xC0FFEE11, 1, 1, 0xC0A80114, 51234))
+    m['PUNCH_INFO'] = header(24, struct.pack('>IIBIHIH', 0xA1B2C3D4, 0xC0FFEE11, 1, 0x5DB8D822, 40001, 0xC0A80115, 6502))
     m['ANNOUNCE'] = header(32, listing(1))
     m['REGISTER'] = header(33, listing(1))
     m['REFRESH'] = header(34, bytes([3, 1]))
@@ -204,8 +207,8 @@ class NetProto(unittest.TestCase):
             ('if(!isModeValid(l.ubMode) || l.ubYourSeat < 1 || l.ubYourSeat >= NET_NODE_MAX) {', 'if(!isModeValid(l.ubMode)) {'),      # your seat 1..3
             ('return p.ubPad == 0xFF && isNameEmpty(p.acName);', 'return true;'),                                                      # browse / claim carry nothing
             ('if(p.ubStage >= NET_PICK_STAGES || p.ubSel >= NET_PORTRAITS || !isNameValid(p.acName)) {', 'if(!isNameValid(p.acName)) {'),
-            ('return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_TICK_UDP)', 'return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_LOBBY_STATE)'),   # the rejoin messages are game messages
-            ('return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_TICK_UDP)', 'return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_BOUNDARY)'),   # the datagram messages are known types
+            ('return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_PUNCH_INFO)', 'return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_LOBBY_STATE)'),   # the rejoin messages are game messages
+            ('return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_PUNCH_INFO)', 'return (ubType >= NET_MSG_HELLO && ubType <= NET_MSG_BOUNDARY)'),   # the datagram messages are known types
             # protocol 5 (rejoin, docs/NETPLAY.md 4.5)
             ('return m.u.rejoin.ubNode >= 1 && m.u.rejoin.ubNode < NET_NODE_MAX && m.u.rejoin.ulToken != 0;', 'return m.u.rejoin.ubNode < NET_NODE_MAX;'),   # node 1..3 and a token
             ('b.uwChunks == (b.uwBytes + NET_CHUNK_BYTES - 1) / NET_CHUNK_BYTES', 'true'),                                                               # the chunk count fits the size
@@ -214,9 +217,9 @@ class NetProto(unittest.TestCase):
             ('(m.u.boundary.ubMask & 1) == 0;', 'true;'),                                                                                                # the host never rejoins
             ('return (m.u.joinReq.ubFlags & ~NET_JOIN_FLAG_REJOIN) == 0;', 'return true;'),                                                              # unknown join flags
             # protocol 6 (UDP input with history, docs/NETPLAY.md 2.2)
-            ('return ubNode >= 1 && ubNode < NET_NODE_MAX && ulToken != 0 && (ubFlags & ~NET_UDP_HEARS) == 0 && ubCount <= NET_UDP_HISTORY_MAX &&',
-             'return ubNode < NET_NODE_MAX && (ubFlags & ~NET_UDP_HEARS) == 0 && ubCount <= NET_UDP_HISTORY_MAX &&'),                                    # a client node and a token
-            ('return ubNode >= 1 && ubNode < NET_NODE_MAX && ulToken != 0 && (ubFlags & ~NET_UDP_HEARS) == 0 && ubCount <= NET_UDP_HISTORY_MAX &&',
+            ('return ubNode >= 1 && ubNode < NET_NODE_MAX && ulToken != 0 && (ubFlags & ~NET_UDP_FLAGS_ALL) == 0 && ubCount <= NET_UDP_HISTORY_MAX &&',
+             'return ubNode < NET_NODE_MAX && (ubFlags & ~NET_UDP_FLAGS_ALL) == 0 && ubCount <= NET_UDP_HISTORY_MAX &&'),                                    # a client node and a token
+            ('return ubNode >= 1 && ubNode < NET_NODE_MAX && ulToken != 0 && (ubFlags & ~NET_UDP_FLAGS_ALL) == 0 && ubCount <= NET_UDP_HISTORY_MAX &&',
              'return ubNode >= 1 && ubNode < NET_NODE_MAX && ulToken != 0 && ubCount <= NET_UDP_HISTORY_MAX &&'),                                         # unknown datagram flags
             ('ulFirst <= 0xFFFFFFFFu - ubCount;', 'true;'),                                                                                              # a window that wraps the tick counter
             ('u.ubNodes >= 2 && u.ubNodes <= NET_NODE_MAX && u.ubNode < u.ubNodes;', 'u.ubNodes <= NET_NODE_MAX;'),                                      # TICK_UDP: the receiver is one of the nodes

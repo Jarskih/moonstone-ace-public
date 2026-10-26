@@ -19,6 +19,7 @@
 // wait(10) after a menu redraw, wait(6) after a knight-select redraw (not while a name is being typed), wait(4) before
 // the name editor, wait(2) for the "name too long" flash and the 36-tick palette fade inside palette()/fadeOut().
 #pragma once
+#include "engine/net_cfg.hpp"
 #include <stdint.h>
 
 #include "game/knight.hpp"
@@ -128,8 +129,12 @@ uint16_t menuItemY(uint16_t uwCursor);
 // Main menu (owner 2026-10-11, no original): LOCAL / MULTIPLAYER / SETTINGS in front of the title menu, on the same title picture.
 
 enum MainItem : uint16_t { MAIN_LOCAL = 0, MAIN_MULTIPLAYER, MAIN_SETTINGS, MAIN_ITEMS };
+// The rows shown.  MS_NET off (the stock Amiga build, docs/MEMORY.md) has no network play: the MULTIPLAYER row is not offered, the cursor
+// is a row number (LOCAL = 0, SETTINGS = 1) and mainMenuItem() maps it to the MainItem (and so the MainAction) it stands for.
+constexpr uint16_t MAIN_ROWS = MS_NET ? MAIN_ITEMS : MAIN_ITEMS - 1;
+constexpr uint16_t mainMenuItem(uint16_t uwRow) { return (MS_NET || uwRow == 0) ? uwRow : static_cast<uint16_t>(MAIN_SETTINGS); }
 struct MainMenuState {
-	uint16_t uwCursor;
+	uint16_t uwCursor;      // the row (== the MainItem with MS_NET on)
 };
 enum MainAction : uint8_t {
 	MAINACT_IDLE = 0,       // nothing to do, poll again

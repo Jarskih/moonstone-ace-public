@@ -115,6 +115,8 @@ struct DgPolicy {
 	uint32_t ulBlackholeFrom;       // clock from which everything is lost, 0 = never
 	int8_t iOnlyFrom;               // -1: both directions are affected; else only datagrams sent by that endpoint
 	bool isDisabled;                // the network delivers nothing at all from the start
+	uint8_t ubDirectBlockMask;      // relay model: direct datagrams sent by or to an endpoint in this mask are lost (a NAT that cannot be punched)
+	uint32_t ulDirectBlackholeFrom; // relay model: from this clock every direct datagram is lost (the NAT mapping died), 0 = never
 };
 struct DgItem {
 	bool isUsed;
@@ -123,8 +125,22 @@ struct DgItem {
 	uint8_t ubFrom;
 	uint32_t ulDue;
 	uint32_t ulSeq;
+	bool isFromRelay;
+};
+// The relay model (hole punching, NETPLAY.md 2.2b): a datagram addressed to kRelayAddr is handled like tools/netserver/server.py does; the datagrams it forwards
+// arrive "from" the relay.  Public addresses are the endpoints' own.
+static const uint32_t kRelayAddr = 0x0A0000F0u;
+struct RelayReg {
+	bool isSet;
+	uint8_t ubEp;
 };
 struct DgNet {
+	bool isRelay;                   // the relay model is on
+	bool isRelayPunch;              // ... and it answers PUNCH_REG (false = an old relay: it drops them)
+	uint32_t aulTok[4];             // the tokens seen (CONFIG tokens of the clients)
+	RelayReg aHostReg[4], aCliReg[4];   // PUNCH_REG per token
+	uint8_t aubCliEp[4];            // the endpoint a token's INPUT_UDP came from (+1)
+	uint32_t ulRelayed, ulDirectSent, ulDirectLost, ulInfos;
 	DgItem aQ[4][128];
 	DgPolicy pol;
 	const uint32_t *pNow;
@@ -133,13 +149,90 @@ struct DgNet {
 };
 static DgNet *g_pDg;
 
+static uint16_t epPort(uint8_t ubEp) { return ubEp == 0 ? 6502 : static_cast<uint16_t>(40000 + ubEp); }
+
+static void enqueueDg(DgNet &d, uint32_t ulDest, const uint8_t *p, uint32_t n, uint8_t ubFrom, uint32_t ulDue, bool isFromRelay) {
+	for(DgItem &it : d.aQ[ulDest]) {
+		if(it.isUsed) continue;
+		it.isUsed = true;
+		memcpy(it.aub, p, n);
+		it.ulLen = n;
+		it.ubFrom = ubFrom;
+		it.ulDue = ulDue;
+		it.ulSeq = ++d.ulSeq;
+		it.isFromRelay = isFromRelay;
+		return;
+	}
+}
+
+static uint32_t tokIndex(DgNet &d, uint32_t ulToken) {
+	for(uint32_t i = 0; i < 4; ++i) {
+		if(d.aulTok[i] == ulToken) return i;
+		if(d.aulTok[i] == 0) { d.aulTok[i] = ulToken; return i; }
+	}
+	return 3;
+}
+
+static void relayInfo(DgNet &d, uint8_t ubTo, uint8_t ubPeer, uint32_t ulSession, uint32_t ulToken) {
+	NetMsg m;
+	netMsgInit(m, NET_MSG_PUNCH_INFO);
+	m.u.punchInfo.ulSession = ulSession;
+	m.u.punchInfo.ulToken = ulToken;
+	m.u.punchInfo.ulPubAddr = 0x0A000000u + ubPeer;
+	m.u.punchInfo.uwPubPort = epPort(ubPeer);
+	uint8_t aub[NET_MSG_MAX];
+	uint32_t ulUsed = 0;
+	if(netEncode(m, aub, sizeof aub, ulUsed) != NET_OK) return;
+	enqueueDg(d, ubTo, aub, ulUsed, 0, *d.pNow, true);
+	++d.ulInfos;
+}
+
+// What the relay does with a datagram from endpoint ubFrom.
+static void relayHandle(DgNet &d, uint8_t ubFrom, const uint8_t *p, uint32_t n) {
+	NetMsg m;
+	uint32_t ulUsed = 0;
+	if(netDecode(p, n, m, ulUsed) != NET_OK || ulUsed != n) return;
+	if(m.ubType == NET_MSG_INPUT_UDP) {
+		const uint32_t i = tokIndex(d, m.u.inputUdp.ulToken);
+		d.aubCliEp[i] = static_cast<uint8_t>(ubFrom + 1);
+		enqueueDg(d, 0, p, n, ubFrom, *d.pNow, true);
+		++d.ulRelayed;
+	} else if(m.ubType == NET_MSG_TICK_UDP) {
+		const uint32_t i = tokIndex(d, m.u.tickUdp.ulToken);
+		if(d.aubCliEp[i]) {
+			enqueueDg(d, d.aubCliEp[i] - 1u, p, n, 0, *d.pNow, true);
+			++d.ulRelayed;
+		}
+	} else if(m.ubType == NET_MSG_PUNCH_REG && d.isRelayPunch) {
+		const NetPunchReg &r = m.u.punchReg;
+		const uint32_t i = tokIndex(d, r.ulToken);
+		RelayReg &reg = r.ubRole == NET_ROLE_HOST ? d.aHostReg[i] : d.aCliReg[i];
+		reg.isSet = true;
+		reg.ubEp = ubFrom;
+		if(d.aHostReg[i].isSet && d.aCliReg[i].isSet) {   // both ends of the link are there: tell the one that asked, and the other
+			relayInfo(d, ubFrom, r.ubRole == NET_ROLE_HOST ? d.aCliReg[i].ubEp : d.aHostReg[i].ubEp, r.ulSession, r.ulToken);
+			relayInfo(d, r.ubRole == NET_ROLE_HOST ? d.aCliReg[i].ubEp : d.aHostReg[i].ubEp, ubFrom, r.ulSession, r.ulToken);
+		}
+	}
+}
+
 static int32_t fakeSendDgram(void *pCtx, const NetDgramPeer &to, const uint8_t *p, uint32_t n) {
 	Ep *e = static_cast<Ep *>(pCtx);
 	DgNet &d = *e->pDg;
 	++d.ulSent;
 	const uint32_t ulOwn = ++d.aulSentBy[e->ubNode & 3];
-	const uint32_t ulDest = to.ulAddr - 0x0A000000u;
+	const bool isToRelay = d.isRelay && to.ulAddr == kRelayAddr;
+	const uint32_t ulDest = isToRelay ? 0 : to.ulAddr - 0x0A000000u;
 	if(ulDest >= 4 || n > NET_MSG_MAX) return -1;
+	const bool isDirectDg = !isToRelay && n > NET_HEADER_BYTES + 9 && (p[3] == NET_MSG_INPUT_UDP || p[3] == NET_MSG_TICK_UDP) && (p[NET_HEADER_BYTES + 9] & NET_UDP_DIRECT) != 0;
+	if(isDirectDg) {
+		++d.ulDirectSent;
+		const uint8_t ubMask = d.pol.ubDirectBlockMask;
+		if(((ubMask >> (e->ubNode & 3)) & 1) || ((ubMask >> ulDest) & 1) || (d.pol.ulDirectBlackholeFrom && *d.pNow >= d.pol.ulDirectBlackholeFrom)) {
+			++d.ulDirectLost;
+			return static_cast<int32_t>(n);
+		}
+	}
 	const DgPolicy &po = d.pol;
 	const bool isAffected = po.iOnlyFrom < 0 || po.iOnlyFrom == e->ubNode;
 	bool isLose = po.isDisabled;
@@ -150,6 +243,10 @@ static int32_t fakeSendDgram(void *pCtx, const NetDgramPeer &to, const uint8_t *
 		if(po.ulBlackholeFrom && *d.pNow >= po.ulBlackholeFrom) isLose = true;
 	}
 	if(isLose) { ++d.ulLost; return static_cast<int32_t>(n); }
+	if(isToRelay) {
+		relayHandle(d, e->ubNode, p, n);
+		return static_cast<int32_t>(n);
+	}
 	const uint32_t ulCopies = (isAffected && po.ulDupPct && rndN(100) < po.ulDupPct) ? 2 : 1;
 	for(uint32_t c = 0; c < ulCopies; ++c) {
 		for(DgItem &it : d.aQ[ulDest]) {
@@ -160,6 +257,7 @@ static int32_t fakeSendDgram(void *pCtx, const NetDgramPeer &to, const uint8_t *
 			it.ubFrom = e->ubNode;
 			it.ulDue = *d.pNow + ((isAffected && po.ulReorderPct && rndN(100) < po.ulReorderPct) ? rndN(po.ulReorderMs + 1) : 0);
 			it.ulSeq = ++d.ulSeq;
+			it.isFromRelay = false;
 			if(c) ++d.ulDuplicated;
 			break;
 		}
@@ -176,8 +274,8 @@ static int32_t fakeRecvDgram(void *pCtx, uint8_t *p, uint32_t cap, NetDgramPeer 
 	if(!pBest) return 0;
 	const uint32_t n = pBest->ulLen < cap ? pBest->ulLen : cap;
 	memcpy(p, pBest->aub, n);
-	from.ulAddr = 0x0A000000u + pBest->ubFrom;
-	from.uwPort = pBest->ubFrom == 0 ? 6502 : static_cast<uint16_t>(40000 + pBest->ubFrom);
+	from.ulAddr = pBest->isFromRelay ? kRelayAddr : 0x0A000000u + pBest->ubFrom;
+	from.uwPort = pBest->isFromRelay ? static_cast<uint16_t>(6510) : epPort(pBest->ubFrom);
 	from.isSet = true;
 	pBest->isUsed = false;
 	++d.ulDelivered;
@@ -265,6 +363,9 @@ static void pickKnight(Rig &r, uint8_t ubNode, uint8_t ubPortrait, const char *s
 }
 
 // Host + ubClients clients, connected and past the handshake (CONFIG received everywhere, running).
+static uint8_t g_ubNoDirectMask;     // relay model: nodes (bit = node) that do not offer the direct path (an old client)
+static uint8_t g_ubDirectTest;       // relay model: the node-level test option given to every node (NDT_*)
+static uint32_t g_ulDirectKillMs;
 static uint32_t g_ulUdpSession;   // the relay session id the UDP tests give the nodes (0 = a direct game)
 
 static bool bringUp(Rig &r, uint8_t ubClients, uint32_t ulSendCap = 0, uint32_t ulRecvCap = 0, uint8_t ubDelay = 2) {
@@ -292,6 +393,14 @@ static bool bringUp(Rig &r, uint8_t ubClients, uint32_t ulSendCap = 0, uint32_t 
 	if(g_pDg) {   // the datagram network exists: every node may use it (the clients know where the host is)
 		for(uint8_t n = 0; n <= ubClients; ++n) {
 			netNodeUdpEnable(r.aNode[n], g_ulUdpSession);
+			if(g_pDg->isRelay) {   // every datagram goes through the relay first; the nodes that may punch say so
+				if(n > 0) netNodeUdpSetPeer(r.aNode[n], 0, kRelayAddr, 6510, g_ulUdpSession);
+				else for(uint8_t k = 0; k < ubClients; ++k) netNodeUdpSetPeer(r.aNode[0], k, kRelayAddr, 6510, g_ulUdpSession);
+				netNodeUdpSetDirect(r.aNode[n], ((g_ubNoDirectMask >> n) & 1) == 0);
+				netNodeUdpSetLocal(r.aNode[n], 0x0A000000u + n, epPort(n));
+				if(g_ubDirectTest) netNodeUdpSetDirectTest(r.aNode[n], g_ubDirectTest, g_ulDirectKillMs);
+				continue;
+			}
 			if(n > 0) netNodeUdpSetPeer(r.aNode[n], 0, 0x0A000000u, 6502, g_ulUdpSession);
 			if(n > 0 && g_ulUdpSession != 0) netNodeUdpSetPeer(r.aNode[0], static_cast<uint8_t>(n - 1), 0x0A000000u + n, 6502, g_ulUdpSession);   // a relayed game: the host's links carry the session id
 		}
@@ -3564,6 +3673,7 @@ static void testRejoin() {
 namespace nudp {
 
 static DgNet s_net;
+static void testDirect();
 
 static void useNet(const DgPolicy &po) {
 	memset(&s_net, 0, sizeof s_net);
@@ -3953,6 +4063,10 @@ static void testStrays() {
 			injectMsg(1, m);
 			netMsgInit(m, NET_MSG_TICK_UDP);                                         // the wrong direction: a TICK_UDP at the host
 			m.u.tickUdp.ulToken = host.aulToken[1]; m.u.tickUdp.ubNode = 1; m.u.tickUdp.ubNodes = 3; m.u.tickUdp.ulFirst = aTick[0]; m.u.tickUdp.ubCount = 0;
+			injectMsg(0, m);
+			netMsgInit(m, NET_MSG_INPUT_UDP);                                        // a datagram that claims the direct path in a direct (non-relayed) game: refused, its frame is not applied
+			m.u.inputUdp.ulSession = 0; m.u.inputUdp.ulToken = host.aulToken[1]; m.u.inputUdp.ubNode = 1; m.u.inputUdp.ubFlags = NET_UDP_DIRECT;
+			m.u.inputUdp.ulFirst = aTick[0]; m.u.inputUdp.ubCount = 1; m.u.inputUdp.aFrames[0] = frameFor(2, 97);
 			injectMsg(0, m);
 			const uint8_t aubGarbage[] = {1, 2, 3, 4, 5};
 			injectRaw(0, aubGarbage, sizeof aubGarbage);
@@ -4346,6 +4460,124 @@ static void testAll() {
 		testScenarios(po);
 	}
 	testPausesAndRejoin();
+	testDirect();
+}
+
+// ---- the relay-assisted direct path (NETPLAY.md 2.2b) ------------------------------------------------------------------------------------
+
+struct DirEvents {
+	uint8_t ubOk[4], ubFail[4], ubWhy[4];   // per node bit: events seen (ubOk[node], the link's client)
+};
+
+static void collect(NetNode &nd, DirEvents &ev) {
+	NetUdpEventRec e;
+	while(netNodeUdpTakeEvent(nd, e)) {
+		if(e.ubKind == NUE_DIRECT_OK) ++ev.ubOk[e.ubNode & 3];
+		if(e.ubKind == NUE_DIRECT_FAIL) { ++ev.ubFail[e.ubNode & 3]; ev.ubWhy[e.ubNode & 3] = e.ubWhy; }
+	}
+}
+
+static uint8_t dirState(const Rig &r, uint8_t ubClient, bool isHostSide) {
+	return isHostSide ? r.aNode[0].aLink[ubClient - 1].udp.dir.eState : r.aNode[ubClient].aLink[0].udp.dir.eState;
+}
+
+// A relayed game (session 77) over the relay model.  expect[c] (c = client 1..3): 'D' the link is direct on both ends and stays so, 'R' it is on the relay path on both
+// ends (the reason NDW_*), 'L' it went direct and was lost again.  The sums of every node must be the reference's in every case.
+static void testDirectGame(uint8_t ubClients, const DgPolicy &po, uint8_t ubNoDirectMask, const char *szExpect, bool isPunch, const char *szWhat, uint32_t T = 380) {
+	g_ulUdpSession = 77;
+	g_ubNoDirectMask = ubNoDirectMask;
+	useNet(po);
+	s_net.isRelay = true;
+	s_net.isRelayPunch = isPunch;
+	Rig r;
+	char sz[200];
+	if(!bringUp(r, ubClients)) { check(false, "direct: bring up"); noNet(); g_ulUdpSession = 0; g_ubNoDirectMask = 0; return; }
+	play(r, ubClients, 2, T, szWhat);
+	DirEvents aEv[4];
+	memset(aEv, 0, sizeof aEv);
+	for(uint8_t n = 0; n <= ubClients; ++n) collect(r.aNode[n], aEv[n]);
+	for(uint8_t c = 1; c <= ubClients; ++c) {
+		const char ch = szExpect[c - 1];
+		const uint8_t ubHost = dirState(r, c, true), ubClient = dirState(r, c, false);
+		snprintf(sz, sizeof sz, "direct %s: client %u relay UDP link stays ACTIVE", szWhat, c);
+		check(r.aNode[c].aLink[0].udp.eState == NU_ACTIVE && r.aNode[0].aLink[c - 1].udp.eState == NU_ACTIVE, sz);
+		if(ch == 'D') {
+			snprintf(sz, sizeof sz, "direct %s: client %u is direct on both ends", szWhat, c);
+			check(ubHost == ND_DIRECT && ubClient == ND_DIRECT, sz);
+			snprintf(sz, sizeof sz, "direct %s: client %u logged direct ok once on each end, no failure", szWhat, c);
+			check(aEv[0].ubOk[c] == 1 && aEv[c].ubOk[c] == 1 && aEv[0].ubFail[c] == 0 && aEv[c].ubFail[c] == 0, sz);
+		} else if(ch == 'O' || ch == 'N') {   // O: an old client (the host registers and never gets INFO); N: neither end offers the direct path
+			snprintf(sz, sizeof sz, "direct %s: client %u (%s) stays on the relay", szWhat, c, ch == 'O' ? "old client" : "not offered");
+			check(ubHost != ND_DIRECT && ubClient != ND_DIRECT && aEv[0].ubOk[c] == 0 && aEv[c].ubOk[c] == 0 && aEv[c].ubFail[c] == 0 &&
+				aEv[0].ubFail[c] == (ch == 'O' ? 1 : 0) && (ch == 'N' || aEv[0].ubWhy[c] == NDW_NO_INFO), sz);
+		} else if(ch == 'R') {
+			snprintf(sz, sizeof sz, "direct %s: client %u stays on the relay on both ends", szWhat, c);
+			check(ubHost != ND_DIRECT && ubClient != ND_DIRECT && aEv[0].ubOk[c] == 0 && aEv[c].ubOk[c] == 0, sz);
+			snprintf(sz, sizeof sz, "direct %s: client %u logged direct failed (no answer or no info) on both ends", szWhat, c);
+			check(aEv[0].ubFail[c] == 1 && aEv[c].ubFail[c] == 1 && aEv[0].ubWhy[c] != NDW_LOST, sz);
+		} else {
+			snprintf(sz, sizeof sz, "direct %s: client %u went direct and was lost again", szWhat, c);
+			check(ubHost == ND_RELAY && ubClient == ND_RELAY && aEv[0].ubOk[c] == 1 && aEv[c].ubOk[c] == 1 && aEv[0].ubFail[c] == 1 && aEv[c].ubFail[c] == 1 &&
+				aEv[0].ubWhy[c] == NDW_LOST && aEv[c].ubWhy[c] == NDW_LOST, sz);
+		}
+	}
+	for(uint8_t n = 0; n <= ubClients; ++n) {
+		NetUdpStats st;
+		netNodeUdpStats(r.aNode[n], st);
+		snprintf(sz, sizeof sz, "direct %s: node %u kept its link(s) on UDP (no TCP fallback) and TCP stayed quiet", szWhat, n);
+		check(st.ubTcp == 0 && st.ulBad == 0 && r.aNode[n].ulMsgsOut < 220, sz);
+	}
+	noNet();
+	g_ulUdpSession = 0;
+	g_ubNoDirectMask = 0;
+}
+
+static void testDirect() {
+	{
+		DgPolicy po = policy();
+		testDirectGame(1, po, 0, "D", true, "direct, 2 nodes");
+		testDirectGame(3, po, 0, "DDD", true, "direct, 4 nodes");
+		// a mixed session: client 2 cannot be punched (its datagrams to and from the others are lost when direct), clients 1 and 3 are direct
+		po.ubDirectBlockMask = 1 << 2;
+		testDirectGame(3, po, 0, "DRD", true, "direct, 4 nodes, client 2 blocked");
+		po.ubDirectBlockMask = (1 << 1) | (1 << 3);
+		testDirectGame(3, po, 0, "RDR", true, "direct, 4 nodes, clients 1 and 3 blocked");
+		po.ubDirectBlockMask = 0xF;
+		testDirectGame(2, po, 0, "RR", true, "direct, 3 nodes, everything blocked", 380);
+		// an old client (no direct offered) next to capable ones; and an old relay that knows nothing of PUNCH_REG
+		po.ubDirectBlockMask = 0;
+		testDirectGame(3, po, 1 << 1, "ODD", true, "direct, 4 nodes, client 1 is an old client");
+		testDirectGame(2, po, 0, "RR", false, "direct, old relay");
+		testDirectGame(2, po, 0xFF, "NN", true, "direct, nobody offers it");
+	}
+	{
+		// the direct path dies later (the NAT mapping): everything falls back to the relay path without a desync
+		DgPolicy po = policy();
+		po.ulDirectBlackholeFrom = 1000 + 9000;
+		testDirectGame(1, po, 0, "L", true, "direct dies at 9 s, 2 nodes");
+		testDirectGame(3, po, 0, "LLL", true, "direct dies at 9 s, 4 nodes");
+	}
+	{
+		// lossy network: the handshake and the history still work on both paths
+		DgPolicy po = policy();
+		po.ulLossPct = 20;
+		po.ulReorderPct = 20;
+		po.ulReorderMs = 60;
+		po.ulDupPct = 10;
+		testDirectGame(2, po, 0, "DD", true, "direct, 20% loss, 3 nodes");
+		po.ubDirectBlockMask = 1 << 1;
+		testDirectGame(2, po, 0, "RD", true, "direct, 20% loss, client 1 blocked");
+	}
+	{
+		// the test option of the nodes themselves: block drops every received direct datagram on every node
+		g_ubDirectTest = NDT_BLOCK;
+		testDirectGame(2, policy(), 0, "RR", true, "direct, test option block");
+		g_ubDirectTest = NDT_KILL;
+		g_ulDirectKillMs = 4000;
+		testDirectGame(1, policy(), 0, "L", true, "direct, test option kill after 4 s");
+		g_ubDirectTest = 0;
+		g_ulDirectKillMs = 0;
+	}
 }
 
 }  // namespace nudp

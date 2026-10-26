@@ -19,9 +19,11 @@
 #include "game/fighters.hpp"
 #include "game/fighters_int.hpp"
 #include "game/rules/ai_fight.hpp"
+#include "game/party_ai_fight.hpp"
 #include "game/rules/damage.hpp"
 
-namespace ms { namespace game {
+namespace ms
+ { namespace game {
 
 using namespace fi;
 
@@ -75,10 +77,24 @@ HandlerResult fighterSnatcher(const FighterEnv &e, Knight &k) {
 	*e.pTarget = targetFor(e, k, (f & (SNATCH_CARRY | SNATCH_RELEASE | SNATCH_FREE | SNATCH_GONE)) != 0);   // a grab keeps its knight
 	v.ulNextScript = k.ulIdleScript;
 	k.uwInput = 0;
+	if(k.ulAttacker != 0 && rosterOn(e.pRoster) && (k.ubBehaviourFlags & SNATCH_GONE) != 0) {
+		// Moonstone 2: the partner strikes a mudman that is dragging a knight under (nobody can in the original: the fight is over then).  A hurt script
+		// would replace the grab animation, whose LAB_0006 (fightOpRemap) is what takes the mudman out of the wave: it sinks unharmed.
+		v.ulNextScript = 0xFFFFFFFFu;
+		return finish(e);
+	}
 	if(k.ulAttacker != 0) {                                        // LAB_0EB5: hit: the damage of the attacker
 		subHp(k, damageOf(e, *rec(k.ulAttacker)));
 		k.ubAnimTimer = SNATCH_HURT_TIMER;
 		v.ulNextScript = e.scripts.s08A3;
+		if(rosterOn(e.pRoster) && k.swHp <= 0 && (k.ubBehaviourFlags & SNATCH_CARRY) != 0) {
+			// Moonstone 2: the partner killed the mudman while it carried a knight (nobody can strike it in the original): the knight it holds is
+			// let go.  Else that job stays paused for ever and the shared carry flag keeps every other mudman off the arena.
+			f &= (uint8_t)~SNATCH_CARRY;
+			k.ubBehaviourFlags &= (uint8_t)~SNATCH_CARRY;
+			jobTogglePause(e.pJobs, *e.pTarget);
+			jobRestart(e.pJobs, *e.pTarget, rec(*e.pTarget)->ulIdleScript);
+		}
 		return finish(e);
 	}
 	if(k.ulHitTarget != 0) {                                       // LAB_0EB4: it hit something: freeze that and carry it
@@ -162,6 +178,9 @@ HandlerResult fighterSnatcher(const FighterEnv &e, Knight &k) {
 				knockOut(e, tgt);
 				v.ulNextScript = e.scripts.s08A2;
 				f |= SNATCH_GONE;
+				if(rosterOn(e.pRoster)) {
+					k.ubBehaviourFlags |= SNATCH_GONE;                 // Moonstone 2: this mudman is sinking with its knight (see the head of the handler)
+				}
 				return finish(e);
 			}
 		}
@@ -530,6 +549,10 @@ HandlerResult aiDecide(const FighterEnv &e, Knight &k, uint16_t d1, uint16_t d7)
 	f.uwLastAction = *e.pAiLastAction;
 	f.bGloated = v.uwLairFlag != 0;
 	f.ubOdds = e.pAiOdds[(int16_t)*e.pDifficulty];                 // 0(A5,D2.W)
+	if(rosterIsComputer(e.pRoster, k)) {                           // Moonstone 2: a computer party knight is not lazy on day 0 (party_ai_fight.hpp)
+		f.ubOdds = partyAiOdds(f.ubOdds);
+	}
+
 	const AiKnightPlan plan = aiKnightDecide(f, *e.pSeed);
 	if(plan.bClearCooldown) {
 		k.ubCooldown = 0;
@@ -552,7 +575,68 @@ HandlerResult aiDecide(const FighterEnv &e, Knight &k, uint16_t d1, uint16_t d7)
 
 }  // namespace
 
-HandlerResult fighterAiKnight(const FighterEnv &e, Knight &k) {
+namespace {
+
+// What the computer's knight does with a target chosen: the walk or the next attack (the last part of LAB_0EFF, LAB_0F06 on).
+HandlerResult aiKnightAct(const FighterEnv &e, Knight &k) {
+	*e.pAiLastAction = k.uwAction;
+	const Approach ap = approach(e);
+	uint16_t d1 = ap.d1;
+	if(ap.d0 != 0) {
+		if(e.pMove->uwNear == 0) {
+			return aiMove(e, k, ap.d7);
+		}
+		bool left;
+		d1 = xDelta(k, *rec(*e.pTarget), left);
+	}
+	return aiDecide(e, k, d1, ap.d7);
+}
+
+}  // namespace
+
+HandlerResult fighterComputerThink(const FighterEnv &e, Knight &k) {
+	FightVars &v = *e.pVars;
+	k.uwInput = 0;
+	// The candidates in a fixed order, so that the sticky choice (stored as index + 1 in the knight's ubTargetSlot, a byte only creatures use) means the
+	// same record from frame to frame: the foe knights, the 20 creature records (null when free), the dragon.
+	constexpr unsigned FOES = ROSTER_MAX, DRAGON = FOES + CREATURE_RECORDS, COUNT = DRAGON + 1;
+	Knight *apFoe[COUNT];                                          // (every entry is set once below: no `= {}`, the m68k build has no memset)
+	const FightRoster &r = *e.pRoster;
+	Knight &dragon = e.pKnights[4];
+	const bool isDragonIn = jobOfOwner(e.pJobs, addr(&dragon)) != 0;   // the dragon's record is in play only while its job runs
+	for(unsigned i = 0; i < COUNT; ++i) {
+		Knight *pCand = 0;
+		if(i < FOES) {
+			pCand = i < r.ubFoes ? r.apFoe[i] : 0;
+		} else if(i < DRAGON) {
+			pCand = e.pCreatures[i - FOES].ulActive != 0 ? &e.pCreatures[i - FOES] : 0;
+		} else if(isDragonIn) {
+			pCand = &dragon;
+		}
+		apFoe[i] = pCand;
+	}
+	const int iHeld = static_cast<int>(k.ubTargetSlot) - 1;
+	Knight *pFoe = partyAiPickFoe(k, iHeld >= 0 && iHeld < static_cast<int>(COUNT) ? apFoe[iHeld] : 0, apFoe, static_cast<uint8_t>(COUNT));
+	if(pFoe == 0) {                                                // nobody left to fight: stand
+		v.ulNextScript = k.ulIdleScript;
+		return finish(e);
+	}
+	for(unsigned i = 0; i < COUNT; ++i) {
+		if(apFoe[i] == pFoe) {
+			k.ubTargetSlot = static_cast<uint8_t>(i + 1);
+		}
+	}
+	// LAB_0634 is the "current target" cell the NEXT arena's set-up reads (arena.cpp poke, WHO_TARGET: it edits the script tables of that record, which only
+	// a knight has): the original only ever leaves a knight in it.  The brain needs the enemy there while it decides, so it is put back afterwards.
+	const uint32_t ulTargetBefore = *e.pTarget;
+	*e.pTarget = addr(pFoe);
+	const HandlerResult res = aiKnightAct(e, k);
+	*e.pTarget = ulTargetBefore;
+	return res;
+}
+
+HandlerResult fighterAiKnight(
+const FighterEnv &e, Knight &k) {
 	FightVars &v = *e.pVars;
 	*e.pSelf = addr(&k);
 	v.ulNextScript = k.ulIdleScript;
@@ -567,17 +651,7 @@ HandlerResult fighterAiKnight(const FighterEnv &e, Knight &k) {
 		v.ulNextScript = aiKnightHitReply(t.ubType, k.uwAction, t.uwAction) == FightScript::Stop ? 0xFFFFFFFFu : k.ulScript26;
 		return finish(e);
 	}
-	*e.pAiLastAction = k.uwAction;
-	const Approach ap = approach(e);
-	uint16_t d1 = ap.d1;
-	if(ap.d0 != 0) {
-		if(e.pMove->uwNear == 0) {
-			return aiMove(e, k, ap.d7);
-		}
-		bool left;
-		d1 = xDelta(k, *rec(*e.pTarget), left);
-	}
-	return aiDecide(e, k, d1, ap.d7);
+	return aiKnightAct(e, k);
 }
 
 }}  // namespace ms::game

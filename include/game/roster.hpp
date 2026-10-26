@@ -27,14 +27,16 @@ enum FightTeam : uint8_t { TEAM_NONE = 0, TEAM_PARTY = 1, TEAM_CREATURES = 2, TE
 // A colour-remapped copy of a cel table (rt/knight_colours.cpp): the hit sets are registered for the ORIGINAL table address.
 struct CelAlias {
 	uint32_t ulClone, ulOrig;
+	uint32_t ulOwner;                  // the record (68k address) that draws the copy; 0 = the skin owner of the roster (the second party knight)
 };
-constexpr uint8_t CEL_ALIAS_MAX = 12;   // KN1..KN5 and the creature tables that carry a knight figure (engine/celremap.hpp celSkinCandidates: at most 10)
+constexpr uint8_t CEL_ALIAS_MAX = 40;  // a copy per fighter that has colours of its own: the second knight (KN1..KN5, creature sets) and, in the duel, the other fighters (3 tables each)   // KN1..KN5 and the creature tables that carry a knight figure (engine/celremap.hpp celSkinCandidates: at most 10)
 
 struct FightRoster {
 	// set by the runtime before the fight
 	Knight *apMember[ROSTER_MAX];      // the party's knight records, the leader first
 	uint32_t aulMemberAddr[ROSTER_MAX];   // their 68k addresses (what a record's hit / attacker links hold)
 	uint8_t ubMembers;                 // 0 = no party (classic)
+	uint8_t ubMemberAi;                // bit i = apMember[i] is played by the computer (ROADMAP 8.3b); the leader (member 0) never is
 	Knight *apFoeMember[ROSTER_MAX];   // the black knights of an encounter (N against N)
 	uint32_t aulFoeMemberAddr[ROSTER_MAX];   // their 68k addresses (the arena spawns them by address)
 	uint8_t ubFoeMembers;
@@ -42,6 +44,7 @@ struct FightRoster {
 	// set by rosterOpen
 	uint8_t ubActive;                  // a party fight is running
 	uint8_t ubParty;                   // fighters on the party side
+	uint8_t ubPartyAi;                 // bit i = apParty[i] is played by the computer: its figure runs the knight AI against the enemies (game/party_ai.hpp)
 	Knight *apParty[ROSTER_MAX];
 	uint32_t aulPartyAddr[ROSTER_MAX];
 	uint8_t ubFoes;                    // knights on the other side
@@ -50,17 +53,45 @@ struct FightRoster {
 	mutable uint8_t ubEntered;         // party fighters whose enter script has ended (the last one releases the creatures, LAB_000A)
 	CelAlias aAlias[CEL_ALIAS_MAX];    // remapped copies of the party knights' cel tables
 	uint8_t ubAlias;
-	uint32_t ulSkinOwner;              // the record (68k address) whose draws use the remapped copies; 0 = nobody
+	uint32_t ulSkinOwner;              // the second party knight when it has its own colours (its low-hp warning pulses aubSkinEntry); 0 = nobody
 	uint8_t aubSkinEntry[3];           // the palette entries of that knight's class colours (valid while ulSkinOwner != 0; its low-hp warning pulses them)
 	uint8_t ubDefeat;                  // rosterSettle's result: bit i = party fighter i lost, bit 4 + j = foe knight j lost
 };
 
 inline bool rosterOn(const FightRoster *p) { return p != 0 && p->ubActive != 0; }
-// The cel table a job of the record ulOwner draws in place of ulTab: the remapped copy for the skinned knight, else ulTab itself.
+// The record is a party fighter played by the computer (ROADMAP 8.3b).  False for an inactive roster, the leader, a foe knight, a creature.
+inline bool rosterIsComputer(const FightRoster *p, const Knight &k) {
+	if(!rosterOn(p)) {
+		return false;
+	}
+	for(uint8_t i = 1; i < p->ubParty; ++i) {
+		if(p->apParty[i] == &k) {
+			return ((p->ubPartyAi >> i) & 1) != 0;
+		}
+	}
+	return false;
+}
+
+// The record a copy belongs to (an alias row without an owner belongs to the skin owner of the roster).
+inline uint32_t rosterAliasOwner(const FightRoster *p, const CelAlias &a) { return a.ulOwner != 0 ? a.ulOwner : p->ulSkinOwner; }
+// The record has colours of its own (at least one remapped copy is drawn for it).
+inline bool rosterHasSkin(const FightRoster *p, uint32_t ulOwner) {
+	if(p == 0 || ulOwner == 0) {
+		return false;
+	}
+	for(uint8_t i = 0; i < p->ubAlias; ++i) {
+		if(rosterAliasOwner(p, p->aAlias[i]) == ulOwner) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// The cel table a job of the record ulOwner draws in place of ulTab: the remapped copy for a skinned knight, else ulTab itself.
 inline uint32_t rosterCelFor(const FightRoster *p, uint32_t ulOwner, uint32_t ulTab) {
-	if(p != 0 && p->ulSkinOwner != 0 && p->ulSkinOwner == ulOwner) {
+	if(p != 0 && ulOwner != 0) {
 		for(uint8_t i = 0; i < p->ubAlias; ++i) {
-			if(p->aAlias[i].ulOrig == ulTab) {
+			if(p->aAlias[i].ulOrig == ulTab && rosterAliasOwner(p, p->aAlias[i]) == ulOwner) {
 				return p->aAlias[i].ulClone;
 			}
 		}
@@ -134,16 +165,16 @@ inline bool rosterAllies(const FightRoster *p, const Knight &a, const Knight &b)
 // jobs, and a creature's job while the creature holds the skinned knight (the knight figure inside the creature's cel set: the ratmen's
 // curse and grips, rt/knight_colours.cpp copies those tables too).  Feed the result to rosterCelFor as its owner.
 inline uint32_t rosterDrawSkin(const FightRoster *p, const Knight *pRec, uint32_t ulOwner) {
-	if(p == 0 || p->ulSkinOwner == 0) {
+	if(p == 0 || p->ubAlias == 0) {
 		return 0;
 	}
-	if(ulOwner == p->ulSkinOwner) {
+	if(rosterHasSkin(p, ulOwner)) {
 		return ulOwner;
 	}
 	if(p->ubActive != 0 && pRec->ubType != 0x34 && rosterTeam(*p, *pRec) == TEAM_CREATURES) {   // a dagger shares +131 with ubTargetSlot: it holds nobody
 		const int iHeld = (int)pRec->ubTargetSlot - 1;
-		if(iHeld >= 0 && iHeld < p->ubParty && p->aulPartyAddr[iHeld] == p->ulSkinOwner) {
-			return p->ulSkinOwner;
+		if(iHeld >= 0 && iHeld < p->ubParty && rosterHasSkin(p, p->aulPartyAddr[iHeld])) {
+			return p->aulPartyAddr[iHeld];
 		}
 	}
 	return 0;

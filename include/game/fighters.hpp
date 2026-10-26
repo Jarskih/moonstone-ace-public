@@ -215,6 +215,10 @@ HandlerResult fighterIdle(const FighterEnv &env, Knight &self);         // LAB_0
 HandlerResult fighterSnatcher(const FighterEnv &env, Knight &self);     // SECSTRT_40 (type 4): grabs the first fighter
 HandlerResult fighterDemon(const FighterEnv &env, Knight &self);        // LAB_0ED2 (type 8): the demon and its body
 HandlerResult fighterAiKnight(const FighterEnv &env, Knight &self);     // LAB_0EFF (type 16): the computer's knight
+// Moonstone 2 (ROADMAP 8.3b): a party knight played by the computer, from the point where a human knight would read its pad: picks an enemy
+// (game/party_ai_fight.hpp) and runs the black-knight brain against it.  Only called in a party fight for a record rosterIsComputer says so.
+HandlerResult fighterComputerThink(const FighterEnv &env, Knight &self);
+
 HandlerResult fighterStalker(const FighterEnv &env, Knight &self);      // LAB_0EC2 (type 64): follows the first fighter
 
 // ---- small routines the handlers share, exposed for the tests -------------------------------------------------
@@ -266,6 +270,11 @@ bool fightOpRun(const FighterEnv &env, uint32_t ulFn, uint32_t ulOwner, uint32_t
 // script, the boss's, still ends it).  Returns true when it ran the op; false for every other op (a creature's LAB_0005 / LAB_000A) and in a
 // classic fight (the caller then runs the routines of the original).
 bool fightOpPartyRun(const FighterEnv &env, uint32_t ulFn, uint32_t ulOwner);
+// Moonstone 2: the op a script really runs.  A mudman's grab (LAB_08A2, the knight is dragged under and the script ends by `kill`: the mudman
+// is gone from the arena for good) ends the fight in the original; in a party fight with another knight still standing the mudman leaves the
+// arena as a creature that died (LAB_0005: the count of the wave goes down, so the fight is won when the others are down, instead of waiting
+// for a creature that no longer exists) and the other mudmen are released from the grab.  Returns ulFn unchanged for every other op.
+uint32_t fightOpRemap(const FighterEnv &env, uint32_t ulFn, uint32_t ulOwner);
 
 // The first sixteen entries of the handler table LAB_08C7 that LAB_01AE filled with asm addresses (slot 68, LAB_04AC, is a
 // map handler and stays asm): hKnight at 12 / 56, ..., written big-endian into env.pHandlerTable.

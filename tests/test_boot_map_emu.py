@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import flow_lib  # noqa: E402
 
 SRCS = ('src/game/mogjobs.cpp', 'src/game/mainloop.cpp', 'src/rt/mainloop.cpp', 'tests/mainloop_emu_support.cpp', 'src/game/rules/stats.cpp', 'src/game/rules/rituals.cpp', 'src/game/rules/dice.cpp', 'src/game/rules/shops.cpp', 'src/game/rules/healing.cpp', 'src/game/rules/levelling.cpp', 'src/game/rules/settle.cpp', 'src/game/rules/clock.cpp', 'src/game/rules/turns.cpp', 'src/game/overworld.cpp', 'src/game/rules/ai_map.cpp',
-        'src/engine/util.cpp', 'src/rt/overworld.cpp', 'src/rt/party.cpp', 'src/rt/scene_places.cpp', 'src/rt/amiga/scene_places_entries.cpp', 'src/game/scene_places.cpp', 'src/rt/scene_town.cpp', 'src/rt/party_loot.cpp', 'src/game/party_loot.cpp', 'src/game/loot.cpp',
+        'src/engine/util.cpp', 'src/rt/overworld.cpp', 'src/rt/amiga/overworld_entries.cpp', 'src/rt/party.cpp', 'src/rt/party_ai.cpp', 'src/game/party_ai_shop.cpp', 'src/rt/scene_places.cpp', 'src/rt/amiga/scene_places_entries.cpp', 'src/game/scene_places.cpp', 'src/rt/scene_town.cpp', 'src/rt/party_loot.cpp', 'src/game/party_loot.cpp', 'src/game/loot.cpp',
         'src/game/scene_town.cpp', 'src/rt/game_rules.cpp', 'src/rt/amiga/game_rules_entries.cpp', 'src/game/placevisit.cpp', 'src/game/net_drop.cpp', 'src/game/ending_knight.cpp', 'src/game/local_knight.cpp', 'src/engine/netplay.cpp', 'src/game/party.cpp', 'src/engine/pad.cpp', 'src/rt/combat_pool.cpp', 'src/rt/amiga/mainloop_entries.cpp') + flow_lib.flow_rel_sources()   # the scene manager the rt glue runs (ROADMAP 9.2a)
 SYM = TM.SYM
 TEXT_PAGE = (0x7F000, 0x1000)
@@ -49,7 +49,7 @@ ABORT_AT = (0x0D74, 0x0D8D)
 # the rt entries the C++ calls directly (the fights): the stub of the label they replace, behind the rt symbol (slot = index)
 ALIAS = {'rt_fight_dragon': 'LAB_0083', 'rt_fight_meet': 'LAB_004F', 'rt_fight_creature': 'LAB_005B', 'rt_fight_run': 'LAB_0036',
          'rt_mog_carve': 'LAB_0004'}
-STUBS = TE.BLOB_BASE + 0x12000         # the logging stubs (the blob and its BSS must stay below; 0xC000 until the co-op rules, 8.3a; 0x10000 until the net / party code, 12.x)
+STUBS = TE.BLOB_BASE + 0x14000         # the logging stubs (the blob and its BSS must stay below; 0xC000 until the co-op rules, 8.3a; 0x10000 until the net / party code, 12.x; 0x12000 until the computer knights, 8.3b)
 STUB_SIZE = 0x40
 # 7.1o: the rt entries the C++ now calls instead of the stub patched over the label (same logging stub as the label's)
 ALIAS.update({'rt_mog_display_init': 'SECSTRT_34', 'rt_mog_palette_hook_add': 'LAB_0E53', 'rt_mog_job_boot': 'LAB_0303',

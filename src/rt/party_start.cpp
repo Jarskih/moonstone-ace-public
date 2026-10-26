@@ -55,4 +55,6 @@ extern "C" __attribute__((used, externally_visible)) void rtPartyKnights(void) {
 		knightRecalcEndurance(b);
 	}
 	partyStart(rs, *rs.pParty, ubN);                   // switches the party map on: members, BK count, leader 0, the home spot
+	rs.pParty->ubComputer = (uint8_t)(partyComputerMask(g_party) & ((1u << ubN) - 1u));   // the knights the knight screen gave to the computer
+
 }

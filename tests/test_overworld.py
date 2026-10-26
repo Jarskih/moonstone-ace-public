@@ -549,6 +549,8 @@ static void subject(const char *op, Regs &R) {
         g_rsp = &r;
         const bool sp = dragonSpawn(r.rs, rw(LAB_06C0), env, cells, seed, ops, kDefaults);
         if(sp) {
+            // dragonSpawn stores the handler slot as big-endian bytes (the slot is a cell of the byte blob LAB_08C7): read them back
+            handler = ((handler & 0xFFu) << 24) | ((handler & 0xFF00u) << 8) | ((handler >> 8) & 0xFF00u) | (handler >> 24);
             wl(LAB_08C7 + 40, handler);
             for(int i = 0; i < 5; ++i) wl(LAB_0671 + 4 * i, work[i]);
             ww(LAB_0666, f.uwTimer); ww(LAB_0DDC, (uint16_t)f.swSpeedX); ww(LAB_0667, active);

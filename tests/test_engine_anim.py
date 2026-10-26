@@ -126,6 +126,10 @@ class Mem:
     def l(self, a):
         return (self.w(a) << 16) | self.w(a + 2)
 
+    def nl(self, a):
+        # native u32 cell (the frame table, PC_ENDIAN.md 2): the engine reads it with a plain load
+        return int.from_bytes(self.m[a:a + 4], _sys.byteorder)
+
     def sb(self, a, v):
         self.m[a] = v & 0xFF
 
@@ -188,7 +192,7 @@ class Model:
 
     def draw(self, a6, d0):  # LAB_01F7..LAB_0200
         m, A1 = self.mem, JOB
-        tab = m.l(m.l(A1 + 28) + (d0 & 0x1F))
+        tab = m.nl(m.l(A1 + 28) + (d0 & 0x1F))
         d0 = m.b(a6 + 1)
         m.sb(A1 + 21, d0)
         self.l020b(tab, d0)
@@ -532,7 +536,7 @@ def build_arena():
     # frame lists (8 cel-table pointers each) and the cel tables: 10-byte header, 256 records of 10 bytes
     for lst, order in ((LIST1, (0, 1, 2, 1, 0, 2, 1, 0)), (LIST2, (2, 1, 0, 0, 1, 2, 2, 1))):
         for k, o in enumerate(order):
-            sl(lst + 4 * k, CEL[o])
+            a[lst + 4 * k:lst + 4 * k + 4] = CEL[o].to_bytes(4, _sys.byteorder)  # native cells of the frame table
     for cel in CEL:
         sw(cel, 256)
         sl(cel + 2, 0x5000)
@@ -648,6 +652,7 @@ def run_driver(arena, cases, tmp):
         f.write(DRIVER)
     r = subprocess.run([CXX, '-std=c++17', '-O1', '-Wall', '-Wextra', '-I', os.path.join(ROOT, 'include'), src,
                         os.path.join(ROOT, 'src', 'engine', 'anim.cpp'), os.path.join(ROOT, 'src', 'engine', 'jobs.cpp'),
+                        os.path.join(ROOT, 'src', 'engine', 'addrcell.cpp'),
                         '-o', exe], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     inp = arena.hex() + '\n' + ''.join(

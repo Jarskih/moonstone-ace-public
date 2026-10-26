@@ -1,6 +1,6 @@
 // rt/arena_bg - the arena backdrop of mog in C++ (ROADMAP 7.1m): mog S_12 (the tile compositor SECSTRT_12 / LAB_0A5A..LAB_0A6B, the
 // backdrop loader LAB_0A6D with the default table LAB_0A6C, the obstacle probe LAB_0A71) on top of ms::bg* (src/engine/bgblit.cpp)
-// and ms::game::arena* (src/game/arena.cpp).  Patches: asm/patches/mog.prims.json (the JMPs below).  The asm bodies stay as dead code.
+// and ms::game::arena* (src/game/arena.cpp).  Patches: asm/patches/mog.prims.json (the JMPs in src/rt/amiga/arena_bg_entries.cpp).  The asm bodies stay as dead code.
 // The enhanced 64-colour mode's two shims (enh-fg-mask, enh-fg-blit: the mask build and the blit loop over six planes instead of
 // five) are folded in: the plane count is rt_enh_planes here.
 //
@@ -21,13 +21,8 @@
 
 #include "engine/bgblit.hpp"
 #include "game/arena.hpp"
-
-
-#include <ace/types.h>
-#include <ace/utils/custom.h>
-#include <hardware/dmabits.h>
-
 #include "rt/enhanced_cells.hpp"
+#include "rt/platform/blit.hpp"
 
 extern "C" {
 extern uint32_t mogRecordTable;       // pointer cell: the obstacle table (count word, 8-byte records) (SECSTRT_14)
@@ -44,31 +39,13 @@ uint32_t rtLoadBlob_mog(const char *szName, uint8_t *pDst, uint8_t *pScratch);  
 
 namespace {
 
-inline void waitBlit() {
-	while(g_pCustom->dmaconr & DMAF_BLTDONE) {
-	}
-}
-
-// One plane: WaitBlit (LAB_0D1B), the registers in the asm's order, BLTSIZE last (starts the blitter, nothing waits for it).
+// One plane: the platform blit (rt/platform/blit.hpp): on the Amiga WaitBlit, the registers in the asm's order, BLTSIZE last (src/rt/amiga/blit.cpp).
 void hwBlit(void *, const ms::BlitOp &op) {
-	waitBlit();
-	g_pCustom->bltcon0 = op.con0;
-	g_pCustom->bltcon1 = op.con1;
-	g_pCustom->bltamod = op.modA;
-	g_pCustom->bltbmod = op.modB;
-	g_pCustom->bltcmod = op.modC;
-	g_pCustom->bltdmod = op.modD;
-	g_pCustom->bltafwm = op.afwm;
-	g_pCustom->bltalwm = op.alwm;
-	g_pCustom->bltapt = reinterpret_cast<APTR>(op.ptA);
-	g_pCustom->bltbpt = reinterpret_cast<APTR>(op.ptB);
-	g_pCustom->bltcpt = reinterpret_cast<APTR>(op.ptC);
-	g_pCustom->bltdpt = reinterpret_cast<APTR>(op.ptD);
-	g_pCustom->bltsize = op.size;
+	rt::platform::blitRun(op);
 }
 
 void hwMask(void *, const ms::BgTilePlan &plan, uint32_t ulPlanes) {
-	waitBlit();
+	rt::platform::blitWait();
 	ms::bgBuildMask(reinterpret_cast<const uint8_t *>(plan.sheet), ulPlanes, plan.sheetOffset, reinterpret_cast<uint8_t *>(plan.mask));
 }
 
@@ -103,34 +80,3 @@ __attribute__((used, externally_visible)) void rtArenaObstacles(uint32_t ulRecor
 }
 
 }  // extern "C"
-
-asm(R"(
-	.text
-	.globl rt_mog_arena_default
-rt_mog_arena_default:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	jsr rtArenaDefault
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_mog_arena_load
-rt_mog_arena_load:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtArenaLoad
-	addq.l #4,%sp
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-
-	.globl rt_mog_obstacles
-rt_mog_obstacles:
-	movem.l %d0-%d1/%a0-%a1,-(%sp)
-	move.l %d1,-(%sp)
-	move.l %d0,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtArenaObstacles
-	lea 12(%sp),%sp
-	movem.l (%sp)+,%d0-%d1/%a0-%a1
-	rts
-)");
-

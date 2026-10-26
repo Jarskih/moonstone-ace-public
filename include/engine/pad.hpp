@@ -27,7 +27,9 @@ enum PadSource : uint8_t {
 	PAD_ADAPTER3 = 4,       // parallel-port 4-player adapter, joystick 3 (stub: always 0, see padAdapterDecode)
 	PAD_ADAPTER4 = 5,       // parallel-port 4-player adapter, joystick 4 (stub)
 	PAD_SOURCE_COUNT = 6,
+	PAD_COMPUTER = 0xFE,    // not a controller: the party member is played by the computer (ROADMAP 8.3b); reads no pad word
 	PAD_NONE = 0xFF
+
 };
 
 // The controllers a player can pick today (the adapter is not selectable until its reader exists).

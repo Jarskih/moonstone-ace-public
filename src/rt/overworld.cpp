@@ -24,10 +24,14 @@
 
 #include <stdint.h>
 
+#include "engine/endian.hpp"
 #include "engine/guard.hpp"
 #include "engine/util.hpp"
 #include "game/ending_knight.hpp"
+#include "engine/net_cfg.hpp"
+#if MS_NET
 #include "game/net_drop.hpp"
+#endif
 #include "game/overworld.hpp"
 #include "rt/hunk9.hpp"
 #include "game/placevisit.hpp"
@@ -76,7 +80,7 @@ extern uint32_t mogBackground, mogPicScreen, mogDrawScreen, mogMapColourRamp, mo
 	mogEncounterKind, mogArenaRegion, mogMapPlaceTexts[14];  // LAB_08C4 (LAB_076D) (LAB_08F4)
 extern uint16_t mogMapColourOn, mogMapTileIndex, mogMapMenuX, mogMapMenuY, mogFrameBudget;  // LAB_05BA (LAB_0658, LAB_0E21, LAB_08F5, LAB_08F6)
 extern uint8_t mogMapMenuDigit;  // LAB_0653
-extern uint32_t rt_enh_pic_sz[9];                     // DBF counts of the nine arena pictures (original values unless enhanced)
+extern uint32_t rtEnhPicSz[9] asm("rt_enh_pic_sz");                      // DBF counts of the nine arena pictures (original values unless enhanced)
 // from src/rt/mainloop.cpp
 void rtMogFrameStart(void);
 void rtMogFrameWait(void);
@@ -136,23 +140,6 @@ struct OwRegs {
 
 extern "C" void rtOwAsm(uint32_t ulFn, OwRegs *pRegs);
 
-asm(R"(
-	.text
-	.globl rtOwAsm
-rtOwAsm:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a5
-	move.l 52(%sp),%a6
-	move.l %a6,-(%sp)
-	movem.l (%a6),%d0-%d3/%a0-%a2
-	move.l 44(%a6),%d5
-	move.l 48(%a6),%d7
-	jsr (%a5)
-	move.l (%sp)+,%a6
-	movem.l %d0-%d1/%a0-%a1,28(%a6)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-)");
 
 namespace {
 
@@ -181,8 +168,8 @@ inline int curIndex() { return records().index(mogCurKnight); }
 // The first frame of the map sprite table: the size every position test uses (LAB_0E22) and LAB_0066's lookup.
 void celSize(uint16_t uwSprite, uint16_t &uwW, uint16_t &uwH) {
 	const uint8_t *p = reinterpret_cast<const uint8_t *>((uintptr_t)mogMapCelTable) + (uint16_t)(uwSprite * 10u);  // LSL.W #3 + #1 + ADD.W
-	uwW = *reinterpret_cast<const uint16_t *>(p + 14);
-	uwH = *reinterpret_cast<const uint16_t *>(p + 16);
+	uwW = ms::be::ld16(p + 14);                                       // the cel table is file data: big-endian words (docs/PC_ENDIAN.md 1)
+	uwH = ms::be::ld16(p + 16);
 }
 
 void tileOf(Knight &k) {
@@ -298,7 +285,7 @@ void mlStep(void *, MapStep eStep) {
 		case MS_COPY_BACKDROP: {
 			// LAB_0DAB: MOVEA.L 92(A0),A0 (LAB_05B9 +92) ; MOVE.L #$8a02,D0 (rt_enh_pic_sz[8] when enhanced) ; MOVEA.L LAB_05C2,A1 ; DBF copy
 			uint8_t *pDst = reinterpret_cast<uint8_t *>((uintptr_t)mogPicScreen);
-			copyBackdrop(pDst, reinterpret_cast<const uint8_t *>((uintptr_t)mogHeapTable[23]), rt_enh_pic_sz[8]);  // LAB_05B9
+			copyBackdrop(pDst, reinterpret_cast<const uint8_t *>((uintptr_t)mogHeapTable[23]), rtEnhPicSz[8]);  // LAB_05B9
 			owCall(RT_FN(rt_mog_pic_mem), 0, 0, 0, 0, mogPicScreen);           // A0 = LAB_05C2: the picture from memory
 			break;
 		}
@@ -472,7 +459,11 @@ TurnState loadTurn() {
 	ts.uwBudget = mogTurnBudget.uw;  // LAB_0665
 	ts.uwBudgetQ1 = mogBudgetQuarter;  // LAB_0659
 	ts.uwBudgetQ3 = mogBudgetThreeQuarters;  // LAB_065A
+#if MS_NET
 	ts.uwPlayerCount = ms::game::humanKnightCount(mogKnights, mogHumanPlayers.uw);  // LAB_05C5; a knight dropped from a network game is an AI knight (12.11) and no longer counts
+#else
+	ts.uwPlayerCount = mogHumanPlayers.uw;  // LAB_05C5 (no network play, so no knight is ever dropped: humanKnightCount would return this)
+#endif
 	ts.uwDay = mogDayCounter;  // LAB_06C0
 	ts.uwMoonIndex = mogLunarIndex;  // LAB_06C1
 	ts.uwStage3Latch = mogMoveStage3Latch;
@@ -719,10 +710,10 @@ extern "C" __attribute__((used, externally_visible)) void rtOwDragonSpawn(void) 
 	env.ulWork = addr(mogDragonSpawnWork);
 	env.ulScriptTab = addr(mogDragonScripts);
 	env.ulScript0 = mogDragonScripts[0];
-	const uint16_t *pHdr = reinterpret_cast<const uint16_t *>((uintptr_t)env.ulScript0);
-	env.auwScriptHdr[0] = pHdr[2];                                    // +4
-	env.auwScriptHdr[1] = pHdr[3];                                    // +6
-	env.auwScriptHdr[2] = pHdr[4];                                    // +8
+	const uint8_t *pHdr = reinterpret_cast<const uint8_t *>((uintptr_t)env.ulScript0);   // script bytes: big-endian words
+	env.auwScriptHdr[0] = ms::be::ld16(pHdr + 4);                     // +4
+	env.auwScriptHdr[1] = ms::be::ld16(pHdr + 6);                     // +6
+	env.auwScriptHdr[2] = ms::be::ld16(pHdr + 8);                     // +8
 	DragonSpawnCells cells = {&mogHandlerTable[raw(ActorType::DragonFlight) / 4], reinterpret_cast<uint32_t *>(mogDragonSpawnWork), &f, &mogDragonActive};
 	const DragonSpawnOps ops = {0, opClearJobs, opSpawnJob};
 	if (dragonSpawn(records(), mogDayCounter, env, cells, mogRandomSeed, ops, ms::game::g_gameData)) {
@@ -937,27 +928,4 @@ extern "C" __attribute__((used, externally_visible)) void rtOwSceneSetup(void) {
 	owCall(RT_FN(rt_mog_key_reset));                                             // JSR LAB_0B82
 }
 
-// Contracts of the patch shims left (asm/patches/mog.overworld.json, mog.boot_map.json).  Unless named, a shim keeps ALL registers.
-//
-// rt_ow_dragon_handler  LAB_0DCF, the dragon's flying handler: the creature dispatcher's entry in LAB_08C7 + 40 (ROADMAP 7.1q: the asm label is
-//                     gone, this entry took its place and its identity).  In A0 = the dragon record, as every handler; out as LAB_02BA leaves them.
-// rt_ow_dragon_fly    the body (In A0 = the dragon record, LAB_0633 already set; every register kept).
-// (The other rt_ow_* entries of 6.3 went when the map loop became C++, 7.1l: the C++ calls rtOw* directly.)
-// (rt_fight_pause_all / rt_fight_kill_current, the register entries of LAB_000A / LAB_000D, are test-only since 7.1r: tests/mainloop_emu_support.cpp.)
-asm(R"(
-	.text
-	.globl rt_ow_dragon_handler
-rt_ow_dragon_handler:
-	move.l %a0,mogCurKnight
-	jsr rt_ow_dragon_fly
-	jmp rt_mog_pair_load
 
-	.globl rt_ow_dragon_fly
-rt_ow_dragon_fly:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtOwDragonFly
-	addq.l #4,%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-)");

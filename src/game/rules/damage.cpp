@@ -8,8 +8,12 @@ namespace ms { namespace game {
 
 namespace {
 
-inline uint16_t rd16(const uint8_t *p) { return (uint16_t)((p[0] << 8) | p[1]); }
-inline uint32_t rd32(const uint8_t *p) { return ((uint32_t)rd16(p) << 16) | rd16(p + 2); }
+// The damage table is a u32 cell of the owned data (Knight +42): a native load, the long the 68k reads (PC_ENDIAN.md 2).
+inline uint32_t rd32(const uint8_t *p) {
+	uint32_t v;
+	__builtin_memcpy(&v, p, 4);
+	return v;
+}
 inline uint32_t setW(uint32_t reg, uint16_t v) { return (reg & 0xFFFF0000u) | v; }
 
 // The hit points after a flat loss (SUBI.W #n,80(A1)): the wrapped word, read as the signed number the next BGT / BLE tests.

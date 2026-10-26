@@ -302,6 +302,8 @@ void SceneLobby::draw(const MenuOps &ops, const LobbyOps &lops, bool bWait) {
 		}
 		aText[n] = 0;
 		ops.pfnDrawString(aText, 0, LOBBY_BOTTOM_Y, 1);
+	} else if((ePhase == LP_BROWSE || ePhase == LP_CLAIMING) && (!view.isHost || eFocus == LF_PORTRAITS)) {   // the own seat has no knight yet: the prompt (the host's START shows once it moves to the START row)
+		ops.pfnDrawString(reinterpret_cast<const uint8_t *>("SELECT YOUR KNIGHT"), 0, LOBBY_BOTTOM_Y, 1);
 	} else if(view.isHost) {
 		ops.pfnDrawString(reinterpret_cast<const uint8_t *>("START"), 0, LOBBY_BOTTOM_Y, 1);
 		if(!roomStartEnabled(room)) {

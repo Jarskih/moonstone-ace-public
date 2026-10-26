@@ -6,6 +6,7 @@
 #include "engine/paula.hpp"
 
 #include "engine/endian.hpp"
+#include "engine/paulablep.hpp"
 
 namespace ms {
 namespace paula {
@@ -141,12 +142,42 @@ void advanceChannel(Paula &p, uint8_t ubCh, const Hooks &hooks) {
 	ch.ullRem = periodUnits(p, ch);
 }
 
-// Integral of the channel's output over one frame, times its volume.
-int64_t integrateFrame(Paula &p, uint8_t ubCh, const Hooks &hooks) {
+// The steps of one channel's output in one frame, for RENDER_BLEP: the chip time of each (units from the frame start, 0..kClockPal) and the
+// change of the level (byte * volume).
+struct Steps {
+	uint32_t ulCount;
+	uint32_t aulAt[kMaxStepsPerFrame];
+	int32_t alDelta[kMaxStepsPerFrame];
+};
+
+void addStep(Steps *pSteps, uint32_t ulAt, int32_t lDelta) {
+	if(pSteps == nullptr || lDelta == 0) {
+		return;
+	}
+	if(pSteps->ulCount < kMaxStepsPerFrame) {
+		pSteps->aulAt[pSteps->ulCount] = ulAt;
+		pSteps->alDelta[pSteps->ulCount] = lDelta;
+		++pSteps->ulCount;
+	}
+	else {   // cannot happen (a byte outlasts a frame); the surplus merges into the last step
+		pSteps->aulAt[kMaxStepsPerFrame - 1] = ulAt;
+		pSteps->alDelta[kMaxStepsPerFrame - 1] += lDelta;
+	}
+}
+
+// Integral of the channel's output over one frame, times its volume (RENDER_BOX's sample).  With pSteps (RENDER_BLEP) it also lists the
+// steps of the output level in the frame: the walk through chip time is the same, so both renderers see the same interrupts.
+int64_t integrateFrame(Paula &p, uint8_t ubCh, const Hooks &hooks, Steps *pSteps) {
 	Channel &ch = p.ch[ubCh];
 	const int64_t llVol = ch.ubVol;
 	int64_t llAcc = 0;
 	uint64_t ullLeft = kClockPal;
+	int32_t lLevel = ch.lLevel;
+	if(pSteps != nullptr) {   // a volume change, or the first byte of a started channel, steps at the frame start
+		const int32_t lNow = static_cast<int32_t>(ch.bOut) * static_cast<int32_t>(llVol);
+		addStep(pSteps, 0, lNow - lLevel);
+		lLevel = lNow;
+	}
 	while(ullLeft != 0) {
 		if(ch.ubState != CH_PLAYING) {
 			llAcc += static_cast<int64_t>(ch.bOut) * static_cast<int64_t>(ullLeft);
@@ -158,9 +189,59 @@ int64_t integrateFrame(Paula &p, uint8_t ubCh, const Hooks &hooks) {
 		ullLeft -= ullTake;
 		if(ch.ullRem == 0) {
 			advanceChannel(p, ubCh, hooks);
+			if(pSteps != nullptr) {
+				const int32_t lNow = static_cast<int32_t>(ch.bOut) * static_cast<int32_t>(llVol);
+				addStep(pSteps, static_cast<uint32_t>(kClockPal - ullLeft), lNow - lLevel);
+				lLevel = lNow;
+			}
 		}
 	}
+	ch.lLevel = lLevel;
 	return llAcc * llVol;
+}
+
+// One output frame of chip time: the channels that were started run their first fetch, the pending requests are delivered, every channel is
+// walked through the frame.  pInt gets the box integrals, pSteps (if not null, one per channel) the steps.
+void stepFrame(Paula &p, const Hooks &hooks, int64_t *pInt, Steps *pSteps) {
+	for(uint8_t c = 0; c < kChannels; ++c) {
+		if(p.ch[c].ubState == CH_STARTING) {
+			beginChannel(p, c, hooks);
+		}
+	}
+	deliver(p, hooks);
+	for(uint8_t c = 0; c < kChannels; ++c) {
+		pInt[c] = integrateFrame(p, c, hooks, pSteps != nullptr ? &pSteps[c] : nullptr);
+	}
+}
+
+// The optional one-pole low-pass of the output.
+void lowPass(Paula &p, int32_t &lL, int32_t &lR) {
+	if(p.cfg.ulLowPass != 0) {
+		p.lLpL += static_cast<int32_t>((static_cast<int64_t>(lL - p.lLpL) * p.cfg.ulLowPass) >> 16);
+		p.lLpR += static_cast<int32_t>((static_cast<int64_t>(lR - p.lLpR) * p.cfg.ulLowPass) >> 16);
+		lL = p.lLpL;
+		lR = p.lLpR;
+	}
+}
+
+constexpr int64_t kBlepUnit = static_cast<int64_t>(1) << kBlepShift;
+
+// Adds a step of dL / dR (level change times the speaker weights) at chip time ulAt of frame ulFrame to the frames' sums: the band-limited
+// residual, interpolated between the two nearest table columns.
+void addBlepStep(Paula &p, const int32_t *pKernel, uint32_t ulAt, int64_t llDeltaL, int64_t llDeltaR) {
+	const uint64_t ullQ = (static_cast<uint64_t>(ulAt) * kBlepPhases << 16) / kClockPal;
+	const uint32_t ulPhase = static_cast<uint32_t>(ullQ >> 16);
+	const int64_t llFrac = static_cast<int64_t>(ullQ & 0xFFFF);
+	for(uint32_t t = 0; t < kBlepTaps; ++t) {
+		const int32_t *pRow = pKernel + t * kBlepColumns + ulPhase;
+		int64_t llV = pRow[0];
+		if(llFrac != 0) {
+			llV += (static_cast<int64_t>(pRow[1] - pRow[0]) * llFrac) >> 16;
+		}
+		const uint32_t ulSlot = (p.ulFrame + t - kBlepDelay) & (kBlepRing - 1);
+		p.allRing[0][ulSlot] += llDeltaL * llV;
+		p.allRing[1][ulSlot] += llDeltaR * llV;
+	}
 }
 
 }  // namespace
@@ -176,6 +257,12 @@ void reset(Paula &p, const Config &cfg, const softblit::ChipView &mem) {
 	}
 	if(p.cfg.ubSeparation > 100) {
 		p.cfg.ubSeparation = 100;
+	}
+	if(p.cfg.ubRender > RENDER_BLEP) {
+		p.cfg.ubRender = RENDER_BOX;
+	}
+	if(p.cfg.ubRender == RENDER_BLEP) {
+		blepKernel();   // build the table now, not in the middle of a frame
 	}
 	p.mem = mem;
 	p.uwDmacon = kDmaEn;
@@ -254,28 +341,50 @@ bool adkModulationRequested(const Paula &p) {
 
 void render(Paula &p, int16_t *pOut, uint32_t ulFrames, const Hooks &hooks) {
 	const int64_t llSep = p.cfg.ubSeparation;
+	const bool isBlep = p.cfg.ubRender == RENDER_BLEP;
+	const int32_t *pKernel = isBlep ? blepKernel() : nullptr;
+	const int64_t llDen = static_cast<int64_t>(kClockPal) * 100;
+	const int64_t llBlepDen = static_cast<int64_t>(100) * kBlepUnit;
 	for(uint32_t f = 0; f < ulFrames; ++f) {
-		for(uint8_t c = 0; c < kChannels; ++c) {
-			if(p.ch[c].ubState == CH_STARTING) {
-				beginChannel(p, c, hooks);
-			}
-		}
-		deliver(p, hooks);
 		int64_t allI[kChannels];
-		for(uint8_t c = 0; c < kChannels; ++c) {
-			allI[c] = integrateFrame(p, c, hooks);
+		int32_t lL;
+		int32_t lR;
+		if(!isBlep) {
+			stepFrame(p, hooks, allI, nullptr);
+			const int64_t llL = allI[0] + allI[3];   // the Amiga: 0 and 3 left, 1 and 2 right
+			const int64_t llR = allI[1] + allI[2];
+			lL = static_cast<int32_t>(clamp16(floorDiv(llL * (100 + llSep) + llR * (100 - llSep), llDen)));
+			lR = static_cast<int32_t>(clamp16(floorDiv(llR * (100 + llSep) + llL * (100 - llSep), llDen)));
 		}
-		const int64_t llL = allI[0] + allI[3];   // the Amiga: 0 and 3 left, 1 and 2 right
-		const int64_t llR = allI[1] + allI[2];
-		const int64_t llDen = static_cast<int64_t>(kClockPal) * 100;
-		int32_t lL = static_cast<int32_t>(clamp16(floorDiv(llL * (100 + llSep) + llR * (100 - llSep), llDen)));
-		int32_t lR = static_cast<int32_t>(clamp16(floorDiv(llR * (100 + llSep) + llL * (100 - llSep), llDen)));
-		if(p.cfg.ulLowPass != 0) {
-			p.lLpL += static_cast<int32_t>((static_cast<int64_t>(lL - p.lLpL) * p.cfg.ulLowPass) >> 16);
-			p.lLpR += static_cast<int32_t>((static_cast<int64_t>(lR - p.lLpR) * p.cfg.ulLowPass) >> 16);
-			lL = p.lLpL;
-			lR = p.lLpR;
+		else {
+			Steps asSteps[kChannels];
+			for(uint8_t c = 0; c < kChannels; ++c) {
+				asSteps[c].ulCount = 0;
+			}
+			stepFrame(p, hooks, allI, asSteps);
+			for(uint8_t c = 0; c < kChannels; ++c) {
+				const bool isLeft = c == 0 || c == 3;
+				const int64_t llOwn = 100 + llSep;
+				const int64_t llOther = 100 - llSep;
+				for(uint32_t s = 0; s < asSteps[c].ulCount; ++s) {
+					const int64_t llDelta = asSteps[c].alDelta[s];
+					addBlepStep(p, pKernel, asSteps[c].aulAt[s], llDelta * (isLeft ? llOwn : llOther), llDelta * (isLeft ? llOther : llOwn));
+				}
+			}
+			// the held level at the end of the frame (the naive sample), then the frame kBlepDelay back is complete
+			const int64_t llLevelL = static_cast<int64_t>(p.ch[0].lLevel) + p.ch[3].lLevel;
+			const int64_t llLevelR = static_cast<int64_t>(p.ch[1].lLevel) + p.ch[2].lLevel;
+			const uint32_t ulNow = p.ulFrame & (kBlepRing - 1);
+			p.allRing[0][ulNow] += (llLevelL * (100 + llSep) + llLevelR * (100 - llSep)) * kBlepUnit;
+			p.allRing[1][ulNow] += (llLevelR * (100 + llSep) + llLevelL * (100 - llSep)) * kBlepUnit;
+			const uint32_t ulOut = (p.ulFrame - kBlepDelay) & (kBlepRing - 1);
+			lL = static_cast<int32_t>(clamp16(floorDiv(p.allRing[0][ulOut] + llBlepDen / 2, llBlepDen)));
+			lR = static_cast<int32_t>(clamp16(floorDiv(p.allRing[1][ulOut] + llBlepDen / 2, llBlepDen)));
+			p.allRing[0][ulOut] = 0;
+			p.allRing[1][ulOut] = 0;
+			++p.ulFrame;
 		}
+		lowPass(p, lL, lR);
 		pOut[2 * f] = static_cast<int16_t>(lL);
 		pOut[2 * f + 1] = static_cast<int16_t>(lR);
 	}

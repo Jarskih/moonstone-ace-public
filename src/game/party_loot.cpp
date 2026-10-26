@@ -101,12 +101,15 @@ uint16_t lootNextMember(uint16_t &uwCounter, const uint32_t aKnights[4], uint32_
 void shopQueueBegin(ShopQueue &q, const RecordSet &rs) {
 	q.ubCount = 0;
 	q.ubPos = 0;
+	q.ubComputer = 0;
 	if (!rs.coop()) return;
+	q.ubComputer = rs.pParty->ubComputer;
 	const int n = rs.pParty->ubSize;
 	const int iLeader = partyLeader(rs);
 	for (int k = 0; k < n; ++k) {
 		const int i = (iLeader + k) % n;
 		if (living(rs.rec(i)) || k == 0) q.aubRec[q.ubCount++] = (uint8_t)i;      // the leader is always in
+
 	}
 }
 
@@ -121,8 +124,12 @@ int partyStoneOwnerRecord(const RecordSet &rs, uint16_t uwMoonFrame) {
 int shopQueueStep(ShopQueue &q, int iDir) {
 	if (q.ubCount == 0) return -1;
 	const int n = q.ubCount;
-	q.ubPos = (uint8_t)((q.ubPos + (iDir < 0 ? n - 1 : 1)) % n);
+	for (int s = 0; s < n; ++s) {                                     // a computer knight does not shop on its own (ROADMAP 8.3b: it echoes the human's buys): the arrows skip it
+		q.ubPos = (uint8_t)((q.ubPos + (iDir < 0 ? n - 1 : 1)) % n);
+		if (!((q.ubComputer >> q.aubRec[q.ubPos]) & 1)) break;
+	}
 	return q.aubRec[q.ubPos];
+
 }
 
 }}  // namespace ms::game

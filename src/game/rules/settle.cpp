@@ -95,6 +95,17 @@ uint8_t settleDefeats(Knight &first, Knight &second) {
 	return bits;
 }
 
+uint8_t settleDefeats(Knight &first, Knight *pSecond) {
+	if (pSecond) return settleDefeats(first, *pSecond);
+	uint8_t bits = 0;
+	if (!(first.swHp > 0)) {
+		bits |= 1;
+		first.swHp = first.swHpMax;
+		first.ubLives = (uint8_t)(first.ubLives - 1);
+	}
+	return bits;
+}
+
 // LAB_000D (mog.asm 343)
 void knightMarkDead(Knight &k) { k.swHp = (int16_t)0xFFFF; }
 

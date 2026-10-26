@@ -962,6 +962,138 @@ class UdpRelayTests(ServerCase):
         self.assertTrue(await client.expect_closed())
 
 
+    # ---- NETPLAY.md 2.2b: PUNCH_REG / PUNCH_INFO, the relay's part of the direct connection ----
+    LAN_H, LAN_C = 0xC0A80114, 0xC0A80115
+
+    def reg(self, session, token=None, role=P.ROLE_CLIENT, laddr=0xC0A80115, lport=5000, caps=P.PUNCH_CAP_DIRECT):
+        return P.Msg(P.PUNCH_REG, session=session, token=token or self.TOKEN, role=role, caps=caps, laddr=laddr, lport=lport)
+
+    async def info(self, sock, timeout=0.5):
+        data = await self.recv_dgram(sock, timeout)
+        if data is None:
+            return None
+        st, msg, used = P.decode(data)
+        self.assertEqual((st, used, msg.type), (P.OK, len(data), P.PUNCH_INFO))
+        return msg
+
+    async def test_both_ends_are_told_where_the_other_one_is(self):
+        session, idle, client = await self.game_with_token()
+        hs, cs = self.udp_socket(), self.udp_socket()
+        hport, cport = hs.getsockname()[1], cs.getsockname()[1]
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST, laddr=self.LAN_H, lport=hport))
+        self.assertIsNone(await self.info(cs, 0.2))                      # one end alone: nothing to tell
+        self.assertIsNone(await self.info(hs, 0.2))
+        self.to_server(cs, self.reg(session, laddr=self.LAN_C, lport=cport))
+        to_client, to_host = await self.info(cs), await self.info(hs)
+        self.assertEqual((to_client.session, to_client.token, to_client.paddr, to_client.pport), (session, self.TOKEN, 0x7F000001, hport))
+        self.assertEqual((to_host.session, to_host.token, to_host.paddr, to_host.pport), (session, self.TOKEN, 0x7F000001, cport))
+        # the same public address (127.0.0.1 for both): the LAN addresses go along
+        self.assertEqual((to_client.flags, to_client.laddr, to_client.lport), (P.PUNCH_INFO_LOCAL, self.LAN_H, hport))
+        self.assertEqual((to_host.flags, to_host.laddr, to_host.lport), (P.PUNCH_INFO_LOCAL, self.LAN_C, cport))
+        self.assertEqual(self.server.stats.punch_info, 2)
+
+    async def test_a_repeated_registration_is_answered_again(self):
+        session, idle, client = await self.game_with_token()
+        hs, cs = self.udp_socket(), self.udp_socket()
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST))
+        self.to_server(cs, self.reg(session))
+        await self.info(cs), await self.info(hs)
+        self.to_server(cs, self.reg(session))                            # the answer to the first was lost: the node repeats
+        self.assertIsNotNone(await self.info(cs))
+        self.assertIsNotNone(await self.info(hs))
+
+    async def test_the_peer_that_registers_second_triggers_the_answer(self):
+        session, idle, client = await self.game_with_token()
+        hs, cs = self.udp_socket(), self.udp_socket()
+        self.to_server(cs, self.reg(session))                            # the client first this time
+        self.assertIsNone(await self.info(cs, 0.2))
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST))
+        self.assertIsNotNone(await self.info(cs))
+        self.assertIsNotNone(await self.info(hs))
+
+    async def test_a_local_address_is_only_handed_over_for_one_public_address_and_a_lan_address(self):
+        session, idle, client = await self.game_with_token()
+        hs, cs = self.udp_socket(), self.udp_socket()
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST, laddr=0x08080808, lport=53))   # a public address as "local": never passed on
+        self.to_server(cs, self.reg(session))
+        to_client, to_host = await self.info(cs), await self.info(hs)
+        self.assertEqual((to_client.flags, to_client.laddr, to_client.lport), (0, 0, 0))
+        self.assertEqual(to_host.flags, P.PUNCH_INFO_LOCAL)             # the host may learn the client's LAN address; the client's registration was fine
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST, laddr=0, lport=0))             # unknown local address
+        to_client = await self.info(cs)
+        self.assertEqual(to_client.flags, 0)
+        await self.info(hs)
+        # different public addresses: no LAN addresses at all
+        self.server.sessions[session].punch_host[self.TOKEN] = (('10.1.1.1', 4000), (self.LAN_H, 6502), self.server.clock())
+        self.to_server(cs, self.reg(session))
+        to_client = await self.info(cs)
+        self.assertEqual((to_client.paddr, to_client.pport, to_client.flags, to_client.laddr), (0x0A010101, 4000, 0, 0))
+
+    async def test_strangers_get_nothing(self):
+        session, idle, client = await self.game_with_token()
+        hs, cs = self.udp_socket(), self.udp_socket()
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST))
+        for bad in (self.reg(session, token=0x12345678),                 # a token no CONFIG carried
+                    self.reg(session + 1),                               # an unknown session
+                    self.reg(0),                                         # a direct game's session
+                    self.reg(session, caps=0)):                          # not a node that can try it
+            self.to_server(cs, bad)
+        self.assertIsNone(await self.info(cs, 0.3))
+        self.assertIsNone(await self.info(hs, 0.2))
+        self.assertEqual(self.server.sessions[session].punch_client, {})
+
+    async def test_only_the_registered_ip_speaks_for_the_host(self):
+        session, idle, client = await self.game_with_token()
+        self.server.sessions[session].ip = '10.9.8.7'
+        hs, cs = self.udp_socket(), self.udp_socket()
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST))
+        self.to_server(cs, self.reg(session))
+        self.assertIsNone(await self.info(cs, 0.3))
+        self.assertEqual(self.server.sessions[session].punch_host, {})
+
+    async def test_a_server_without_punch_ignores_the_registration_and_still_relays(self):
+        self.server.cfg.punch_enabled = False
+        session, idle, client = await self.game_with_token()
+        hs, cs = self.udp_socket(), self.udp_socket()
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST))
+        self.to_server(cs, self.reg(session))
+        self.assertIsNone(await self.info(cs, 0.3))
+        self.to_server(cs, self.input_udp(session))                       # the relay path is untouched
+        self.to_server(hs, self.tick_udp(session))
+        self.assertEqual(await self.recv_dgram(cs), P.pack(self.tick_udp(session)))
+
+    async def test_an_old_client_that_never_registers_keeps_playing_through_the_relay(self):
+        session, idle, client = await self.game_with_token()
+        hs, cs = self.udp_socket(), self.udp_socket()
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST))           # the new host registers, the old client does not
+        self.to_server(cs, self.input_udp(session))
+        self.assertEqual(await self.recv_dgram(hs), P.pack(self.input_udp(session)))
+        self.to_server(hs, self.tick_udp(session))
+        self.assertEqual(await self.recv_dgram(cs), P.pack(self.tick_udp(session)))
+        self.assertIsNone(await self.info(cs, 0.2))
+        self.assertIsNone(await self.info(hs, 0.1))
+
+    async def test_registrations_expire_and_each_session_holds_three_links(self):
+        session, idle, client = await self.game_with_token()
+        hs, cs = self.udp_socket(), self.udp_socket()
+        self.to_server(hs, self.reg(session, role=P.ROLE_HOST))
+        await self.settle()
+        self.clock.t += self.server.cfg.udp_idle + 1
+        self.server.sweep()
+        self.assertEqual(self.server.sessions[session].punch_host, {})
+        sess = self.server.sessions[session]
+        for t in (1, 2, 3, 4):                                            # a fourth link in one session is refused
+            sess.tokens.append(0xAA000000 + t)
+            self.to_server(hs, self.reg(session, token=0xAA000000 + t, role=P.ROLE_HOST))
+        await self.settle()
+        self.assertEqual(len(sess.punch_host), 3)
+
+    async def test_punch_messages_are_not_game_messages_on_the_tcp_pipe(self):
+        session, idle, client = await self.game_with_token()
+        await client.send(self.reg(session))
+        self.assertTrue(await client.expect_closed())
+
+
 class ProcessTests(unittest.TestCase):
     def test_runs_as_a_script_and_as_a_module(self):
         for args in ([os.path.join(ROOT, 'tools', 'netserver', 'server.py')], ['-m', 'tools.netserver']):
@@ -1002,10 +1134,11 @@ class ProcessTests(unittest.TestCase):
                     break
                 except OSError:
                     time.sleep(0.1)
-            r = subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'netserver', 'selftest.py'), '--server', '127.0.0.1', '--port', str(port)],
+            r = subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'netserver', 'selftest.py'), '--server', '127.0.0.1', '--port', str(port), '--bind', '127.0.0.1', '--require-punch'],
                                cwd=ROOT, capture_output=True, text=True, timeout=120)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn('udp: the host', r.stdout)
+            self.assertIn('punch: the client is told', r.stdout)
             self.assertIn('selftest: PASS', r.stdout)
         finally:
             proc.terminate()

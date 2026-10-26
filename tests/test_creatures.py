@@ -1378,7 +1378,12 @@ static void subject(const char *fn, Regs &R) {
         R.d[0] = blockedMask(jobs, (const Knight *)(g_s + R.a[0]), (uint16_t)R.d[0], (uint16_t)R.d[2]);
     } else if(!strcmp(fn, "021B")) {
         const Knight *k = (const Knight *)(g_s + R.a[0]);
-        R.d[0] = contactDamage(*k, g_s + k->ulDamageTable, *(const Inventory *)(g_s + k->ulInventory), cell16(@L05E4@ + 18));
+        // the damage table is u32 cells of the owned data, read natively (rules/damage.cpp; PC_ENDIAN.md 2): the host harness keeps
+        // the arena as big-endian bytes, so the twelve longs are swapped to native around the call
+        uint8_t *tab = g_s + k->ulDamageTable;
+        for(int i = 0; i < 12; ++i) { uint8_t *p = tab + 4 * i; uint8_t t = p[0]; p[0] = p[3]; p[3] = t; t = p[1]; p[1] = p[2]; p[2] = t; }
+        R.d[0] = contactDamage(*k, tab, *(const Inventory *)(g_s + k->ulInventory), cell16(@L05E4@ + 18));
+        for(int i = 0; i < 12; ++i) { uint8_t *p = tab + 4 * i; uint8_t t = p[0]; p[0] = p[3]; p[3] = t; t = p[1]; p[1] = p[2]; p[2] = t; }
     } else if(!strcmp(fn, "02D3")) {
         Knight *self = (Knight *)(g_s + cell32(@L0633@));
         const Knight *tgt = (const Knight *)(g_s + cell32(@L0634@));
@@ -1934,13 +1939,13 @@ int main() { unsigned a, b, c, d; while(scanf("%x %x %x %x", &a, &b, &c, &d) == 
 
     def test_16_patch_table(self):
         # asm/patches/mog.creatures.json: every patched line is the text the table says, each patch is a single JMP into an
-        # rt_* name defined in src/rt/creatures.cpp, and no range overlaps another mog*.json
+        # rt_* name defined in src/rt/amiga/creatures_entries.cpp, and no range overlaps another mog*.json
         import glob
         import json
         lines = open(MOG_ASM, encoding='latin-1').read().split(chr(10))
         mine = json.load(open(os.path.join(ROOT, 'asm', 'patches', 'mog.creatures.json')))
         self.assertEqual(mine['binary'], 'mog')
-        rt = open(os.path.join(ROOT, 'src', 'rt', 'creatures.cpp'), encoding='utf-8').read()
+        rt = open(os.path.join(ROOT, 'src', 'rt', 'amiga', 'creatures_entries.cpp'), encoding='utf-8').read()   # ROADMAP 11.1d part 2: the shims moved
         ranges = []
         for p in mine['patches']:
             for k, text in enumerate(p['orig']):

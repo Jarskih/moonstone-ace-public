@@ -1,6 +1,7 @@
 // engine/anim - see anim.hpp. Transcribed from program.asm LAB_01F1 (interpreter), LAB_0201 (end of frame),
 // LAB_0215..LAB_0241 (opcode handlers), LAB_020B, LAB_024F, LAB_0015/LAB_0016 and LAB_003C.
 #include "engine/anim.hpp"
+#include "engine/addrcell.hpp"
 #include "engine/endian.hpp"
 
 namespace ms {
@@ -43,7 +44,7 @@ void opCall(const AnimEnv &env, Job *pJob, const uint8_t *s) {
 		const uint32_t fn = env.pCallTable[(uint8_t)(s[1] - 1)];
 		env.callTable(fn, pJob, jobAddr(s), (uint16_t)((uint8_t)(s[1] - 1) << 2));
 	} else {
-		env.callDirect(be::ld32(s + 2), pJob->x, pJob->y, pJob->z, pJob->flags, pJob->pFrames, pJob->id);
+		env.callDirect(addr::ld32(s + 2), pJob->x, pJob->y, pJob->z, pJob->flags, pJob->pFrames, pJob->id);
 	}
 	pJob->pScript += 6;
 }
@@ -58,10 +59,10 @@ void opCondJump(Job *pJob, const uint8_t *s, bool jumpIfNonZero) {
 	} else if(s[1] & 2) {
 		nonZero = be::ld16(pVar) != 0;
 	} else {
-		nonZero = be::ld32(pVar) != 0;
+		nonZero = addr::ld32(pVar) != 0;
 	}
 	if(nonZero == jumpIfNonZero) {
-		pJob->pScript = be::ld32(s + 4);
+		pJob->pScript = addr::ld32(s + 4);
 	} else {
 		pJob->pScript += 8;
 	}
@@ -215,9 +216,9 @@ void animRun(const AnimEnv &env, Job *pJob) {
 						break;
 					case 0x84:  // LAB_0218
 						if(s[1] == 3) {
-							pJob->pScript = be::ld32(s + 2);
+							pJob->pScript = addr::ld32(s + 2);
 						} else {
-							pSt->pDeferred = be::ld32(s + 2);
+							pSt->pDeferred = addr::ld32(s + 2);
 							pSt->deferred = 1;
 							pJob->pScript += 6;
 						}
@@ -274,7 +275,10 @@ void animRun(const AnimEnv &env, Job *pJob) {
 			}
 
 			// Draw instruction (LAB_01F7)
-			const uint32_t pCelTab = be::ld32(at(pJob->pFrames) + (op & 0x1f));
+			// The frame table is an array of native u32 cells (DC.L cells of the owned data, or LAB_0276 which the scenes poke at
+			// run time): a native load on both CPUs (PC_ENDIAN.md 2); addr::ld32 read a run-time cell as big-endian bytes.
+			uint32_t pCelTab;
+			__builtin_memcpy(&pCelTab, at(pJob->pFrames) + (op & 0x1f), 4);
 			const uint8_t frame = s[1];
 			pJob->frame = frame;
 			loadFrame(env, pJob, pCelTab, frame);

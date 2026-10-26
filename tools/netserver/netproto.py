@@ -27,6 +27,11 @@ SNAP_MAX = 6144
 JOIN_FLAG_REJOIN = 1
 UDP_HISTORY_MAX = 8      # ticks one INPUT_UDP / TICK_UDP datagram carries
 UDP_HEARS = 1            # datagram flag: "I have received a valid datagram from you"
+UDP_DIRECT = 2           # datagram flag: this datagram travelled the direct path (never seen by the relay)
+UDP_DHEARS = 4           # datagram flag: "I have received a valid DIRECT datagram from you"
+UDP_FLAGS_ALL = UDP_HEARS | UDP_DIRECT | UDP_DHEARS
+PUNCH_CAP_DIRECT = 1     # PUNCH_REG capability: "I can connect directly to my peer"
+PUNCH_INFO_LOCAL = 1     # PUNCH_INFO flag: the peer's local address is valid (same public address)
 NODE_NONE = 0xFF
 NODE_DROPPED = 0xFE      # a binding whose node was dropped (engine/netplay.hpp NET_NODE_DROPPED): valid in the CONFIG of a rejoiner
 PAD_SOURCE_COUNT = 6
@@ -48,12 +53,13 @@ ERR_SPACE = -6
 HELLO, CONFIG, READY, SEED, INPUT, TICK, HASH, PING, PONG, BYE, DROP, LOBBY_PICK, LOBBY_STATE = range(1, 14)
 REJOIN, REJOIN_OK, STATE_BEGIN, STATE_CHUNK, STATE_END, RESUME, BOUNDARY = range(14, 21)
 INPUT_UDP, TICK_UDP = 21, 22      # protocol 6: one datagram each, never on a TCP stream
+PUNCH_REG, PUNCH_INFO = 23, 24    # relay-assisted direct connection (NETPLAY.md 2.2b): datagrams between a node and the relay, same protocol version (an old relay drops them as unknown)
 ANNOUNCE, REGISTER, REFRESH, UNREGISTER, LIST_REQ, LIST_REPLY, JOIN_REQ, JOIN_REPLY = range(32, 40)
 RELAY_HELLO, REGISTER_REPLY = 40, 41
 
 TYPE_NAMES = {1: 'HELLO', 2: 'CONFIG', 3: 'READY', 4: 'SEED', 5: 'INPUT', 6: 'TICK', 7: 'HASH', 8: 'PING', 9: 'PONG',
               10: 'BYE', 11: 'DROP', 12: 'LOBBY_PICK', 13: 'LOBBY_STATE', 14: 'REJOIN', 15: 'REJOIN_OK', 16: 'STATE_BEGIN', 17: 'STATE_CHUNK',
-              18: 'STATE_END', 19: 'RESUME', 20: 'BOUNDARY', 21: 'INPUT_UDP', 22: 'TICK_UDP', 32: 'ANNOUNCE', 33: 'REGISTER', 34: 'REFRESH', 35: 'UNREGISTER', 36: 'LIST_REQ',
+              18: 'STATE_END', 19: 'RESUME', 20: 'BOUNDARY', 21: 'INPUT_UDP', 22: 'TICK_UDP', 23: 'PUNCH_REG', 24: 'PUNCH_INFO', 32: 'ANNOUNCE', 33: 'REGISTER', 34: 'REFRESH', 35: 'UNREGISTER', 36: 'LIST_REQ',
               37: 'LIST_REPLY', 38: 'JOIN_REQ', 39: 'JOIN_REPLY', 40: 'RELAY_HELLO', 41: 'REGISTER_REPLY'}
 
 # NetByeReason
@@ -144,12 +150,12 @@ def _is_listing_valid(lst):
 
 
 def is_known_type(t):
-    return HELLO <= t <= TICK_UDP or ANNOUNCE <= t <= REGISTER_REPLY
+    return HELLO <= t <= PUNCH_INFO or ANNOUNCE <= t <= REGISTER_REPLY
 
 
 def _is_udp_header_valid(f):
     """Shared by INPUT_UDP and TICK_UDP: a client node, a token, the known flag bits, a window that does not wrap."""
-    return 1 <= f['node'] < NODE_MAX and f['token'] != 0 and f['flags'] & ~UDP_HEARS == 0 and f['count'] <= UDP_HISTORY_MAX and \
+    return 1 <= f['node'] < NODE_MAX and f['token'] != 0 and f['flags'] & ~UDP_FLAGS_ALL == 0 and f['count'] <= UDP_HISTORY_MAX and \
         f['first'] <= 0xFFFFFFFF - f['count']
 
 
@@ -235,6 +241,10 @@ def is_valid(m):
     if t == TICK_UDP:
         return len(f['frames']) == f['count'] and _is_udp_header_valid(f) and 2 <= f['nodes'] <= NODE_MAX and f['node'] < f['nodes'] and \
             all(len(row) == f['nodes'] and all(is_frame_valid(x) for x in row) for row in f['frames'])
+    if t == PUNCH_REG:
+        return f['token'] != 0 and f['role'] < ROLES and f['caps'] & ~PUNCH_CAP_DIRECT == 0
+    if t == PUNCH_INFO:
+        return f['token'] != 0 and f['flags'] & ~PUNCH_INFO_LOCAL == 0
     if t == BYE:
         return f['reason'] < BYE_REASONS
     if t == DROP:
@@ -305,6 +315,10 @@ def _body(m):
     if t == TICK_UDP:
         return struct.pack('>IIBBIBBIB', f['session'], f['token'], f['node'], f['flags'], f['ack'], f['drop_seq'], f['nodes'], f['first'], f['count']) + \
             b''.join(b''.join(row) for row in f['frames'])
+    if t == PUNCH_REG:
+        return struct.pack('>IIBBIH', f['session'], f['token'], f['role'], f['caps'], f['laddr'], f['lport'])
+    if t == PUNCH_INFO:
+        return struct.pack('>IIBIHIH', f['session'], f['token'], f['flags'], f['paddr'], f['pport'], f['laddr'], f['lport'])
     if t == HASH:
         return struct.pack('>II', f['tick'], f['crc'])
     if t in (PING, PONG):
@@ -481,6 +495,10 @@ def _read_body(t, r):
             return f
         f['frames'] = [[r.frame() for _ in range(f['nodes'])] for _ in range(f['count'])]
         return f
+    if t == PUNCH_REG:
+        return dict(session=r.u32(), token=r.u32(), role=r.u8(), caps=r.u8(), laddr=r.u32(), lport=r.u16())
+    if t == PUNCH_INFO:
+        return dict(session=r.u32(), token=r.u32(), flags=r.u8(), paddr=r.u32(), pport=r.u16(), laddr=r.u32(), lport=r.u16())
     if t == HASH:
         return dict(tick=r.u32(), crc=r.u32())
     if t in (PING, PONG):

@@ -93,9 +93,11 @@ int partyRotateLeader(const RecordSet &rs) {
 	PartyMap &p = *rs.pParty;
 	const int iOld = p.ubLeader;
 	int iNew = -1;
-	for (int s = 1; s <= p.ubSize && iNew < 0; ++s) {
-		const int i = (iOld + s) % p.ubSize;
-		if ((int8_t)rs.rec(i).ubLives > 0) iNew = i;
+	for (int pass = 0; pass < 2 && iNew < 0; ++pass) {                // pass 0: humans only; pass 1: when no human is left alive, a computer knight
+		for (int s = 1; s <= p.ubSize && iNew < 0; ++s) {             // (the first human's pad then steers it, game/party.hpp partyHumanFor)
+			const int i = (iOld + s) % p.ubSize;
+			if ((int8_t)rs.rec(i).ubLives > 0 && (pass == 1 || !((p.ubComputer >> i) & 1))) iNew = i;   // a computer knight never leads while a human lives
+		}
 	}
 	if (iNew < 0 || iNew == iOld) return iOld;
 	partySyncMap(rs, iOld);                                           // the token stays where it is: everyone at the old leader's spot

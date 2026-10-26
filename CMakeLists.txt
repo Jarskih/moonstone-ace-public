@@ -70,7 +70,7 @@ list(FILTER MS_SOURCES EXCLUDE REGEX "/src/rt/sdl/")
 # ROADMAP 11.8: the Paula model and the module player are the PC's replacement for the hardware and for ptplayer; they use 64-bit
 # integer division (libgcc, not linked here) and are not used by the Amiga image.  ROADMAP 11.9: engine/pcinput (host keys, mouse counters,
 # pad sticks) is the PC input backend's pure half; the Amiga reads the hardware directly.
-list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/(paula|modplay|pcinput)[.]cpp$")
+list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/(paula|paulablep|modplay|outfilter|pcinput)[.]cpp$")
 # ROADMAP 11.6b/c: the copper interpreter and the sprite DMA model are the PC display's replacement for the chips; unused on the Amiga
 list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/(copper|sprites|dispframe)[.]cpp$")
 # ROADMAP 10.2a: the synth tables are original data; the game fills them at start-up (src/rt/origload.cpp). The old tracked copy
@@ -87,6 +87,17 @@ list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/synth_data[.]cpp$")
 # Moonstone 2 co-op (ROADMAP 8.2, docs/MOONSTONE2.md): ON offers "Players ... Coop 2 / 3 / 4" in the title menu; the game still starts
 # in classic mode (game/party.hpp g_party inactive) and classic stays bit-identical. OFF removes the menu step (g_party never on).
 option(MS_COOP "Moonstone 2 co-op mode selectable in the title menu (runtime default: classic)" ON)
+# ROADMAP 2.11a: network play (docs/NETPLAY.md) is ~100 KB of code plus its buffers, which a stock A1200 (2 MB chip, no fast RAM) cannot spare
+# next to the arenas (docs/MEMORY.md).  OFF (the default of this Amiga build): the net sources are not linked, the main menu has no MULTIPLAYER
+# row and the game is the one without network play; the lockstep hooks of rt/net_tick stay (they are a branch on a flag that never goes up).
+# ON: the netplay exe for machines with fast RAM (the PC build, cmake/sdl.cmake, always has it).
+option(MS_NET "Network play (Multiplayer row, lobby, lockstep session); needs fast RAM on the Amiga (docs/MEMORY.md)" OFF)
+if(NOT MS_NET)
+	list(FILTER MS_SOURCES EXCLUDE REGEX "/src/engine/net(browse|lobby|node|play|proto|rejoin|relay|room|stats|udp|wait|glue)[.]cpp$")
+	list(FILTER MS_SOURCES EXCLUDE REGEX "/src/rt/net(|_box|_find|_lobby|_rejoin|_relay|_session|_state|_stub|_world)[.]cpp$")
+	list(FILTER MS_SOURCES EXCLUDE REGEX "/src/rt/lobby_draw[.]cpp$")
+	list(FILTER MS_SOURCES EXCLUDE REGEX "/src/game/(net_[a-z]*|scene_lobby)[.]cpp$")
+endif()
 option(MS_ENHANCED "6-plane 64-colour display for the redrawn art (ROADMAP 4.8a, include/rt/enhanced.hpp)" OFF)
 # Rule mods are data, not build options: PROGDIR:mods/rules.ini (docs/MODDING.md; `[waves] scaling = none` replaced MS_MOD_NO_SCALING).
 # The "How to add a scene" example of docs/GAME_FLOW.md (ROADMAP 9.2a): a placeholder scene after the map's status sheet that
@@ -208,7 +219,7 @@ target_include_directories(${MS_EXECUTABLE} PRIVATE
 target_link_libraries(${MS_EXECUTABLE} ace)
 target_compile_definitions(${MS_EXECUTABLE} PRIVATE MS_DATA_COMPILED=$<BOOL:${MS_DATA_COMPILED}> MS_DATA_DUMP=$<BOOL:${MS_DATA_DUMP}>)
 target_compile_definitions(${MS_EXECUTABLE} PRIVATE MS_GAME_BUILD=1 MS_ENHANCED=$<BOOL:${MS_ENHANCED}> MS_SYNTH_ASM=$<BOOL:${MS_SYNTH_ASM}>)
-target_compile_definitions(${MS_EXECUTABLE} PRIVATE MS_COOP=$<BOOL:${MS_COOP}>)
+target_compile_definitions(${MS_EXECUTABLE} PRIVATE MS_COOP=$<BOOL:${MS_COOP}> MS_NET=$<BOOL:${MS_NET}>)
 if(MS_EXAMPLE_SCENE)
 	target_compile_definitions(${MS_EXECUTABLE} PRIVATE MS_EXAMPLE_SCENE=1)
 endif()

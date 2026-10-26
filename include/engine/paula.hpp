@@ -28,9 +28,18 @@
 //     level-4 handler).  Hooks::pfnMasterOn is the outer interrupt master of the platform (rt_irq_disable); with no pfnInterrupt the
 //     enabled requests are simply acknowledged (irqLevel4Default).
 //
-// Resampling: the chip output is a zero-order-hold staircase at Paula's own rate; each output frame is the AVERAGE of that staircase
-// over the frame's time span (a box filter), computed exactly in integers (so there is no rounding drift and no float).  An optional
-// one-pole low-pass (Config::uwLowPass, Q16 coefficient; the platform derives it from the A500 4.9 kHz / A1200 figures) follows.
+// Resampling: the chip output is a zero-order-hold staircase at Paula's own rate.  Two renderers turn it into output frames
+// (Config::ubRender), both computed in integers and both fed by the SAME chip-time loop (integrateFrame: the one owner of chip time, so
+// the interrupts the game hears are identical in both):
+//   * RENDER_BOX: each output frame is the AVERAGE of the staircase over the frame's time span (a box filter), exact (no rounding drift).
+//     Cheap and exact, but the staircase's spectrum above the Nyquist frequency folds back as aliasing.  The reference of the tests.
+//   * RENDER_BLEP: every step of the staircase (a channel's byte or volume change, at its exact chip time) is inserted into the output as
+//     a BAND-LIMITED step (a half-band Kaiser windowed-sinc step, 32 taps, engine/paulablep.hpp); between the steps the output is the
+//     held level.  This is the staircase low-passed at the Nyquist frequency and sampled, i.e. what an ideal resampler gives: no aliasing.
+//     The kernel is linear-phase, so the output lags the chip by kBlepDelay frames (0.33 ms at 48 kHz).  Level + residual form: once a
+//     step's kernel has passed, the output is exactly the held level (DC is exact).
+// An optional one-pole low-pass (Config::ulLowPass, Q16 coefficient) follows either renderer; the PC's A500 / A1200 output filters are the
+// separate post filter of engine/outfilter.
 //
 // Not modelled (the game never uses them, docs/PC_PORT.md): AUDxDAT writes (manual playback), ADKCON attach modulation (USE0V1.. bits
 // 0..7: stored and reported by adkModulationRequested, never applied), the LED filter, interrupt priority between channels, the one-word
@@ -87,12 +96,23 @@ struct Channel {
 	uint32_t ulCnt;                // words left in the buffer; 0 = the next fetch reloads
 	uint16_t uwWord;
 	uint64_t ullRem;               // chip time left of the byte in play, in 1 / ulRate clock ticks
+	int32_t lLevel;                // RENDER_BLEP: the output level (byte * volume) at the end of the last frame
 };
+
+enum Render : uint8_t {
+	RENDER_BOX = 0,                // exact box filter (what a zeroed Config gives; the reference of the tests)
+	RENDER_BLEP                    // band-limited steps
+};
+
+constexpr uint32_t kBlepDelay = 16;            // frames the BLEP output lags the chip (half the kernel)
+constexpr uint32_t kBlepRing = 64;             // residual ring size (a power of two above the kernel's 32 taps)
+constexpr uint32_t kMaxStepsPerFrame = 8;      // steps one channel can have in one frame (a byte outlasts a frame; extras merge into the last)
 
 struct Config {
 	uint32_t ulRate;               // output rate in Hz (48000)
 	uint8_t ubSeparation;          // 0..100; 100 = Amiga hard panning
 	uint32_t ulLowPass;            // one-pole coefficient, Q16: y += (x - y) * c >> 16; 0 = filter off
+	uint8_t ubRender;              // Render
 };
 
 struct Paula {
@@ -104,6 +124,8 @@ struct Paula {
 	uint16_t uwAdkcon;
 	Channel ch[kChannels];
 	int32_t lLpL, lLpR;            // low-pass state
+	uint32_t ulFrame;              // RENDER_BLEP: frames rendered so far (index of the frame being rendered)
+	int64_t allRing[2][kBlepRing]; // RENDER_BLEP: per side (left, right) the sums of the frames not yet emitted, Q24, scaled by 100
 };
 
 // The callbacks of render().  Either may be null.

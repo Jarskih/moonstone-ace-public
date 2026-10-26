@@ -334,12 +334,12 @@ bool timerSelfTest() {
 	const uint16_t uwEarly = platform::timerBeamLine();
 	SDL_Delay(4);
 	const uint16_t uwLater = platform::timerBeamLine();
-	isOk = check(uwEarly < 200 && uwLater > uwEarly && uwLater <= 312, "the beam advances with time (4 ms = 62 lines)") && isOk;
+	checkTiming(uwEarly < 200 && uwLater > uwEarly && uwLater <= 312, "the beam advances with time (4 ms = 62 lines)");
 	s_ulWhileWaiting = 0;
 	platform::timerWaitBeam(0x90, onWhileWaiting);
 	const uint16_t uwAfter = platform::timerBeamLine();
-	isOk = check((uwAfter >= 0x91 && uwAfter < 0x91 + 100) || uwAfter < 40, "timerWaitBeam(0x90) returns after the beam left line 0x90") && isOk;
-	isOk = check(s_ulWhileWaiting >= 1, "timerWaitBeam polls while it waits") && isOk;
+	checkTiming((uwAfter >= 0x91 && uwAfter < 0x91 + 100) || uwAfter < 40, "timerWaitBeam(0x90) returns after the beam left line 0x90");
+	checkTiming(s_ulWhileWaiting >= 1, "timerWaitBeam polls while it waits");
 
 	if(isOk) {
 		platform::logLine("timer self-test: ok\n");
@@ -378,6 +378,10 @@ uint16_t timerBeamVhposr() {
 	return static_cast<uint16_t>(((ulLine & 0xFF) << 8) | (ulPos % sdl::kColourClocks));
 }
 
+uint16_t timerBeamVposr() {
+	return static_cast<uint16_t>(timerBeamLine() >> 8);   // line bit 8 (VPOSR bit 0); no long-frame / chip-id bits
+}
+
 void timerWaitBeam(uint8_t ubLine, TickFn pfnWhileWaiting) {
 	sdl::ensureStarted();
 	if(sdl::s_state.isUnthrottled) {
@@ -393,6 +397,16 @@ void timerWaitBeam(uint8_t ubLine, TickFn pfnWhileWaiting) {
 	uint64_t ullTarget = sdl::s_state.ullFrameStart + (static_cast<uint64_t>(ubLine) + 1) * 2 * ullFrame / 625;
 	if(sdl::counterNow() >= ullTarget) {
 		ullTarget += ullFrame;
+	}
+	if(sdl::counterNow() >= ullTarget) {
+		// More than a frame behind (a network game waited for its peer: rt/net_session sleeps outside the pump): the loop below would not run,
+		// no boundary would ever be delivered, the frame start would stay stale and every later wait would return at once (the game then
+		// spins at full speed with a frozen frame counter).  Deliver what is due, which also re-bases the frame start, and aim again.
+		sdl::timerPump();
+		ullTarget = sdl::s_state.ullFrameStart + (static_cast<uint64_t>(ubLine) + 1) * 2 * ullFrame / 625;
+		if(sdl::counterNow() >= ullTarget) {
+			ullTarget += ullFrame;
+		}
 	}
 	while(sdl::counterNow() < ullTarget) {
 		if(pfnWhileWaiting != nullptr) {

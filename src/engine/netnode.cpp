@@ -517,13 +517,16 @@ void onSeed(NetNode &n, const NetSeed &s) {
 
 // ---- UDP: per-tick input in datagrams with history (12.21, NETPLAY.md 2.2) ------------------------------------------------------
 
-void pushUdpEvent(NetNode &n, uint8_t ubKind, uint8_t ubLink, uint8_t ubNode, uint8_t ubWhy) {
+void pushUdpEvent(NetNode &n, uint8_t ubKind, uint8_t ubLink, uint8_t ubNode, uint8_t ubWhy, const NetDgramPeer *pPeer = nullptr) {
 	if(n.udp.ubEvents < NN_UDP_EVENTS) {
 		NetUdpEventRec &e = n.udp.aEvent[n.udp.ubEvents++];
 		e.ubKind = ubKind;
 		e.ubLink = ubLink;
 		e.ubNode = ubNode;
 		e.ubWhy = ubWhy;
+		e.peer.ulAddr = pPeer ? pPeer->ulAddr : 0;
+		e.peer.uwPort = pPeer ? pPeer->uwPort : 0;
+		e.peer.isSet = pPeer != nullptr;
 	}
 }
 
@@ -561,13 +564,16 @@ void udpStart(NetNode &n, const NetIo &io, uint32_t ulNow) {
 			continue;
 		}
 		netUdpStart(l.udp, ulNow);
+		if(n.udp.isDirectWanted && l.udp.ulSession != 0) {   // only a relayed link has anything to punch through
+			netDirectStart(l.udp.dir, ulNow);
+		}
 	}
 }
 
 // The header and window of the next datagram for a link, encoded.
-uint32_t buildDatagram(const NetNode &n, uint8_t ubLink, const NetUdpPlan &plan, uint8_t *pOut, uint32_t ulCap) {
+uint32_t buildDatagram(const NetNode &n, uint8_t ubLink, const NetUdpPlan &plan, bool isDirect, uint8_t *pOut, uint32_t ulCap) {
 	const NetNodeLink &l = n.aLink[ubLink];
-	const uint8_t ubFlags = l.udp.isHeard ? NET_UDP_HEARS : 0;
+	const uint8_t ubFlags = netUdpFlags(l.udp, isDirect);
 	NetMsg m;
 	if(n.eRole == NN_CLIENT) {
 		netMsgInit(m, NET_MSG_INPUT_UDP);
@@ -621,6 +627,9 @@ void udpFlushLink(NetNode &n, NetIo &io, uint8_t ubLink, uint32_t ulNow) {
 	if(plan.isFellBack) {
 		pushUdpEvent(n, NUE_FALLBACK, ubLink, udpNodeOf(n, ubLink), l.udp.ubWhy);
 	}
+	if(plan.isDirectLost) {
+		pushUdpEvent(n, NUE_DIRECT_FAIL, ubLink, udpNodeOf(n, ubLink), NDW_LOST);
+	}
 	for(uint32_t t = plan.ulTcpFrom; t != plan.ulTcpTo; ++t) {
 		NetMsg m;
 		if(n.eRole == NN_CLIENT) {
@@ -644,15 +653,69 @@ void udpFlushLink(NetNode &n, NetIo &io, uint8_t ubLink, uint32_t ulNow) {
 	}
 	if(plan.isSend && io.pfnSendDgram) {
 		uint8_t aub[NET_MSG_MAX];
-		const uint32_t ulLen = buildDatagram(n, ubLink, plan, aub, sizeof aub);
+		const uint32_t ulLen = buildDatagram(n, ubLink, plan, plan.isDirect, aub, sizeof aub);
 		if(ulLen != 0) {
-			io.pfnSendDgram(io.pCtx, l.udp.peer, aub, ulLen);
+			io.pfnSendDgram(io.pCtx, plan.isDirect ? l.udp.dir.peer : l.udp.peer, aub, ulLen);
 			++n.udp.st.ulTx;
 			if(plan.isProbe) {
 				if(++n.udp.st.ulProbes == 1) {
 					pushUdpEvent(n, NUE_PROBE, ubLink, udpNodeOf(n, ubLink), 0);
 				}
 			}
+		}
+	}
+	if(plan.isRelayKeep && io.pfnSendDgram) {
+		NetUdpPlan keep = plan;
+		keep.isProbe = true;   // no frames: an ack alone
+		keep.ulFirst = producedTicks(n);
+		uint8_t aub[NET_MSG_MAX];
+		const uint32_t ulLen = buildDatagram(n, ubLink, keep, false, aub, sizeof aub);
+		if(ulLen != 0) {
+			io.pfnSendDgram(io.pCtx, l.udp.peer, aub, ulLen);
+			++n.udp.st.ulTx;
+		}
+	}
+}
+
+// The relay-assisted direct path of one link: PUNCH_REG to the relay while waiting for PUNCH_INFO, probes to the candidate addresses while punching.
+void directFlushLink(NetNode &n, NetIo &io, uint8_t ubLink, uint32_t ulNow) {
+	NetNodeLink &l = n.aLink[ubLink];
+	NetDirect &d = l.udp.dir;
+	if((d.eState < ND_REG || d.eState > ND_DIRECT) || !isLinkInSession(n, ubLink) || !io.pfnSendDgram) {
+		return;
+	}
+	NetDirectPlan dp;
+	netDirectPlan(d, ulNow, dp);
+	if(dp.isFailed) {
+		pushUdpEvent(n, NUE_DIRECT_FAIL, ubLink, udpNodeOf(n, ubLink), d.ubWhy);
+		return;
+	}
+	if(dp.isReg && l.udp.peer.isSet) {
+		NetMsg m;
+		netMsgInit(m, NET_MSG_PUNCH_REG);
+		m.u.punchReg.ulSession = l.udp.ulSession;
+		m.u.punchReg.ulToken = n.eRole == NN_CLIENT ? n.cfg.ulToken : n.aulToken[l.ubNode];
+		m.u.punchReg.ubRole = n.eRole == NN_CLIENT ? NET_ROLE_CLIENT : NET_ROLE_HOST;
+		m.u.punchReg.ubCaps = NET_PUNCH_CAP_DIRECT;
+		m.u.punchReg.ulLocalAddr = n.udp.local.isSet ? n.udp.local.ulAddr : 0;
+		m.u.punchReg.uwLocalPort = n.udp.local.isSet ? n.udp.local.uwPort : 0;
+		uint8_t aub[NET_MSG_MAX];
+		uint32_t ulUsed = 0;
+		if(netEncode(m, aub, sizeof aub, ulUsed) == NET_OK) {
+			io.pfnSendDgram(io.pCtx, l.udp.peer, aub, ulUsed);
+		}
+	}
+	if(dp.ubProbes != 0) {
+		NetUdpPlan probe;
+		probe.isSend = true;
+		probe.isProbe = true;
+		probe.ulFirst = producedTicks(n);
+		probe.ubCount = 0;
+		uint8_t aub[NET_MSG_MAX];
+		const uint32_t ulLen = buildDatagram(n, ubLink, probe, true, aub, sizeof aub);
+		for(uint8_t i = 0; ulLen != 0 && i < dp.ubProbes; ++i) {
+			io.pfnSendDgram(io.pCtx, dp.aTo[i], aub, ulLen);
+			++n.udp.st.ulTx;
 		}
 	}
 }
@@ -663,6 +726,7 @@ void udpFlush(NetNode &n, NetIo &io, uint32_t ulNow) {
 	}
 	for(uint8_t k = 0; k < NN_LINKS_MAX; ++k) {
 		udpFlushLink(n, io, k, ulNow);
+		directFlushLink(n, io, k, ulNow);
 	}
 }
 
@@ -687,6 +751,38 @@ bool fileUdpFrame(NetNode &n, NetNodeLink &l, uint8_t ubNode, uint32_t ulTick, c
 	return true;
 }
 
+// Test option (net.ini direct_test): a received direct datagram is dropped, always or after the link's direct path was up for a while.
+bool isDirectBlocked(const NetNode &n, const NetDirect &d, uint32_t ulNow) {
+	if(n.udp.ubDirectTest == NDT_BLOCK) {
+		return true;
+	}
+	return n.udp.ubDirectTest == NDT_KILL && d.ulDirectSince != 0 && ulNow - d.ulDirectSince >= n.udp.ulDirectKillMs;
+}
+
+// The relay's answer to PUNCH_REG: where the peer of the link is.  It must come from the relay address of that link and carry that link's token.  A repeated
+// PUNCH_INFO (the relay answers every PUNCH_REG) or one for a link that is not waiting for it is ignored.
+void onPunchInfo(NetNode &n, const NetDgramPeer &from, const NetPunchInfo &p, uint32_t ulNow) {
+	for(uint8_t k = 0; k < NN_LINKS_MAX; ++k) {
+		NetNodeLink &l = n.aLink[k];
+		if(!isLinkInSession(n, k) || l.udp.dir.eState != ND_REG || !l.udp.peer.isSet || l.udp.ulSession != p.ulSession) {
+			continue;
+		}
+		const uint32_t ulToken = n.eRole == NN_CLIENT ? n.cfg.ulToken : n.aulToken[l.ubNode];
+		if(ulToken != p.ulToken || from.ulAddr != l.udp.peer.ulAddr || from.uwPort != l.udp.peer.uwPort) {
+			continue;
+		}
+		NetDgramPeer sPublic;
+		sPublic.ulAddr = p.ulPubAddr;
+		sPublic.uwPort = p.uwPubPort;
+		sPublic.isSet = true;
+		netDirectOnInfo(l.udp.dir, ulNow, sPublic, (p.ubFlags & NET_PUNCH_INFO_LOCAL) != 0, p.ulLocalAddr, p.uwLocalPort);
+		if(l.udp.dir.eState == ND_RELAY) {
+			pushUdpEvent(n, NUE_DIRECT_FAIL, k, udpNodeOf(n, k), l.udp.dir.ubWhy);
+		}
+		return;
+	}
+}
+
 // Host: a client's INPUT_UDP.  It is for a link when node, token and session fit.
 void hostOnInputUdp(NetNode &n, NetIo &io, const NetDgramPeer &from, const NetInputUdp &u, uint32_t ulNow) {
 	int8_t iLink = -1;
@@ -702,9 +798,16 @@ void hostOnInputUdp(NetNode &n, NetIo &io, const NetDgramPeer &from, const NetIn
 		return;
 	}
 	NetNodeLink &l = n.aLink[iLink];
+	const bool isDirectDg = (u.ubFlags & NET_UDP_DIRECT) != 0;
+	if(isDirectDg && (u.ulSession == 0 || isDirectBlocked(n, l.udp.dir, ulNow))) {   // a direct game has no direct path; a relayed one may be under test
+		++(u.ulSession == 0 ? n.udp.st.ulBad : n.udp.st.ulDirectBlocked);
+		return;
+	}
 	l.ulLastRx = ulNow;
-	l.udp.peer = from;
-	l.udp.peer.isSet = true;
+	if(!isDirectDg) {
+		l.udp.peer = from;   // the relay's address (or a direct client's, learned from its first datagram)
+		l.udp.peer.isSet = true;
+	}
 	for(uint8_t i = 0; i < u.ubCount; ++i) {
 		if(!fileUdpFrame(n, l, u.ubNode, u.ulFirst + i, u.aFrames[i], i + 1 == u.ubCount, true)) {
 			return;
@@ -714,11 +817,14 @@ void hostOnInputUdp(NetNode &n, NetIo &io, const NetDgramPeer &from, const NetIn
 	if(netUdpOnDatagram(l.udp, ulNow, u.ubFlags, u.ulAck, n.ulNextBroadcast)) {
 		pushUdpEvent(n, NUE_OK, static_cast<uint8_t>(iLink), u.ubNode, 0);
 	}
+	if(isDirectDg && netDirectOnDatagram(l.udp.dir, ulNow, from, u.ubFlags)) {
+		pushUdpEvent(n, NUE_DIRECT_OK, static_cast<uint8_t>(iLink), u.ubNode, 0, &l.udp.dir.peer);
+	}
 	broadcast(n, io);
 }
 
 // Client: the host's TICK_UDP.  Ignored (and not counted as received) while a DROP the host sent before it has not arrived over TCP yet.
-void clientOnTickUdp(NetNode &n, const NetTickUdp &u, uint32_t ulNow) {
+void clientOnTickUdp(NetNode &n, const NetDgramPeer &from, const NetTickUdp &u, uint32_t ulNow) {
 	NetNodeLink &l = n.aLink[0];
 	if(!l.isUsed || u.ulToken != n.cfg.ulToken || u.ubNode != n.ubLocal || u.ubNodes != n.ubNodes || u.ulSession != n.udp.ulSession) {
 		++n.udp.st.ulBad;
@@ -726,6 +832,11 @@ void clientOnTickUdp(NetNode &n, const NetTickUdp &u, uint32_t ulNow) {
 	}
 	if(!netUdpDropSeqOk(u.ubDropSeq, n.ubDropSeq)) {
 		++n.udp.st.ulBad;
+		return;
+	}
+	const bool isDirectDg = (u.ubFlags & NET_UDP_DIRECT) != 0;
+	if(isDirectDg && (u.ulSession == 0 || isDirectBlocked(n, l.udp.dir, ulNow))) {
+		++(u.ulSession == 0 ? n.udp.st.ulBad : n.udp.st.ulDirectBlocked);
 		return;
 	}
 	l.ulLastRx = ulNow;
@@ -739,6 +850,9 @@ void clientOnTickUdp(NetNode &n, const NetTickUdp &u, uint32_t ulNow) {
 	++n.udp.st.ulRx;
 	if(netUdpOnDatagram(l.udp, ulNow, u.ubFlags, u.ulAck, n.ses.ulNextSend)) {
 		pushUdpEvent(n, NUE_OK, 0, n.ubLocal, 0);
+	}
+	if(isDirectDg && netDirectOnDatagram(l.udp.dir, ulNow, from, u.ubFlags)) {
+		pushUdpEvent(n, NUE_DIRECT_OK, 0, n.ubLocal, 0, &l.udp.dir.peer);
 	}
 }
 
@@ -764,7 +878,9 @@ void udpReceive(NetNode &n, NetIo &io, uint32_t ulNow) {
 		if(n.eRole == NN_HOST && m.ubType == NET_MSG_INPUT_UDP) {
 			hostOnInputUdp(n, io, from, m.u.inputUdp, ulNow);
 		} else if(n.eRole == NN_CLIENT && m.ubType == NET_MSG_TICK_UDP) {
-			clientOnTickUdp(n, m.u.tickUdp, ulNow);
+			clientOnTickUdp(n, from, m.u.tickUdp, ulNow);
+		} else if(m.ubType == NET_MSG_PUNCH_INFO) {
+			onPunchInfo(n, from, m.u.punchInfo, ulNow);
 		} else {
 			++n.udp.st.ulBad;
 		}
@@ -1452,6 +1568,25 @@ void netNodeUdpEnable(NetNode &n, uint32_t ulSession) {
 	n.udp.ulSession = ulSession;
 }
 
+void netNodeUdpSetDirect(NetNode &n, bool isWanted) {
+	n.udp.isDirectWanted = isWanted;
+}
+
+void netNodeUdpSetLocal(NetNode &n, uint32_t ulAddr, uint16_t uwPort) {
+	n.udp.local.ulAddr = ulAddr;
+	n.udp.local.uwPort = uwPort;
+	n.udp.local.isSet = ulAddr != 0 && uwPort != 0;
+}
+
+void netNodeUdpSetDirectTest(NetNode &n, uint8_t ubTest, uint32_t ulKillMs) {
+	n.udp.ubDirectTest = ubTest;
+	n.udp.ulDirectKillMs = ulKillMs;
+}
+
+bool netNodeLinkIsDirect(const NetNode &n, uint8_t ubLink) {
+	return ubLink < NN_LINKS_MAX && n.aLink[ubLink].udp.dir.eState == ND_DIRECT;
+}
+
 void netNodeUdpSetPeer(NetNode &n, uint8_t ubLink, uint32_t ulAddr, uint16_t uwPort, uint32_t ulSession) {
 	if(ubLink >= NN_LINKS_MAX) {
 		return;
@@ -1479,10 +1614,12 @@ void netNodeUdpStats(const NetNode &n, NetUdpStats &out) {
 	out = n.udp.st;
 	out.ubActive = 0;
 	out.ubTcp = 0;
+	out.ubDirect = 0;
 	for(uint8_t k = 0; k < NN_LINKS_MAX; ++k) {
 		if(isLinkInSession(n, k)) {
 			out.ubActive = static_cast<uint8_t>(out.ubActive + (n.aLink[k].udp.eState == NU_ACTIVE ? 1 : 0));
 			out.ubTcp = static_cast<uint8_t>(out.ubTcp + (n.aLink[k].udp.eState == NU_TCP ? 1 : 0));
+			out.ubDirect = static_cast<uint8_t>(out.ubDirect + (n.aLink[k].udp.dir.eState == ND_DIRECT ? 1 : 0));
 		}
 	}
 }

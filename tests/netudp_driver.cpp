@@ -5,6 +5,8 @@
 //   ack         netUdpOnDatagram: the peer's ack only moves forward and never beyond what was produced, the floor, an inert TCP link
 //   held        netUdpHeldTicks / netUdpHeldInputs on a real session: contiguous, bounded by the ring, a dropped node pins the ack to the current tick
 //   dropseq     the DROP sequence guard with wrap-around
+//   direct      the relay-assisted direct path (NETPLAY.md 2.2b): REG -> PUNCH -> DIRECT, candidates, local preference, the stall back to the relay, the budgets,
+//               and two links over a channel that passes or blocks direct datagrams
 //   channel     two endpoints over a lossy channel (every 2nd lost, bursts, random loss with duplicates and reordering, a gap beyond the history, a black
 //               hole): every tick arrives, the acks never claim more than is held, no tick is sent over TCP unless it had to be
 #include <stdio.h>
@@ -591,7 +593,271 @@ static void testChannel() {
 	check(r.eStateA == NU_TCP && r.ubWhyA == NUW_LOSS && r.eStateB == NU_TCP && r.ubWhyB == NUW_LOSS, "a black hole after 60 ticks: both ends revert (loss streak)");
 }
 
+// ---- direct --------------------------------------------------------------------------------------------------------------------
+static NetDgramPeer at(uint32_t ulAddr, uint16_t uwPort) {
+	NetDgramPeer p;
+	p.ulAddr = ulAddr;
+	p.uwPort = uwPort;
+	p.isSet = true;
+	return p;
+}
+
+static void testDirectMachine() {
+	NetDirect d;
+	NetDirectPlan p;
+	uint32_t now = 1000;
+	memset(&d, 0, sizeof d);
+	netDirectPlan(d, now, p);
+	check(!p.isReg && p.ubProbes == 0 && !p.isFailed, "OFF: nothing to do");
+	netDirectStart(d, now);
+	check(d.eState == ND_REG, "REG after start");
+	netDirectPlan(d, now, p);
+	check(p.isReg && p.ubProbes == 0, "REG: the first PUNCH_REG goes at once");
+	now += NU_PUNCH_REG_MS - 1;
+	netDirectPlan(d, now, p);
+	check(!p.isReg, "REG: not repeated early");
+	now += 1;
+	netDirectPlan(d, now, p);
+	check(p.isReg, "REG: repeated every NU_PUNCH_REG_MS");
+	// PUNCH_INFO with a LAN address
+	netDirectOnInfo(d, now, at(0x5DB8D822, 40001), true, 0xC0A80115, 6502);
+	check(d.eState == ND_PUNCH && d.sPublic.isSet && d.sLocal.isSet, "INFO: PUNCH with both candidates");
+	netDirectOnInfo(d, now, at(1, 2), false, 0, 0);
+	check(d.sPublic.ulAddr == 0x5DB8D822, "a repeated INFO changes nothing");
+	netDirectPlan(d, now, p);
+	check(p.ubProbes == 2 && p.aTo[0].ulAddr == 0xC0A80115 && p.aTo[1].ulAddr == 0x5DB8D822, "PUNCH: the first probe goes at once, local first");
+	netDirectPlan(d, now + NU_PUNCH_PROBE_MS - 1, p);
+	check(p.ubProbes == 0, "PUNCH: probes every NU_PUNCH_PROBE_MS");
+	now += NU_PUNCH_PROBE_MS;
+	netDirectPlan(d, now, p);
+	check(p.ubProbes == 2, "PUNCH: next probe");
+	// a datagram without DHEARS: heard, reply at once, not complete
+	check(!netDirectOnDatagram(d, now, at(0x5DB8D822, 40001), NET_UDP_DIRECT), "no completion without DHEARS");
+	check(d.isHeard && d.peer.uwPort == 40001 && !d.isPeerLocal, "the public source is the peer for now");
+	netDirectPlan(d, now + 1, p);
+	check(p.ubProbes == 2, "a heard datagram is answered at once");
+	// the local candidate wins over the public one
+	check(!netDirectOnDatagram(d, now + 2, at(0xC0A80115, 6502), NET_UDP_DIRECT), "still no completion");
+	check(d.isPeerLocal && d.peer.ulAddr == 0xC0A80115, "the LAN source replaces the public one");
+	check(netDirectOnDatagram(d, now + 3, at(0xC0A80115, 6502), NET_UDP_DIRECT | NET_UDP_DHEARS), "DHEARS completes");
+	check(d.eState == ND_DIRECT && d.peer.ulAddr == 0xC0A80115, "DIRECT, via the LAN address");
+	check(!netDirectOnDatagram(d, now + 4, at(0x5DB8D822, 40001), NET_UDP_DIRECT | NET_UDP_DHEARS), "no second completion");
+	check(d.peer.ulAddr == 0xC0A80115, "a public datagram never replaces the LAN peer");
+	netDirectPlan(d, now + 5, p);
+	check(p.ubProbes == 1 && p.aTo[0].ulAddr == 0xC0A80115, "after completion one datagram tells the peer (reply due)");
+	netDirectPlan(d, now + 6, p);
+	check(p.ubProbes == 0, "... once");
+	check(!netDirectOnDatagram(d, now + 7, at(0xC0A80115, 6502), NET_UDP_DIRECT), "DIRECT: a peer that has not completed yet");
+	netDirectPlan(d, now + 8, p);
+	check(p.ubProbes == 1, "... is told again");
+	netDirectFail(d, NDW_LOST);
+	check(d.eState == ND_RELAY && d.ubWhy == NDW_LOST, "fail: RELAY for good");
+	check(!netDirectOnDatagram(d, now + 9, at(0xC0A80115, 6502), NET_UDP_DIRECT | NET_UDP_DHEARS) && d.eState == ND_RELAY, "RELAY: nothing brings it back");
+
+	// the budgets (pump time: a long gap counts NU_PUMP_GAP_MAX_MS)
+	memset(&d, 0, sizeof d);
+	now = 5000;
+	netDirectStart(d, now);
+	bool isFailed = false;
+	uint32_t ulMs = 0;
+	while(!isFailed && ulMs < 20000) {
+		now += 100;
+		ulMs += 100;
+		netDirectPlan(d, now, p);
+		isFailed = p.isFailed;
+	}
+	check(isFailed && d.ubWhy == NDW_NO_INFO && ulMs >= NU_PUNCH_INFO_GIVEUP_MS && ulMs <= NU_PUNCH_INFO_GIVEUP_MS + 200, "no PUNCH_INFO: gives up after NU_PUNCH_INFO_GIVEUP_MS");
+	memset(&d, 0, sizeof d);
+	netDirectStart(d, now);
+	netDirectOnInfo(d, now, at(5, 6), false, 0, 0);
+	check(d.eState == ND_PUNCH && !d.sLocal.isSet, "INFO without the local flag: public only");
+	netDirectPlan(d, now, p);
+	check(p.ubProbes == 1 && p.aTo[0].ulAddr == 5, "only the public candidate is probed");
+	now += 100000;   // a scene load: counts NU_PUMP_GAP_MAX_MS
+	netDirectPlan(d, now, p);
+	check(!p.isFailed, "a long gap is no time spent");
+	isFailed = false;
+	ulMs = 0;
+	while(!isFailed && ulMs < 20000) {
+		now += 100;
+		ulMs += 100;
+		netDirectPlan(d, now, p);
+		isFailed = p.isFailed;
+	}
+	check(isFailed && d.ubWhy == NDW_NO_ANSWER && ulMs <= NU_PUNCH_GIVEUP_MS, "no answer: gives up after NU_PUNCH_GIVEUP_MS");
+	// candidates that are the same address count once; an unusable INFO fails at once
+	memset(&d, 0, sizeof d);
+	netDirectStart(d, now);
+	netDirectOnInfo(d, now, at(0x7F000001, 5000), true, 0x7F000001, 5000);
+	netDirectPlan(d, now, p);
+	check(p.ubProbes == 1, "local = public (loopback): one candidate");
+	memset(&d, 0, sizeof d);
+	netDirectStart(d, now);
+	netDirectOnInfo(d, now, at(0, 0), false, 0, 0);
+	check(d.eState == ND_RELAY && d.ubWhy == NDW_NO_INFO, "INFO without any usable address: via the relay");
+	// the peer's source differs from what the relay saw (a NAT that picked another port): it is probed as well
+	memset(&d, 0, sizeof d);
+	netDirectStart(d, now);
+	netDirectOnInfo(d, now, at(9, 1000), false, 0, 0);
+	netDirectOnDatagram(d, now, at(9, 1234), NET_UDP_DIRECT);
+	netDirectPlan(d, now + 1, p);
+	check(p.ubProbes == 2 && p.aTo[1].uwPort == 1234, "a remapped source port is answered");
+	// a datagram before INFO is remembered
+	memset(&d, 0, sizeof d);
+	netDirectStart(d, now);
+	check(!netDirectOnDatagram(d, now, at(9, 1000), NET_UDP_DIRECT) && d.isHeard && d.eState == ND_REG, "a direct datagram before INFO: heard, not complete");
+	// flags
+	NetUdpLink u;
+	netUdpLinkInit(u);
+	check(netUdpFlags(u, false) == 0 && netUdpFlags(u, true) == NET_UDP_DIRECT, "flags: nothing heard");
+	u.isHeard = true;
+	check(netUdpFlags(u, false) == NET_UDP_HEARS && netUdpFlags(u, true) == (NET_UDP_HEARS | NET_UDP_DIRECT), "flags: HEARS");
+	u.dir.isHeard = true;
+	check(netUdpFlags(u, false) == NET_UDP_HEARS && netUdpFlags(u, true) == (NET_UDP_HEARS | NET_UDP_DIRECT | NET_UDP_DHEARS), "flags: DHEARS only on the direct path");
+}
+
+// The link plan with a direct path: where the datagram goes, the relay keep-alive, the stall back to the relay.
+static void testDirectPlan() {
+	NetUdpLink u;
+	NetUdpPlan q;
+	uint32_t now = 1000;
+	activeLink(u, now, 100);
+	u.ulSession = 77;
+	netDirectStart(u.dir, now);
+	netDirectOnInfo(u.dir, now, at(5, 6), false, 0, 0);
+	check(netDirectOnDatagram(u.dir, now, at(5, 6), NET_UDP_DIRECT | NET_UDP_DHEARS), "link: direct up");
+	netUdpPlan(u, now, 101, 0, 0, q);
+	check(q.isSend && q.isDirect && !q.isRelayKeep, "a new tick goes the direct path");
+	check(netUdpFlags(u, q.isDirect) & NET_UDP_DIRECT, "... with the DIRECT flag");
+	// keep-alive of the relay path while quiet: the direct keep-alive (ack-only) and the relay's, each every NU_KEEPALIVE_MS
+	uint32_t ulRelayKeeps = 0, ulDirectKeeps = 0;
+	for(uint32_t t = 0; t < 12000; t += 50) {
+		now += 50;
+		netUdpPlan(u, now, 101, 0, 0, q);
+		ulRelayKeeps += q.isRelayKeep ? 1 : 0;
+		ulDirectKeeps += q.isSend && q.isDirect ? 1 : 0;
+		u.ulPeerAck = 101;   // the peer holds everything
+	}
+	check(ulRelayKeeps >= 2 && ulRelayKeeps <= 3, "the relay path gets a keep-alive every 4 s while direct");
+	check(ulDirectKeeps >= 2 && ulDirectKeeps <= 4, "the direct path its own");
+	// a stall on the direct path: after NU_DIRECT_STALL_MS the datagrams go via the relay, with the relay's own loss budget
+	uint32_t ulProduced = 101;
+	bool isLost = false;
+	uint32_t ulMs = 0;
+	++ulProduced;
+	for(; ulMs < 3000 && !isLost; ulMs += 20) {
+		now += 20;
+		netUdpPlan(u, now, ulProduced, 0, 0, q);
+		isLost = q.isDirectLost;
+	}
+	check(isLost && ulMs >= NU_DIRECT_STALL_MS - 20 && ulMs <= NU_DIRECT_STALL_MS + 100, "unacked ticks on the direct path: back to the relay after NU_DIRECT_STALL_MS");
+	check(u.dir.eState == ND_RELAY && u.dir.ubWhy == NDW_LOST && u.eState == NU_ACTIVE, "... the link itself stays ACTIVE");
+	now += 20;
+	netUdpPlan(u, now, ulProduced, 0, 0, q);
+	check(!q.isDirect && !q.isRelayKeep, "now the datagrams go via the relay");
+	check(u.ulStuckMs < 100, "the relay path starts a fresh loss budget");
+	// ... which falls back to TCP only after NU_LOSS_MS more
+	bool isTcp = false;
+	for(ulMs = 0; ulMs < 8000 && !isTcp; ulMs += 20) {
+		now += 20;
+		netUdpPlan(u, now, ulProduced, 0, 0, q);
+		isTcp = q.isFellBack;
+	}
+	check(isTcp && ulMs >= NU_LOSS_MS - 300 && u.eState == NU_TCP, "the relay path's own fallback to TCP stays as it was");
+
+	// acks keep a direct path alive: with the peer acknowledging, the stall clock never reaches the limit
+	activeLink(u, now, 100);
+	u.ulSession = 77;
+	netDirectStart(u.dir, now);
+	netDirectOnInfo(u.dir, now, at(5, 6), false, 0, 0);
+	netDirectOnDatagram(u.dir, now, at(5, 6), NET_UDP_DIRECT | NET_UDP_DHEARS);
+	ulProduced = 100;
+	bool isEverLost = false;
+	for(uint32_t t = 0; t < 20000; t += 20) {
+		now += 20;
+		if(t % 40 == 0) {
+			++ulProduced;
+		}
+		netUdpPlan(u, now, ulProduced, 0, 0, q);
+		isEverLost = isEverLost || q.isDirectLost;
+		if(t % 60 == 0) {
+			netUdpOnDatagram(u, now, NET_UDP_HEARS | NET_UDP_DIRECT, ulProduced, ulProduced);   // an ack every 60 ms
+		}
+	}
+	check(!isEverLost && u.dir.eState == ND_DIRECT, "a path whose acks come stays direct");
+	// a link that falls back to TCP stops punching
+	netUdpFallback(u, NUW_LOSS);
+	check(u.dir.eState == ND_OFF, "TCP fallback of the link: no direct path");
+}
+
+// Two links over a channel: the datagrams of the direct path pass or are blocked at B (the test option).  Both ends must agree on the outcome.
+static void testDirectPair() {
+	for(int iBlock = 0; iBlock < 2; ++iBlock) {
+		NetUdpLink a, b;
+		uint32_t now = 1000;
+		netUdpLinkInit(a);
+		netUdpLinkInit(b);
+		a.peer = at(100, 6510);
+		b.peer = at(100, 6510);
+		a.ulSession = b.ulSession = 5;
+		netUdpStart(a, now);
+		netUdpStart(b, now);
+		netDirectStart(a.dir, now);
+		netDirectStart(b.dir, now);
+		uint32_t ulProduced = 0;
+		bool isInfoA = false, isInfoB = false;
+		for(int ms = 0; ms < 12000; ms += 10) {
+			now += 10;
+			if(ms % 100 == 0) {
+				++ulProduced;
+			}
+			if(ms == 300 && !isInfoA) {   // the relay answers both once both registered
+				netDirectOnInfo(a.dir, now, at(2, 2000), false, 0, 0);
+				netDirectOnInfo(b.dir, now, at(1, 1000), false, 0, 0);
+				isInfoA = isInfoB = true;
+			}
+			NetUdpLink *aE[2] = {&a, &b};
+			for(int i = 0; i < 2; ++i) {
+				NetUdpLink &me = *aE[i];
+				NetUdpLink &other = *aE[1 - i];
+				NetUdpPlan q;
+				netUdpPlan(me, now, ulProduced, 0, 0, q);
+				NetDirectPlan dp;
+				netDirectPlan(me.dir, now, dp);
+				if(q.isSend) {
+					const uint8_t ubFlags = netUdpFlags(me, q.isDirect);
+					const bool isDirectDg = (ubFlags & NET_UDP_DIRECT) != 0;
+					if(!(isDirectDg && i == 0 && iBlock == 1)) {   // direct datagrams to B are blocked in run 1
+						other.isHeard = true;
+						netUdpOnDatagram(other, now, ubFlags, ulProduced, ulProduced);
+						if(isDirectDg) {
+							netDirectOnDatagram(other.dir, now, at(i == 0 ? 1 : 2, i == 0 ? 1000 : 2000), ubFlags);
+						}
+					}
+				}
+				for(uint8_t k = 0; k < dp.ubProbes; ++k) {
+					const uint8_t ubFlags = netUdpFlags(me, true);
+					if(!(i == 0 && iBlock == 1)) {
+						other.isHeard = true;
+						netDirectOnDatagram(other.dir, now, at(i == 0 ? 1 : 2, i == 0 ? 1000 : 2000), ubFlags);
+					}
+				}
+			}
+		}
+		if(iBlock == 0) {
+			check(a.dir.eState == ND_DIRECT && b.dir.eState == ND_DIRECT, "pair: both ends complete the direct handshake");
+		} else {
+			check(a.dir.eState == ND_RELAY && b.dir.eState == ND_RELAY && a.dir.ubWhy == NDW_NO_ANSWER && b.dir.ubWhy == NDW_NO_ANSWER,
+				"pair, direct blocked toward B: both ends give up (no answer) and stay on the relay");
+		}
+		check(a.eState == NU_ACTIVE && b.eState == NU_ACTIVE, iBlock ? "pair: the relay UDP links stay active when direct fails" : "pair: the links stay active");
+	}
+}
+
 int main() {
+	testDirectMachine();
+	testDirectPlan();
+	testDirectPair();
 	testPlan();
 	testBeyondHistory();
 	testEscalation();

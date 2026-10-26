@@ -131,11 +131,21 @@ DEFAULT_BOOT_SPEED = 'warp'
 BOOT_INSTANCE = int(os.environ.get('MS_BOOT_INSTANCE', '3'))   # uaeshot.ps1 -Instance: own config copy + log, kills only its own WinUAE; parallel worktrees set their own number
 
 
-def ensure_autoplay_build(adir=AUTOPLAY_DIR, btype='Debug'):
-    """Configure adir if needed (flags copied from build-game-debug's cache + -DMS_AUTOPLAY=ON, build type btype). -> error text or ''."""
+def ensure_autoplay_build(adir=AUTOPLAY_DIR, btype='Debug', net=None):
+    """Configure adir if needed (flags copied from build-game-debug's cache + -DMS_AUTOPLAY=ON, build type btype). -> error text or ''.
+    net (ROADMAP 2.11a): MS_NET of the tree.  Default: ON for the Debug leg (it boots with 4 MB fast RAM, and the network scripts tests/boot/net_*.txt,
+    play_net*.txt need it), OFF for the Release leg (the stock A1200 build, which has no network play).  An existing tree with the other value is reconfigured."""
     d = os.path.join(ROOT, adir)
-    if os.path.exists(os.path.join(d, 'CMakeCache.txt')):
-        return ''
+    if net is None:
+        net = btype == 'Debug'
+    want = 'ON' if net else 'OFF'
+    cache_path = os.path.join(d, 'CMakeCache.txt')
+    if os.path.exists(cache_path):
+        have = re.search(r'^MS_NET:\w+=(\w+)', open(cache_path, encoding='utf-8', errors='replace').read(), re.M)
+        if (have.group(1) if have else 'OFF') == want:
+            return ''
+        rc, out, _ = run(['cmake', '-S', ROOT, '-B', d, '-DMS_NET=' + want], 'reconfigure_' + adir.replace('-', '_'))
+        return '' if rc == 0 else tail(out, 15)
     cache = os.path.join(ROOT, 'build-game-debug', 'CMakeCache.txt')
     if not os.path.exists(cache):
         return 'build-game-debug is not configured (py tools/worktree_setup.py --here, or BUILD.md): no flags to copy'
@@ -144,7 +154,7 @@ def ensure_autoplay_build(adir=AUTOPLAY_DIR, btype='Debug'):
     cmd = ['cmake', '-S', ROOT, '-B', d, '-G', 'Ninja', '-DCMAKE_TOOLCHAIN_FILE=' + g('CMAKE_TOOLCHAIN_FILE'),
            '-DTOOLCHAIN_PREFIX=' + g('TOOLCHAIN_PREFIX'), '-DTOOLCHAIN_PATH=' + g('TOOLCHAIN_PATH'),
            '-DM68K_CPU=' + g('M68K_CPU'), '-DCMAKE_BUILD_TYPE=' + btype, '-DACE_PATH=' + g('ACE_PATH'),
-           '-DMS_VASM=' + g('MS_VASM'), '-DMS_AUTOPLAY=ON']
+           '-DMS_VASM=' + g('MS_VASM'), '-DMS_AUTOPLAY=ON', '-DMS_NET=' + want]
     rc, out, _ = run(cmd, 'configure_' + adir.replace('-', '_'))
     return '' if rc == 0 else tail(out, 15)
 

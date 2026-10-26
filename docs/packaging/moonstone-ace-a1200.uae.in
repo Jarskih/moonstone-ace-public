@@ -1,6 +1,6 @@
-config_description=Moonstone ACE @VERSION@ - A1200 (68020, AGA, 2MB chip + 8MB fast, bsdsocket), DH0 = the Moonstone drawer
+config_description=Moonstone ACE @VERSION@ - @UAE_DESC@, DH0 = the Moonstone drawer
 
-; A1200: 68020, AGA, PAL, 2MB chip RAM, 8MB fast RAM (an accelerator; the game also runs with none)
+; A1200: 68020, AGA, PAL, 2MB chip RAM, fast RAM as the description says (an accelerator)
 cpu_model=68020
 cpu_24bit_addressing=false
 cpu_compatible=false
@@ -9,13 +9,13 @@ ntsc=false
 chipmem_size=4
 bogomem_size=0
 fastmem_size=0
-z3mem_size=8
+z3mem_size=@Z3MEM@
 
 ; YOUR Kickstart 3.1 ROM for the A1200 (start-winuae.bat fills this in from %KICKSTART%)
 kickstart_rom_file=Kickstart v3.1 r40.068 (1993-12)(Commodore)(A1200)[!].rom
 
-; TCP/IP without installing a stack: WinUAE provides bsdsocket.library on the host's sockets (network play)
-bsdsocket_emu=true
+; TCP/IP without installing a stack: WinUAE provides bsdsocket.library on the host's sockets (network play, the netplay build only)
+bsdsocket_emu=@BSDSOCKET@
 
 ; the Moonstone drawer of this package as a bootable hard drive (its s/startup-sequence starts the game);
 ; start-winuae.bat replaces the path with the folder it lives in

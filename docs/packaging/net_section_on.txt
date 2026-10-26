@@ -1,0 +1,39 @@
+Network play (new in this version)
+----------------------------------
+Two to four players, over a LAN or the internet, in the classic game and in co-op.  All
+machines run the same game and only the controllers' input travels, so every machine must
+run exactly this version with the same three disks.
+
+You need a TCP/IP stack that provides bsdsocket.library: Roadshow, AmiTCP, Miami or Genesis
+started before the game, or WinUAE with "bsdsocket.library emulation" on (the supplied
+WinUAE config has it on).  Nothing else is installed.
+
+  - On the title menu choose MULTIPLAYER.
+  - HOST GAME opens a lobby (the knight-select screen); the host presses START when the
+    others have joined and everybody has picked a knight.
+  - CONNECT: type the host's address.  FIND GAME lists public games from the lobby server.
+  - Ports: a direct game uses port 6502, TCP and UDP.  To host over the internet forward
+    6502 TCP and 6502 UDP to your machine.  UDP carries the input with a history (so lost
+    packets cost nothing); if it does not get through the game falls back to TCP by itself.
+  - The lobby / relay server: moonstone.shatteredallegiance.com, TCP port 6510 (and UDP 6510
+    for the relay).  A public game is listed there; if you cannot be reached directly
+    (router, firewall) the server relays the game, so nobody has to forward a port.
+  - A dropped player is replaced by the computer (classic) or by the host's controller
+    (co-op) and can REJOIN from the same menu.
+  - A network game shows a ping / loss line; F10 switches it off and on.
+
+PROGDIR:net.ini  (written by the game; you may edit it)
+    [net]
+    name = "PLAYER"            your name in the lobby
+    address = "192.168.1.20"   the last address you connected to
+    port = 6502                the game port for direct play
+    public = yes               list a hosted game on the lobby server (yes / no)
+    lobby = "name"             another lobby server (default moonstone.shatteredallegiance.com)
+    lobby_port = 6510          its port
+    udp = yes                  no = TCP only
+    stats = yes                no = hide the ping / loss line
+
+Command line / Tool types (optional):
+    moonstone HOST                   host straight away
+    moonstone JOIN 192.168.1.20      connect straight away      (also PORT n, NAME x, DELAY n, TCP)
+

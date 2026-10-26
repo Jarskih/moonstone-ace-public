@@ -122,6 +122,32 @@ __attribute__((optimize("no-tree-loop-distribute-patterns"))) void copyBytes(UBY
 
 const ms::SceneHost &host();  // s_host, defined below the callbacks it lists
 
+#if defined(MS_PLATFORM_SDL)
+// The credit pages of the loader (the "created by" cel and the six text pages) are drawn in white and then fade, over the 30 ticks of
+// the palette machine (15 steps of 2: the outline fades to black, the face to the cream shades), to their own colours while the loader
+// reads the next file from the floppy.  On the PC a file read takes no time, so the next page's white flash started in the same vblank
+// and the credits only ever showed their white state.  Give the page the time the floppy gave it: the fade, then a short hold.
+constexpr ULONG kCreditFadeTicks = 30;
+constexpr ULONG kCreditHoldTicks = 30;
+
+void creditPageSettle() {
+	rt::displayWaitFrames(kCreditFadeTicks + kCreditHoldTicks);   // the intro skip polls in the wait
+}
+#endif
+
+// LAB_05A0 / LAB_05A1: the steps that draw a text page.  The later 05A1 calls (cel loads) only fade, they get no dwell.
+void loadTextStep(uint8_t ubStep) {
+#if defined(MS_PLATFORM_SDL)
+	const uint32_t ulPage = host().pfnGet(nullptr, ms::sceneId::kPage, 16);
+	ms::sceneLoadStep(host(), ubStep);
+	if(host().pfnGet(nullptr, ms::sceneId::kPage, 16) != ulPage) {
+		creditPageSettle();
+	}
+#else
+	ms::sceneLoadStep(host(), ubStep);
+#endif
+}
+
 ULONG hostCall(void *, ms::SceneFn fn, const ms::SceneRegs &r) {
 	switch(fn) {
 		case ms::FnJobsSpawn:
@@ -141,9 +167,14 @@ ULONG hostCall(void *, ms::SceneFn fn, const ms::SceneRegs &r) {
 		case ms::FnPrepare: ms::scenePrepare(host()); return 0;
 		case ms::FnPalSet: ms::scenePalSet(host(), r.a0); return 0;
 		case ms::FnLoad059E: ms::sceneLoadStep(host(), 0); return 0;
-		case ms::FnLoad059F: ms::sceneLoadStep(host(), 1); return 0;
-		case ms::FnLoad05A0: ms::sceneLoadStep(host(), 2); return 0;
-		case ms::FnLoad05A1: ms::sceneLoadStep(host(), 3); return 0;
+		case ms::FnLoad059F:
+			ms::sceneLoadStep(host(), 1);
+#if defined(MS_PLATFORM_SDL)
+			creditPageSettle();   // the "created by" cel
+#endif
+			return 0;
+		case ms::FnLoad05A0: loadTextStep(2); return 0;
+		case ms::FnLoad05A1: loadTextStep(3); return 0;
 		case ms::FnLoadingA: ms::sceneLoadingA(host()); return 0;
 		case ms::FnLoadingB: ms::sceneLoadingB(host()); return 0;
 		case ms::FnBlackout: rtPrgBlackout(); return 0;

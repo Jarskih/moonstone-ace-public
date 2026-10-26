@@ -12,8 +12,8 @@ namespace sdl {
 
 namespace {
 
-constexpr uint32_t kMaxWidth = 1024;
-constexpr uint32_t kMaxHeight = 768;
+constexpr uint32_t kMaxWidth = 2560;
+constexpr uint32_t kMaxHeight = 1600;
 constexpr uint32_t kStoredBlock = 65535;
 
 uint8_t s_aubRaw[(kMaxWidth * 3 + 1) * kMaxHeight];   // filtered scanlines, input of the zlib stream

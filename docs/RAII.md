@@ -73,6 +73,7 @@ The pair spans calls, callbacks or a non-local exit, so no scope holds it.
 | `rt/game.cpp` imageEnter | overlay DATA snapshot `memAllocFast` / the loop of `memFree` after the overlay loop | static `OverlayDef`, allocated at the first entry of an overlay and used by later entries |
 | `rt/crash.cpp` rt_crash_c | `systemUse`, log `Open` | the exception reporter never returns (loops in `Delay`) |
 | `rt/enhanced.cpp` enhancedEnable / enhancedDisable (the seam is `rt/chipalloc.hpp`) | 7-plane temp buffer (`memAllocChipClear` / `memFree`) | owned by the display lifetime (`displayAceActivate` / `displayAceRelease`), static |
+| `rt/chipalloc.hpp` chipAlloc (the third raw call of that seam, `memAlloc(MEMF_CHIP)`, not cleared) | the KN1..KN3 knight colour blocks of `rt/knight_colours.cpp` | held by `rt::ChipBlock` (the guard) in static storage, released by its owner |
 | `rt/display_ace.cpp` displayAceActivate / Release | ACE view, vport, buffer, bitmaps | `s_ace` state with its own create / destroy pair, released by `displayAceRelease` on every failure path |
 | `rt/irq.cpp` irqInstall / irqRemove (`systemSetInt`) | interrupt vectors | installed at the overlay start, removed at the end, across the whole game; owner is the irq module state |
 | `rt/files.cpp` s_fh, s_logFh, tryOpen | the single file slot, `files.log`, the stub handle of the kn1.ob search | the file layer owns the handles that outlive a call; `rt::FileHandle` is the typed view of the slot, `rt_file_shutdown` (FileSession) closes it |

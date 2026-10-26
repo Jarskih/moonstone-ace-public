@@ -263,6 +263,18 @@ static void testIni() {
 	NetConfig ud2; netConfigDefaults(ud2); netConfigLoad(ud2, ini10, sizeof(ini10) - 1); CHECK(ud2.bUdp);
 	n = netConfigSave(ud, ini9, sizeof(ini9) - 1, out, sizeof out); out[n] = 0;
 	CHECK(strstr(out, "udp = no\n") != nullptr);
+	// direct = yes|no and the test options (NETPLAY.md 2.2b): the relay-assisted direct path is on by default, read only
+	NetConfig di; netConfigDefaults(di);
+	CHECK(di.bDirect && di.ubDirectTest == 0 && di.ulDirectKillMs == 0);
+	const char ini13[] = "[net]\ndirect = no\ndirect_test = kill\ndirect_kill_ms = 8000\n";
+	netConfigLoad(di, ini13, sizeof(ini13) - 1);
+	CHECK(!di.bDirect && di.ubDirectTest == 2 && di.ulDirectKillMs == 8000);
+	const char ini14[] = "[net]\ndirect_test = block\ndirect_kill_ms = 99999999\ndirect = perhaps\n";
+	NetConfig di2; netConfigDefaults(di2); netConfigLoad(di2, ini14, sizeof(ini14) - 1);
+	CHECK(di2.bDirect && di2.ubDirectTest == 1 && di2.ulDirectKillMs == 0);
+	const char ini15[] = "[net]\ndirect_test = nonsense\n";
+	NetConfig di3; netConfigDefaults(di3); netConfigLoad(di3, ini15, sizeof(ini15) - 1);
+	CHECK(di3.ubDirectTest == 0);
 	// stats = yes|no (NETPLAY.md 4.7): the ping / loss line of a network game, on by default, read only
 	NetConfig st; netConfigDefaults(st);
 	CHECK(st.bStats);

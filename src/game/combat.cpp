@@ -189,7 +189,7 @@ void fightRun(const FightEnv &e, const FightOps &o) {
 	o.soundTick();
 	// LAB_000E: the defeat word is cleared, then one bit per fighter whose hp ran out.
 	const uint8_t ubBits = partyFight(e) ? rosterSettle(*e.pRoster)   // Moonstone 2: each party fighter down loses its life (and gets its hit points back)
-	                                     : settleDefeats(K(e, act.ulCurrent), K(e, act.ulOpponent));
+	                                     : settleDefeats(K(e, act.ulCurrent), act.ulOpponent != 0 ? &K(e, act.ulOpponent) : nullptr);
 	c.pDefeat->ub = ubBits;
 	c.pDefeat->ubSpare = 0;
 	if (c.pMode->ub == 4) o.afterFight();
@@ -727,7 +727,7 @@ void screenRedraw(const ScreenEnv &e, const ScreenOps &o) {
 		break;
 	}
 	screenPalette(e);                                               // LAB_04E0
-	if (o.turnCorner) o.turnCorner();                               // co-op: whose turn (token + name in the corner)
+	if (o.turnCorner) o.turnCorner();                               // co-op: whose turn (name + arrows in the corner)
 	o.flip();
 	o.blitScreen();
 	o.waitBlitter();

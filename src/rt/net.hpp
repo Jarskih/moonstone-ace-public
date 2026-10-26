@@ -103,6 +103,7 @@ public:
 	LONG recv(void *pBuf, ULONG ulCap);          // bytes (> 0), 0 = nothing now, < 0 = closed / broken
 	void close();
 	bool isOpen() const { return m_sSock.isOpen(); }
+	LONG fd() const { return m_sSock.fd(); }
 	LONG release();                              // the descriptor leaves (a game link takes it over); the connection is empty afterwards
 private:
 	Socket m_sSock;
@@ -185,6 +186,9 @@ public:
 	void udpClose() { m_sUdp.close(); }
 	LONG udpSend(ULONG ulAddr, UWORD uwPort, const void *pData, ULONG ulLen);   // bytes sent, < 0 = not sent
 	LONG udpRecv(void *pBuf, ULONG ulCap, ULONG &ulAddr, UWORD &uwPort);       // the datagram's length (> 0), 0 = none waiting; where it came from
+	// This machine's address as the connections to the lobby / the host use it, and the port of the datagram socket: the "LAN address" a node tells the relay
+	// for the direct path (NETPLAY.md 2.2b).  Network-order word and host-order port like udpSend.  False = not known (yet).
+	bool udpLocal(ULONG &ulAddr, UWORD &uwPort);
 	ULONG joinIp() const { return m_ulJoinIp; }  // the address joinBegin resolved (network order), 0 = none: where a client's datagrams go
 	ULONG lobbyIp() const { return m_ulLobbyIp; }  // the lobby server's address (network order), 0 = not resolved: where a relayed link's datagrams go
 	bool isLinkOpen(UBYTE ubLink) const { return ubLink < NET_LINKS && m_aConn[ubLink].isOpen(); }

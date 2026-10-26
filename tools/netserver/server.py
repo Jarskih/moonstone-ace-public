@@ -29,6 +29,14 @@ game's binary wire format (tools/netserver/netproto.py mirrors include/engine/ne
           forwarded to the client registered for its token.  Nothing is stored beyond those addresses (expired after udp_idle seconds),
           no address is ever logged or handed out, datagrams of unknown sessions / tokens / bad size / over the rate are dropped.
 
+  PUNCH   (protocol 6 extension, NETPLAY.md 2.2b) relay-assisted direct connection.  After the lockstep starts, both ends of a relayed link send
+          PUNCH_REG (session, the client's token, role, capability, their own LAN address) from the UDP socket that talks to this relay.  When both
+          ends of a link have registered, the server answers each of them with PUNCH_INFO: the other end's public address and port as this server saw
+          them (the source of its datagrams) and, when both ends come from the same public IP, the other end's private LAN address.  The nodes then
+          probe each other directly (hole punching) and move the per-tick traffic to the direct path when it works; the relay path stays as the
+          fallback.  An old node never sends PUNCH_REG, so it never gets (nor causes) a PUNCH_INFO.  An address is handed out only to the holder of the
+          link's token, and only for a link whose other end registered; nothing is logged.
+
 Abuse limits: one listing per IP, a name filter (the game font: letters, digits, space, '_' and '.'), per-IP limits for
 connections (rate and number) and lobby messages, a rate limit per relay pipe, the protocol's maximum message size,
 maximum listings / sessions / connections.  Malformed input closes the connection and nothing else.  Logging: start-up,
@@ -86,6 +94,7 @@ class Config:
         self.udp_burst = 800                # ... with this burst
         self.udp_idle = 60.0                # a registered UDP address silent for this long is forgotten
         self.udp_enabled = True             # the UDP relay (tests may switch it off)
+        self.punch_enabled = True           # answer PUNCH_REG with PUNCH_INFO (False: behave like a server from before the direct path)
         self.pair_wait = 5.0                # a relay client waits this long for the host's idle connection
         self.session_grace = 60.0           # a session nobody uses and no listing points at is removed after this
         self.session_max_age = 12 * 3600.0
@@ -153,6 +162,8 @@ class Session:
         self.tokens = collections.deque(maxlen=2 * MAX_CLIENTS)   # rejoin tokens seen in CONFIGs forwarded host -> client: the secrets of the UDP path
         self.udp_host = None               # (address, last seen) of the host's UDP source
         self.udp_clients = {}              # token -> (address, last seen)
+        self.punch_host = {}               # token -> (address, local (ip int, port), last seen): the host's PUNCH_REG for that client's link
+        self.punch_client = {}             # token -> (address, local, last seen): the client's own PUNCH_REG
 
 
 class Conn:
@@ -187,7 +198,7 @@ class Conn:
 class Stats:
     FIELDS = ('connections', 'refused_conns', 'rate_limited', 'malformed', 'registers', 'register_refused', 'direct', 'relayed_games',
               'lists', 'joins', 'pairs', 'relayed_msgs', 'relayed_bytes', 'expired', 'errors',
-              'udp_in', 'udp_forwarded', 'udp_dropped', 'udp_limited')
+              'udp_in', 'udp_forwarded', 'udp_dropped', 'udp_limited', 'punch_reg', 'punch_info')
 
     def __init__(self):
         for f in self.FIELDS:
@@ -563,7 +574,7 @@ class Server:
             st.udp_limited += 1
             return
         status, msg, used = P.decode(data)
-        if status != P.OK or used != len(data) or msg.type not in P.UDP_TYPES:
+        if status != P.OK or used != len(data) or msg.type not in P.UDP_TYPES + (P.PUNCH_REG,):
             st.udp_dropped += 1
             return
         sess = self.sessions.get(msg.session)
@@ -571,6 +582,9 @@ class Server:
             st.udp_dropped += 1                          # unknown session (a direct game's datagram has no business here), or a token nobody was given
             return
         now = self.clock()
+        if msg.type == P.PUNCH_REG:
+            self._punch_reg(sess, msg, addr, now)
+            return
         if msg.type == P.INPUT_UDP:                      # a client: register it, hand the datagram to the host
             if msg.token not in sess.udp_clients and len(sess.udp_clients) >= MAX_CLIENTS:
                 st.udp_dropped += 1
@@ -587,6 +601,63 @@ class Server:
             return                                       # the other end has not shown up yet: its probe will register it
         self.udp.sendto(data, target[0])
         st.udp_forwarded += 1
+
+    # ---- relay-assisted direct path (PUNCH_REG / PUNCH_INFO) --------------------------------------------------------------------
+
+    @staticmethod
+    def _ip_int(ip):
+        try:
+            a = ipaddress.ip_address(ip.split('%')[0])
+        except ValueError:
+            return None
+        if a.version == 6 and a.ipv4_mapped:
+            a = a.ipv4_mapped
+        return int(a) if a.version == 4 else None
+
+    @staticmethod
+    def _is_lan(ip_int):
+        """A node may only name a private (RFC 1918), link-local or loopback address as its local one: the peer sends probes there, so it must never be
+        an arbitrary internet address."""
+        a = ipaddress.IPv4Address(ip_int)
+        return a.is_private or a.is_link_local or a.is_loopback
+
+    def _punch_reg(self, sess, msg, addr, now):
+        """A node says it can try a direct path for the link named by the token.  Registers its address (the source of this datagram, which is the
+        mapping its peer will have to hit) and, when the other end of the link has registered too, tells both ends where the other one is."""
+        st = self.stats
+        st.punch_reg += 1
+        ip_int = self._ip_int(addr[0])
+        if not self.cfg.punch_enabled or ip_int is None or not msg.caps & P.PUNCH_CAP_DIRECT:
+            return
+        is_host = msg.role == P.ROLE_HOST
+        if is_host and addr[0] != sess.ip:               # as for TICK_UDP: only the address that registered the game speaks for the host
+            st.udp_dropped += 1
+            return
+        mine, theirs = (sess.punch_host, sess.punch_client) if is_host else (sess.punch_client, sess.punch_host)
+        if msg.token not in mine and len(mine) >= MAX_CLIENTS:
+            st.udp_dropped += 1
+            return
+        mine[msg.token] = (addr, (msg.laddr, msg.lport), now)
+        if is_host:                                      # a registered address is a forwarding target too: the datagrams that follow find each other earlier
+            sess.udp_host = (addr, now)
+        elif msg.token in sess.udp_clients or len(sess.udp_clients) < MAX_CLIENTS:
+            sess.udp_clients[msg.token] = (addr, now)
+        other = theirs.get(msg.token)
+        if other is None or now - other[2] > self.cfg.udp_idle:
+            return                                       # the other end has not registered (yet, or it is an old node): its PUNCH_REG will trigger the answer
+        self._send_info(sess, msg.token, addr, (msg.laddr, msg.lport), other[0], other[1])
+        self._send_info(sess, msg.token, other[0], other[1], addr, (msg.laddr, msg.lport))
+
+    def _send_info(self, sess, token, to_addr, to_local, peer_addr, peer_local):
+        """PUNCH_INFO to to_addr: the peer's public address, and its LAN address when both come from the same public IP and it is a LAN address."""
+        pub, to_pub = self._ip_int(peer_addr[0]), self._ip_int(to_addr[0])
+        if pub is None or self.udp is None:
+            return
+        flags, laddr, lport = 0, 0, 0
+        if pub == to_pub and peer_local[0] and peer_local[1] and self._is_lan(peer_local[0]):
+            flags, laddr, lport = P.PUNCH_INFO_LOCAL, peer_local[0], peer_local[1]
+        self.udp.sendto(P.pack(P.Msg(P.PUNCH_INFO, session=sess.sid, token=token, flags=flags, paddr=pub, pport=peer_addr[1], laddr=laddr, lport=lport)), to_addr)
+        self.stats.punch_info += 1
 
     # ---- time based clean-up --------------------------------------------------------------------------------------------------
 
@@ -621,6 +692,9 @@ class Server:
                 sess.udp_host = None
             for token in [t for t, (_, seen) in sess.udp_clients.items() if now - seen > cfg.udp_idle]:
                 del sess.udp_clients[token]
+            for table in (sess.punch_host, sess.punch_client):
+                for token in [t for t, (_, _, seen) in table.items() if now - seen > cfg.udp_idle]:
+                    del table[token]
         self.conn_bucket.prune(lambda ip: ip in self.ip_conns)
         self.msg_bucket.prune(lambda ip: ip in self.ip_conns)
         self.udp_bucket.prune(lambda ip: False)
@@ -662,6 +736,7 @@ def main(argv=None):
     ap.add_argument('--refresh-timeout', type=float, default=None,
                     help='seconds without a REFRESH before a listing is dropped (default 75; tests whose emulated clock runs slower than real time raise it)')
     ap.add_argument('--no-udp', action='store_true', help='do not open the UDP relay (games fall back to TCP, silently)')
+    ap.add_argument('--no-punch', action='store_true', help='do not help the nodes of a relayed game to connect directly (PUNCH_REG is ignored: no addresses are handed out)')
     ap.add_argument('--no-connect-back', action='store_true',
                     help='test setups: the connect-back test always fails, so every game is listed via relay (tools/netpair.py --relay)')
     ap.add_argument('--http-port', type=int, default=0, help='read-only dashboard port (0 disables it)')
@@ -675,6 +750,8 @@ def main(argv=None):
 
     if args.no_udp:
         opts['udp_enabled'] = False
+    if args.no_punch:
+        opts['punch_enabled'] = False
     srv = Server(Config(**opts), connect_back=never_reachable if args.no_connect_back else None)
 
     async def run():

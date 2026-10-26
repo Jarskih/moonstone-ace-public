@@ -75,7 +75,7 @@ def build_blob():
              '-I', os.path.join(ROOT, 'include'), '-I', os.path.join(ROOT, 'src'), '-I', os.path.join(ACE, 'mini_std'), '-I', ACE,
              '-I', GCC_SUPPORT]
     objs = []
-    for src in ('src/game/creatures.cpp', 'src/rt/creatures.cpp', 'src/rt/fight_roster.cpp', 'src/rt/combat_pool.cpp'):
+    for src in ('src/game/creatures.cpp', 'src/rt/creatures.cpp', 'src/rt/amiga/creatures_entries.cpp', 'src/rt/fight_roster.cpp', 'src/rt/combat_pool.cpp'):
         o = os.path.join(tmp, os.path.basename(os.path.dirname(src)) + '_' + os.path.basename(src) + '.o')   # (game/creatures.cpp and rt/creatures.cpp, rt/fight_roster.cpp, rt/combat_pool.cpp: the directory alone made three of them one file)
         r = subprocess.run([GXX] + flags + ['-c', os.path.join(ROOT, src), '-o', o], capture_output=True, text=True, env=env)
         if r.returncode != 0:

@@ -2,7 +2,7 @@
      then filled in by hand. Not published by any tool: the release is made in moonstone-ace-public (ROADMAP M12 release plan). -->
 # Moonstone ACE 0.2.0
 
-Released: 2026-10-13.
+Released: (date of the tag).
 
 Moonstone: A Hard Days Knight (Mindscape, 1991) rebuilt in C++ on ACE for the Amiga 1200, with a PC build alongside.
 **No game data is included**: you need your own copy of the three original disks (`.adf` images); the game reads them
@@ -46,7 +46,7 @@ history (NETPLAY.md 2.2), after a 4-player co-op test in WinUAE.
 |---|---|
 | `moonstone-ace-0.2.0-amiga.zip` | the Amiga 1200 release: `Moonstone` drawer, WinUAE config, README, SHA256SUMS.txt |
 
-SHA-256: `45ce11986e998964c4ca9868d6b6eec4ca851071fc3a15ae72aa52c357ef3c32`. The archive is `.zip`: no lha packer was available
+SHA-256: `76636ea42d1bb3d1b6c23ac4b23822be8533cb8212d34bf8ce96b8f655130e32`. The archive is `.zip`: no lha packer was available
 to the build machine; repack with lha on an Amiga if you prefer.
 
 ## Install

@@ -321,7 +321,7 @@ static void testDrawing() {
 	check(count("spr1.2@12,80") == 1 && count("spr1.3@88,80") == 1 && count("spr1.4@164,80") == 1 && count("spr1.5@240,80") == 1, "screen: the four portraits of the knight screen");
 	check(has("spr1.1@12,80") && has("job+") && has("pal"), "screen: the highlight frame on the own selector, the colour ramp, the palette");
 	check(count("spr1.1@") == 1 && !has("bar@") && !has("small["), "screen: nothing picked: no name box, no coloured bar or frame, one highlight");
-	check(has("str[START]@0,172/1") && has("recolour@100,172,120,16 c3"), "screen: START is greyed while nobody else has joined");
+	check(has("str[SELECT YOUR KNIGHT]@0,172/1") && !has("str[START]") && !has("recolour"), "screen: the host with no knight yet is prompted to select one, not shown START");
 	check(!has("WAITING FOR HOST"), "screen: the host does not wait for itself");
 
 	// a second player joined and picked: every machine draws his name in the corner of his knight; the highlight stays on the own knight only
@@ -334,7 +334,7 @@ static void testDrawing() {
 	check(has("str[PLAYERS 2 OF 4]@0,24/1"), "screen: the player count follows the room");
 	check(has("bar@166,82,28,10 c0") && has("small[ANNA]@168,84"), "screen: his knight shows his name top-left on a dark box (width 4 x 6 + 4)");
 	check(count("bar@") == 1 && count("small[") == 1 && count("spr1.1@") == 1 && has("spr1.1@12,80"), "screen: only that name, the highlight only on the own knight");
-	check(has("recolour@100,172,120,16 c3"), "screen: START stays grey until the host has picked too");
+	check(has("str[SELECT YOUR KNIGHT]@0,172/1") && !has("recolour"), "screen: the prompt stays while the host has not picked");
 
 	// a third player is only browsing: nothing is drawn for him
 	roomJoin(g_room, 2, "BOB");
@@ -348,7 +348,12 @@ static void testDrawing() {
 	roomJoin(g_room, 1, "ME");
 	SceneLobby cl;
 	cl.enter(g_ops, g_lops, g_seam);
-	check(has("str[WAITING FOR HOST]@0,172/1") && !has("str[START]") && !has("recolour"), "screen: a joined player sees WAITING FOR HOST where the host has START");
+	check(has("str[SELECT YOUR KNIGHT]@0,172/1") && !has("str[WAITING FOR HOST]") && !has("str[START]") && !has("recolour"), "screen: a joined player who has not picked is prompted to select a knight");
+	cl.ePhase = LP_DONE;                                              // the client has chosen
+	cl.isDirty = true;
+	g_log[0] = 0;
+	upd(cl, 0);
+	check(has("str[WAITING FOR HOST]@0,172/1") && !has("str[START]") && !has("recolour"), "screen: a joined player who has picked sees WAITING FOR HOST where the host has START");
 	check(has("spr1.1@88,80") && count("spr1.1@") == 1, "screen: the client's highlight is on its own knight (the second one: the host browses the first)");
 	// the picks of the host seen from here
 	roomApplyPick(g_room, 0, pick(NET_PICK_CLAIM, 0));
@@ -519,6 +524,10 @@ static void testStartAndModeLine() {
 	tap(sc, FIRE);                                                    // controller kept
 	check(sc.ePhase == LP_DONE, "start: the host has picked");
 	check(roomStartEnabled(g_room) == false, "start: still not enabled while Anna browses");
+	++g_rev;
+	g_log[0] = 0;
+	upd(sc, 0);
+	check(has("str[START]@0,172/1") && has("recolour@100,172,120,16 c3"), "start: the host has picked: START is drawn, greyed while Anna browses");
 	roomApplyPick(g_room, 1, pick(NET_PICK_CLAIM, 3));
 	roomApplyPick(g_room, 1, pick(NET_PICK_DONE, 3, "ANNA", PAD_JOY1));
 	++g_rev;

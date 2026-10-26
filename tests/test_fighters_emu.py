@@ -46,8 +46,8 @@ A = TC.A
 LOG = 0x19F000                         # test arena: call counters of the stubs (inside the DATA region of the harness)
 LOG_SOUNDS, LOG_LAST, LOG_FX = LOG, LOG + 2, LOG + 4
 
-SOURCES = ('src/game/roster.cpp', 'src/rt/fight_roster.cpp', 'src/rt/combat_pool.cpp', 'src/game/creatures.cpp', 'src/game/fighters.cpp', 'src/game/fight_creatures.cpp', 'src/game/fight_ops.cpp',
-           'src/rt/fighters.cpp', 'src/engine/util.cpp', 'src/game/rules/damage.cpp') + tuple('src/game/rules/' + n + '.cpp' for n in ['ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight', 'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker']) + (GAMEDATA_REL,)
+SOURCES = ('src/game/roster.cpp', 'src/rt/fight_roster.cpp', 'src/rt/combat_pool.cpp', 'src/game/creatures.cpp', 'src/game/fighters.cpp', 'src/game/fight_creatures.cpp', 'src/game/party_ai_fight.cpp', 'src/game/fight_ops.cpp',
+           'src/rt/fighters.cpp', 'src/rt/amiga/fighters_entries.cpp', 'src/engine/util.cpp', 'src/game/rules/damage.cpp') + tuple('src/game/rules/' + n + '.cpp' for n in ['ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight', 'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker']) + (GAMEDATA_REL,)
 SHIMS = {'01CA': 'rt_fighter_knight', '0226': 'rt_fighter_flyer', '0236': 'rt_fighter_brawler', '0251': 'rt_fighter_caster',
          '027A': 'rt_fighter_dragon', '0298': 'rt_fighter_dragon_part', '029F': 'rt_fighter_drake', '02CB': 'rt_fighter_dagger',
          '02D2': 'rt_fighter_idle',
@@ -151,13 +151,15 @@ def build_blob():
     stub_cpp = os.path.join(tmp, 'sfx_stub.cpp')
     with open(stub_cpp, 'w') as f:
         f.write('#include "rt/sfx.hpp"\n'
+                '#include "rt/platform/timer.hpp"\n'
                 'namespace rt { UBYTE sfxRequest(UWORD uwSeq) {\n'
                 '  *(volatile UWORD *)0x%X = *(volatile UWORD *)0x%X + 1; *(volatile UWORD *)0x%X = uwSeq; return 0; }\n'
                 '  void sfxStartFixed(UBYTE ubChannel, UWORD uwSeq) {\n'
                 '  *(volatile UWORD *)0x%X = *(volatile UWORD *)0x%X + 1; *(volatile UWORD *)0x%X = uwSeq; }\n'
                 '  UBYTE sfxRelease(UBYTE) { return 0; }\n'
                 '  // ROADMAP 12.4 / 8.4b: the deterministic mode is off (the beam is read from VHPOSR as before); the second knight\'s colours are not under test\n'
-                '  bool netDeterministic() { return false; } UWORD netBeam() { return 0; } void partyColoursEnd() {} }\n'
+                '  bool netDeterministic() { return false; } UWORD netBeam() { return 0; } void partyColoursEnd() {}\n'
+                '  namespace platform { uint16_t timerBeamVhposr() { return *(volatile uint16_t *)0x00DFF006; } } }\n'
                 '// ROADMAP 7.1p: the tags rtFightOpRun runs in rt/fighters.cpp (fight died / end, pause all, kill current, the ritual sounds): not exercised here\n'
                 'extern "C" { void rtFightDied() {} void rtFightEnd() {} void rtFightPauseAll() {} void rtFightKillCurrent() {}\n'
                 '  unsigned long rtRngPercent(unsigned long *) { return 0; } }\n'

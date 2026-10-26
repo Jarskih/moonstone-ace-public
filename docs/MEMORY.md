@@ -1,9 +1,46 @@
 # Memory budget (ROADMAP 2.11)
 
-Numbers of the Release game (`build/`, LTO, no asm since 7.1r; HEAD db7dd9f plus the 7.2/7.3 changes) measured in WinUAE
+Numbers of the Release game (`build/`, LTO, no asm since 7.1r; HEAD db7dd9f plus the 7.2/7.3 changes; **before network play and MS_NET: see the section below, the exe is now 721,904 B with MS_NET=OFF**) measured in WinUAE
 (Kickstart 3.1, A1200, 68020, 2 MB chip). The game logs them itself: `PROGDIR:boot.log` on an HD install (rewritten at every
 start; not written on a floppy boot) and the serial log of `MS_AUTOPLAY` builds, one `mem ...` line per checkpoint
 (`rt::bootLogMemory`: `memGetFreeChipSize`, `AvailMem(MEMF_FAST)` and the largest free blocks).
+
+## MS_NET: network play is a build option (ROADMAP 2.11a, 2026-10-25)
+
+Network play (ROADMAP M12) grew the Release exe from about 0.59 MB to about 1.02 MB in memory (the numbers of the table below are from before it).
+With the arenas (0.97 MB) and the snapshots (0.06 MB) a stock A1200 (2 MB chip, no fast RAM) no longer had room: `rtGameRun: arena alloc failed`.
+Owner decision 2026-10-25: the CMake option `MS_NET` (cache variable, **OFF by default for the Amiga**, ON for the PC build) chooses.
+
+| Release exe (m68k-amiga-elf-size) | .text + .rodata | .data | .bss | total in memory |
+|---|---:|---:|---:|---:|
+| `MS_NET=ON` (`build-net/`, the old unconditional build) | 578,518 | 58,952 | 378,572 | **1,016,042** |
+| `MS_NET=OFF` (`build/`, the stock A1200 game) | 374,528 | 58,928 | 288,448 | **721,904** |
+| difference | -203,990 | -24 | -90,124 | **-294,138** |
+
+With `MS_NET=OFF` these files are not linked: `engine/net{browse,lobby,node,play,proto,rejoin,relay,room,stats,udp,wait,glue}`,
+`rt/net{,_box,_find,_lobby,_rejoin,_relay,_session,_state,_stub,_world}`, `rt/lobby_draw`, `game/net_*`, `game/scene_lobby` (CMakeLists.txt).
+Kept, because the hot paths call them and they cost a few KB: `rt/net_tick` (the deterministic-mode flag, never raised), `engine/nettick`,
+`engine/tickpoke`.  `engine/net_cfg.hpp` defines `MS_NET` (default 1 for the host tests); `rt/net_session.hpp` and `rt/net_state.hpp` give the kept code
+inline no-ops (`netSessionRunning()` is false, the scopes are empty).  The main menu has two rows, LOCAL and SETTINGS (`MAIN_ROWS`,
+`game/scene_menu`), the Multiplayer screen, lobby and rejoin do not exist, `PERF net=` fields read 0.  Gameplay is the same code: the only
+behavioural difference is `humanKnightCount` (needs a dropped network knight, so it is the player count).  The netplay exe (`-DMS_NET=ON`) is
+byte-for-byte the old size and needs fast RAM (any hunks 0.87 MB + fast arena 0.52 MB + snapshots 0.06 MB, about 1.5 MB fast).
+
+Measured on the stock config (WinUAE, KS 3.1, 68020, 2 MB chip, no fast, boot into the startup-sequence), free chip bytes:
+
+| checkpoint | `build/` shipped Release (boot.log) | `build-autoplay-rel/` (gate: + serial log, autoplay buffers, exe 813,712) |
+|---|---:|---:|
+| `rtGameRun` start | 1,186,608 | 1,094,808 |
+| after the arenas | 219,848 | 128,048 |
+| entering program (display + DATA snapshot) | 204,216 | 112,416 |
+| entering mog (+ its snapshot, 46,104): the low point | about 158,100 (the intro was not skipped in the plain run: derived as the gate's low point + the 91,808 B exe difference) | **66,368** |
+
+So the shipped stock game keeps about 158 KB of chip free at its low point, the gate build 66 KB (just above the 64 KB line of the task: the
+autoplay exe is 92 KB bigger).  The gate booted through `tests/boot/regression.txt` and `regression_practice.txt` on this stock config.
+**The arena tails were not trimmed** (the shipped margin is above the line); the high-water over 24 play scripts (castle, wizard, stonehenge,
+duel, dragon, end, six lairs, towns, valley, map, co-op, 2-player: the files.log of the main checkout) is chip 376,556 (the 65,536-byte tail
+is never touched) and fast 388,848 (28,122 of the 163,840-byte tail), so about 145 KB can still be given back if needed (SCRATCH_CHIP 0x10000,
+SCRATCH_FAST 0x28000 in `src/rt/game.cpp`).  With Workbench running the OS takes more chip: start from the startup-sequence.
 
 ## What the game allocates
 

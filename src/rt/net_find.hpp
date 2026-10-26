@@ -3,7 +3,7 @@
 // the clock.  Every socket call happens inside a network window (rt/net NetTransport::window), at most one per NB_POLL_MS while a request is under way and
 // none otherwise.  The lobby address is the one of the options (rt/net_lobby lobbySetOptions: net.ini `lobby`, `lobby_port`, else the built-in default).
 //
-// The functions are free functions so that the PC build (no network yet, rt/sdl/net_offline.cpp) can stand in for them.
+// The functions are free functions so that the PC build (rt/sdl/net_winsock.cpp) can link them over its own transport.
 #pragma once
 #include <stdint.h>
 

@@ -64,7 +64,15 @@ struct ShopQueue {
 	uint8_t aubRec[PARTY_MAX];     // record indices in visiting order
 	uint8_t ubCount;               // members in the queue (>= 1 while a leader exists)
 	uint8_t ubPos;                 // the member whose turn it is (index into aubRec)
+	uint8_t ubComputer;            // bit i = record i is played by the computer (ROADMAP 8.3b): in the queue (the village blesses it, it can own the stone), but the arrows skip it
 };
+// The members a player can switch to: the queue without the computer knights.
+inline uint8_t shopQueueHumans(const ShopQueue &q) {
+	uint8_t n = 0;
+	for (uint8_t i = 0; i < q.ubCount; ++i) if (!((q.ubComputer >> q.aubRec[i]) & 1)) ++n;
+	return n;
+}
+
 void shopQueueBegin(ShopQueue &q, const RecordSet &rs);
 inline int shopQueueCurrent(const ShopQueue &q) { return q.ubPos < q.ubCount ? q.aubRec[q.ubPos] : -1; }
 // The previous (iDir < 0) / next (iDir > 0) member of the queue, wrapping round (owner 2026-10-10: the arrows in the corner); returns its

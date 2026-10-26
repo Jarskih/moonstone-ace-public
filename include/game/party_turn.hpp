@@ -3,7 +3,7 @@
 //
 // Two cues, all pure choices made here and drawn by src/rt/party_turn.cpp:
 //   1. the banner "SIR <NAME>'S TURN" over the picture until the first input or kTurnBannerFrames,
-//   2. the knight's token and name in the upper-left corner for the whole turn (owner 2026-10-09; the pointer keeps its normal colours).
+//   2. the knight's name between the switch arrows in the upper-left corner for the whole turn (owner 2026-10-26: no box, no token; the pointer keeps its normal colours).
 //
 // Pure: no ACE, no OS, no globals.  tests/test_party_turn.py runs it on the host.
 #pragma once

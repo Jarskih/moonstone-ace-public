@@ -8,6 +8,21 @@
 //   every tick           frameHook (installed with netSetFrameHook): ONE OS window per tick moves the bytes, waits for the tick, merges
 //   the end              a BYE, a lost link, a silent peer (TIMEOUT) or a hash mismatch ends the session; the game goes on locally
 #pragma once
+#include "engine/net_cfg.hpp"
+
+#if !MS_NET
+// MS_NET off (the stock Amiga build, docs/MEMORY.md): no session exists; the game's hooks below are what the kept code calls, all no-ops.
+#include <ace/types.h>
+
+namespace rt {
+inline bool netSessionRunning() { return false; }
+inline void netSessionShutdown() {}
+inline void netSessionQuestComplete() {}
+inline int netSessionEndingKnight(uint8_t) { return -1; }
+inline uint32_t netSessionLocalKind(uint8_t, uint32_t ulShownKind) { return ulShownKind; }
+inline void netSessionCloseAfterEnding() {}
+}  // namespace rt
+#else
 #include <ace/types.h>
 
 #include "engine/netnode.hpp"
@@ -23,6 +38,9 @@ void netSessionSetArgs(const NetArgs &sArgs);
 const NetArgs &netSessionArgs();
 // net.ini `udp = yes|no` (default yes): no keeps the per-tick traffic on TCP, like the command line's TCP (ROADMAP 12.21, NETPLAY.md 2.2).  Read before a session starts.
 void netSessionAllowUdp(bool isAllowed);
+// net.ini `direct = yes|no` (default yes) and the test option `direct_test = block|kill` + `direct_kill_ms`: the relay-assisted direct path of a relayed game
+// (NETPLAY.md 2.2b).  ubTest: ms::NDT_*.  Read before a session starts.
+void netSessionAllowDirect(bool isAllowed, uint8_t ubTest, uint32_t ulKillMs);
 // The UDP counters of the running session (the PERF line, the session summary); false = this session does not use UDP (disabled, no socket, no node).
 bool netSessionUdpStats(ms::NetUdpStats &sOut);
 
@@ -90,3 +108,4 @@ void netRejoinGo();                                 // the map scene is about to
 
 
 }  // namespace rt
+#endif  // MS_NET

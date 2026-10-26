@@ -13,7 +13,7 @@
 namespace ms {
 
 constexpr uint8_t GAME_VERSION_MAJOR = 0;
-constexpr uint8_t GAME_VERSION_MINOR = 2;   // release 0.2.0: the first release with network play (owner 2026-10-10); the wire form has no patch number
+constexpr uint8_t GAME_VERSION_MINOR = 3;   // release 0.3.0: the PC version (Windows); 0.2.0 was the first release with network play (owner 2026-10-10); the wire form has no patch number
 constexpr uint16_t GAME_VERSION = static_cast<uint16_t>((GAME_VERSION_MAJOR << 8) | GAME_VERSION_MINOR);
 
 constexpr uint8_t gameVersionMajor(uint16_t uwVersion) { return static_cast<uint8_t>(uwVersion >> 8); }

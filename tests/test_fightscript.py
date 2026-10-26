@@ -85,7 +85,7 @@ int main() {
 		// cel table at 0x800: header (10) + 4 frames of 10 bytes {offset, w, h, flag byte, plane byte}; frame set list at 0x700
 		g_mem[0x800 + 1] = 4;
 		for(int f = 0; f < 4; ++f) { uint8_t *e = g_mem + 0x80A + 10 * f; e[5] = 16; e[7] = 8; e[8] = 1; e[9] = 1; }
-		for(int i = 0; i < 5; ++i) { g_mem[0x700 + 4 * i + 2] = 0x08; }
+		for(int i = 0; i < 5; ++i) { g_mem[0x700 + 4 * i + 1] = 0x08; }   // u32 cells 0x0800, native (little-endian host)
 		frameSets[0] = 0; for(int i = 0; i < 5; ++i) frameSets[1 + i] = 0x700;
 		curJob = hurtList = atkList = rectList = curKnight = rnd = bgBuf = scrBuf = demo = 0;
 		atkList = 0x1400; hurtList = 0x1800; rectList = 0x1C00;
@@ -109,7 +109,8 @@ def build_driver(tmp):
         f.write(DRIVER)
     exe = os.path.join(tmp, 'drv.exe' if os.name == 'nt' else 'drv')
     r = subprocess.run([CXX, '-std=c++17', '-O1', '-Wall', '-D_CRT_SECURE_NO_WARNINGS', '-I' + os.path.join(ROOT, 'include'), src,
-                        os.path.join(ROOT, 'src', 'game', 'combat_script.cpp'), '-o', exe], capture_output=True, text=True)
+                        os.path.join(ROOT, 'src', 'game', 'combat_script.cpp'), os.path.join(ROOT, 'src', 'engine', 'addrcell.cpp'),
+                        '-o', exe], capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError(r.stdout + r.stderr)
     return exe

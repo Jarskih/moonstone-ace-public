@@ -25,7 +25,7 @@ FRAMES = 2500
 TOLERANCE_PERCENT = 0.5
 PIXEL_TOLERANCE = 8
 # stubs the title screen is allowed to touch (every one is a TODO of ROADMAP 11.1d, logged as "STUB name (ROADMAP task) called")
-ALLOWED_STUBS = {'rtOwFlowBind'}
+ALLOWED_STUBS = set()   # ROADMAP 11.1d part 2: no 11.1d stub is left; rtOwFlowBind is the real overworld.cpp one
 
 
 def main_checkout():

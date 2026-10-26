@@ -47,7 +47,7 @@ inline uint32_t addr(const void *p) { return jobAddr(p); }
 
 // MOVE.L 0(A,D.W),X: a long at a base address plus the sign-extended word index.
 inline uint32_t tab32(uint32_t ulBase, uint16_t uwIndex) {
-	return be::ld32(jobPtr<const uint8_t>(ulBase + (uint32_t)(int32_t)(int16_t)uwIndex));
+	return fi::cell32(jobPtr<const uint8_t>(ulBase + (uint32_t)(int32_t)(int16_t)uwIndex));   // u32 cells: native (PC_ENDIAN.md 2)
 }
 
 // The word at +106 (timer byte, then the byte after it), big-endian like the 68k sees it.
@@ -77,9 +77,15 @@ HandlerResult finish(const FighterEnv &e) {
 	return r;
 }
 
+// A record without an inventory (a thrown dagger: +96 is 0) made the 68k read the byte at address 22 of the vector table as "moonstones".  Nothing
+// meaningful lives there, and address 0 is not readable on every CPU: such an attacker has no moonstones.
+inline const Inventory &inventoryOrNone(const Knight &k) {
+	static const Inventory s_none = {};
+	return knightInventoryAddr(k) != 0 ? *jobPtr<const Inventory>(knightInventoryAddr(k)) : s_none;
+}
+
 inline uint16_t damageOf(const FighterEnv &e, const Knight &attacker) {      // JSR LAB_021B -> D0 (the callers use D0.W)
-	return (uint16_t)contactDamage(attacker, jobPtr<const uint8_t>(attacker.ulDamageTable),
-	                               *jobPtr<const Inventory>(knightInventoryAddr(attacker)), e.pActive->uwMoonFrame);
+	return (uint16_t)contactDamage(attacker, jobPtr<const uint8_t>(attacker.ulDamageTable), inventoryOrNone(attacker), e.pActive->uwMoonFrame);
 }
 
 inline Knight &dragonOf(const FighterEnv &e) { return e.pKnights[4]; }       // LAB_0617
@@ -134,6 +140,18 @@ void endIfPartyDown(const FighterEnv &e) {
 bool partyKnightStaysDown(const FighterEnv &e, const Knight &k) {
 	const FightRoster *r = partyFight(e);
 	return r != 0 && rosterSlotOf(*r, k) >= 0 && rosterDown(k);
+}
+
+// A creature that starts a kill script (LAB_081C, LAB_0884 ...) on the knight it struck: the script's LAB_000D marks the knight the creature HOLDS
+// (its sticky target slot, fightOpPartyRun), and the handler's pick at its head has moved on once the struck knight is down (the spear's blow
+// on a knight without hit points) or never chose it (the dragon's bite on the farther knight): the OTHER knight was marked dead and the fight
+// ended.  The creature holds the struck knight from here on.
+void bindVictim(const FighterEnv &e, Knight &self, uint32_t ulVictim) {
+	const FightRoster *r = partyFight(e);
+	const int iSlot = r ? rosterSlotOf(*r, *rec(ulVictim)) : -1;
+	if(iSlot >= 0) {
+		self.ubTargetSlot = (uint8_t)(iSlot + 1);
+	}
 }
 
 // A creature's finishing blow on a knight: classic marks the current knight dead (LAB_000D); a party fight marks the victim.
@@ -284,8 +302,8 @@ void takeDamage(const FighterEnv &e, Knight &self, const Knight &att, const Hurt
 	case HitDamage::None: break;
 	case HitDamage::Contact: subHp(self, damageOf(e, att)); break;
 	case HitDamage::TableByAction: subHp(self, (uint16_t)tab32(att.ulDamageTable, att.uwAction)); break;     // LAB_01F3: the table value, not LAB_021B
-	case HitDamage::TableSlot4: subHp(self, (uint16_t)be::ld32(jobPtr<const uint8_t>(att.ulDamageTable + 4))); break;
-	case HitDamage::TableSlot8: subHp(self, (uint16_t)be::ld32(jobPtr<const uint8_t>(att.ulDamageTable + 8))); break;
+	case HitDamage::TableSlot4: subHp(self, (uint16_t)fi::cell32(jobPtr<const uint8_t>(att.ulDamageTable + 4))); break;
+	case HitDamage::TableSlot8: subHp(self, (uint16_t)fi::cell32(jobPtr<const uint8_t>(att.ulDamageTable + 8))); break;
 	case HitDamage::Fixed: subHp(self, o.uwAmount); break;
 	case HitDamage::FixedProtected: protectedHit(self, o.uwAmount); break;
 	}
@@ -382,7 +400,11 @@ HandlerResult fighterKnight(const FighterEnv &e, Knight &k) {
 	if(k.ulHitTarget != 0) {
 		return knightHit(e, k);
 	}
+	if(rosterIsComputer(e.pRoster, k)) {                           // Moonstone 2: a computer party knight thinks instead of reading a pad
+		return fighterComputerThink(e, k);
+	}
 	k.uwAction = raw(Action::Idle);
+
 	uint16_t in = inputFor(e, k);                                  // JSR LAB_00EA
 	k.uwInput = in;
 	if(in == 0) {
@@ -483,8 +505,12 @@ HandlerResult fighterFlyer(const FighterEnv &e, Knight &k) {
 		Knight &t = *rec(k.ulHitTarget);
 		if(flyerHitsTarget(t.ubType)) {
 			if(flyerFinishesTarget(t.ulHitTarget != 0, t.swHp, *e.pDemoFlag != 0)) {
-				jobKill(e.pJobs, *e.pTarget);                      // the first fighter's job and record
-				knockOut(e, *rec(*e.pTarget));                     // LAB_000D
+				// The knight it finished is the one it struck (t), not the handler's pick: once t is down rosterPickTarget has moved on to the
+				// other knight, who would be jobKilled and marked dead standing up (owner report 2026-10-26: "the other knight disappears and the
+				// combat ends").  Classic: t is the first fighter, *e.pTarget the same record.
+				const uint32_t ulVictim = partyFight(e) ? k.ulHitTarget : *e.pTarget;
+				jobKill(e.pJobs, ulVictim);                        // the first fighter's job and record
+				knockOut(e, *rec(ulVictim));                       // LAB_000D
 				endIfPartyDown(e);                                 // LAB_0006
 				v.ulNextScript = k.ubFacing == t.ubFacing ? e.scripts.s0849 : e.scripts.s084E;
 				return finish(e);
@@ -772,6 +798,7 @@ HandlerResult fighterBrawler(const FighterEnv &e, Knight &k) {
 		case BrawlerAfterHit::Think: return brawlerThink(e, k, t);  // QUIRK: A0 is the hit record, its input / action are cleared
 		case BrawlerAfterHit::FinishOff:
 			jobKill(e.pJobs, addr(&t));
+			bindVictim(e, k, addr(&t));                            // 081C's LAB_000D marks the knight it struck
 			v.ulNextScript = e.scripts.s081C;
 			break;
 		case BrawlerAfterHit::Stop: v.ulNextScript = 0xFFFFFFFFu; break;
@@ -1256,7 +1283,7 @@ HandlerResult dragonThink(const FighterEnv &e, Knight *pA1) {
 	fl |= plan.ubFlagsSet;
 	fl &= (uint8_t)~plan.ubFlagsClear;
 	d.ubAnimPhase = 0;
-	v.ulNextScript = be::ld32(jobPtr<const uint8_t>(knightWalkScripts(d) + plan.uwWalkOffset));
+	v.ulNextScript = fi::cell32(jobPtr<const uint8_t>(knightWalkScripts(d) + plan.uwWalkOffset));
 	setCooldownWord(d, plan.uwSteps);
 	b.ulOwner = addr(&d);
 	b.uwX = d.uwX;
@@ -1289,7 +1316,7 @@ HandlerResult fighterDragon(const FighterEnv &e, Knight &k) {
 				subHp(k, damageOf(e, att));
 				v.ulNextScript = tab32(k.ulHurtScripts, att.uwAction);
 			} else {
-				v.ulNextScript = be::ld32(jobPtr<const uint8_t>(k.ulHurtScripts + 12));
+				v.ulNextScript = fi::cell32(jobPtr<const uint8_t>(k.ulHurtScripts + 12));
 				subHp(k, hit.uwFixed);
 			}
 			hitSpark(e, dragonOf(e));                              // LAB_028A: A0 = the dragon record
@@ -1311,6 +1338,10 @@ HandlerResult fighterDragon(const FighterEnv &e, Knight &k) {
 			return finish(e);
 		}
 		jobKill(e.pJobs, k.ulHitTarget);                           // LAB_028D
+		bindVictim(e, k, k.ulHitTarget);                           // 0884's LAB_000D marks the knight it bit
+		if(partyFight(e)) {
+			rec(k.ulHitTarget)->swHp = -1;                         // at once: the partner's blow can replace 0884 by a hurt script before its LAB_000D, and the
+		}                                                          // job-less knight would stand there alive for ever
 		v.ulNextScript = e.scripts.s0884;
 		return finish(e);
 	}
@@ -1403,7 +1434,7 @@ HandlerResult fighterDrake(const FighterEnv &e, Knight &k) {
 	FightVars &v = *e.pVars;
 	*e.pSelf = addr(&k);
 	v.ulNextScript = k.ulIdleScript;
-	*e.pTarget = targetFor(e, k, (v.ubDrakeFlags[0] & 0x03) != 0);   // flying at it or carrying it: keep the knight
+	*e.pTarget = targetFor(e, k, (v.ubDrakeFlags[0] & 0x23) != 0);   // flying at it, grabbing it or carrying it (0x20): keep the knight
 	Knight &tgt = *rec(*e.pTarget);
 	uint8_t &fl = v.ubDrakeFlags[0];
 	if(fl & 0x02) {

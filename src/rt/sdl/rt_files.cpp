@@ -46,8 +46,8 @@ LONG rt_file_list(const char *szDir, void (*pFn)(const char *szName, void *pUser
 	return rt::platform::fileList(szDir, pFn, pUser);
 }
 
-LONG rt_file_list_dirs(const char *, void (*)(const char *, void *), void *) {
-	return -1;   // TODO(11.9): the mod packs are folders; platform/files.hpp lists files only
+LONG rt_file_list_dirs(const char *szDir, void (*pFn)(const char *szName, void *pUser), void *pUser) {
+	return rt::platform::fileListDirs(szDir, pFn, pUser);   // the mod packs (ROADMAP 9.9): the drawers of PROGDIR:packs / PROGDIR:mods_examples
 }
 
 void rt_file_read(void *pDst, ULONG ulCount) {

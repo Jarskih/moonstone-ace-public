@@ -11,7 +11,8 @@ param(
     [int]$ShotDelayMs = 300,    # -Autoplay: wait this long after a "shot" log line before capturing (a slow host does the same; raise it to test the shot freeze)
     [string]$Exe = "",           # -Autoplay: copy this hunk exe over the HD dir's "moonstone" first (default: leave the HD dir as is)
     [string]$Speed = "",         # -Autoplay: emulation speed, see the header: real | max | warp. Default: $env:MS_EMU_SPEED, else real
-    [switch]$NoLock              # do not take the machine-wide emulator lock (tools/emulock.py); also MS_EMU_LOCK=off
+    [switch]$NoLock,             # do not take the machine-wide emulator lock (tools/emulock.py); also MS_EMU_LOCK=off
+    [switch]$Sound               # play the emulator's sound (default: muted, sound_output=none; also MS_EMU_SOUND=on)
 )
 # Boot WinUAE with $Config and run a step script, e.g.
 #   -Steps "wait:40,shot:C3-0,key:Space,wait:2,shot:C3-1,hold:Down:500,shot:C3-2"
@@ -140,6 +141,8 @@ $extra = "input.config=1", "input.1.keyboard.0.friendlyname=WinUAE keyboard", "i
 $extra += "joyport0=none", "win32.start_uncaptured=true", "input.1.mouse.0.disabled=true", "input.1.mouse.0.empty=true",
           "input.1.mouse.1.disabled=true", "input.1.mouse.1.empty=true"
 if ($Joy) { $extra += "joyport1=kbd2", "joyport1autofire=none" }
+# Test runs are silent unless asked: several emulators (boot regressions, agents) would otherwise play over each other on the host.
+if (-not $Sound -and $env:MS_EMU_SOUND -ne "on") { $extra += "sound_output=none" }
 # "direct" serial: the game's transmit never waits for the emulated baud rate.
 if ($isAuto) { $extra += "serial_direct=true", "joyport1=none", "win32.iconified_pause=false", "win32.inactive_pause=false", "win32.iconified_nosound=false", "sound_output=none" }
 # Speed (header): real = default; max = CPU not throttled to the A1200 clock; warp = max + turbo_emulation (unthrottled machine).

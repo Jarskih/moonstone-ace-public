@@ -26,7 +26,27 @@ Controls
     (d-pad / left stick, A / X fire).  Port 0 (a second human player) is the mouse or a
     second game controller.
   - On the map: Space = status screen, E = end of turn.
+  - F11 toggles fullscreen.  F12 toggles an optional CRT look (scanlines, phosphor mask, glow;
+    best at a window of 3x or more) and remembers the choice; --crt starts with it on,
+    --no-crt forces it off.
   - --skip-intro skips the intro; --joykeys none turns the keyboard joystick off.
+
+
+Sound
+-----
+The sound is a model of the Amiga's Paula chip, rendered band-limited (no aliasing) at 48 kHz.
+Options (command line; --audio-save remembers the ones you give in audio.txt in your user
+folder, %APPDATA%\MoonstoneACE\Moonstone, which you can also edit by hand):
+  --audio-separation N   0..100, default 70.  100 = hard Amiga panning (channels 0 and 3 left,
+                         1 and 2 right), 0 = mono.  70 is comfortable on headphones.
+  --audio-filter F       off, a500, a500led, a1200 (default), a1200led.  The output stage of the
+                         machine: a1200 is the A1200 (almost no filtering, it just removes DC),
+                         a500 the duller A500; the led variants add the 3 kHz "LED" filter,
+                         which the game itself never switches on.
+  --audio-render R       blep (default, band-limited) or box (the old plain averaging).
+  --audio-save           write the audio settings in force to audio.txt.
+If the sound ever crackles, the log (moonstone.log) ends with "underruns" and "least queued":
+tell us the numbers.
 
 
 Network play

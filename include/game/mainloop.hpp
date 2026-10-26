@@ -122,6 +122,8 @@ void mainBoot(const MainEnv &env, const MainOps &ops, const BootRegs &regs);
 
 // LAB_04A5 (7.1l): the RNG seed from the beam position: the low two bits of VHPOSR pick one of four longs (LAB_0974).
 uint32_t mainRngSeed(uint16_t uwVhposr, const uint32_t aulSeeds[4]);
+// The same with the table as the original image holds it (LAB_0974 is four longs of big-endian bytes in the owned data, not native cells).
+uint32_t mainRngSeedBe(uint16_t uwVhposr, const uint8_t *pubSeeds);
 
 // The main loop from a given scene on the top level's env / ops only (the flow scenes Title .. Map, src/game/scenes/): scenes
 // until the map is entered (then ops.enterMap has been called).  The host tests' entry; the game runs the whole flow with

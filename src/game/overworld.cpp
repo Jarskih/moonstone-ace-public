@@ -6,6 +6,7 @@
 #include "game/rules/party.hpp"
 
 #include "engine/nettick.hpp"
+#include "engine/endian.hpp"
 #include "engine/util.hpp"
 
 namespace ms { namespace game {
@@ -405,7 +406,7 @@ bool dragonSpawn(const RecordSet &rs, uint16_t uwDay, const DragonSpawnEnv &env,
 	Knight &dr = rs.aRec[4];
 	if (!dragonShouldSpawn(uwDay, dr, d)) return false;
 	if (ops.pfnClearJobs) ops.pfnClearJobs(ops.pCtx);                 // JSR LAB_0305
-	*cells.pulHandlerSlot = env.ulHandler;                            // MOVE.L #LAB_0DCF,40(A0) with A0 = LAB_08C7
+	ms::be::st32(reinterpret_cast<uint8_t *>(cells.pulHandlerSlot), env.ulHandler);   // MOVE.L #LAB_0DCF,40(A0) with A0 = LAB_08C7 (BE bytes)
 	for (int i = 0; i < 5; ++i) cells.paulWork[i] = env.ulCelTable;   // MOVE.L LAB_0664,(A0)+ x5 with A0 = LAB_0671
 	dragonInitRecord(dr);
 	dr.ulJobParam = env.ulWork;                                       // MOVE.L #LAB_0671,38(A0)

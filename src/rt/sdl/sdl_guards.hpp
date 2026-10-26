@@ -143,6 +143,12 @@ public:
 			SDL_PauseAudioStreamDevice(m_pStream);
 		}
 	}
+	// Playback speed relative to the source rate (1.0 = as is; SDL resamples for any other value).
+	void setFrequencyRatio(float fRatio) const {
+		if(m_pStream != nullptr) {
+			SDL_SetAudioStreamFrequencyRatio(m_pStream, fRatio);
+		}
+	}
 	// The device's own format and buffer size in sample frames (for the log); false when unknown.
 	bool deviceFormat(SDL_AudioSpec &sSpec, int &lFrames) const {
 		return m_pStream != nullptr && SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(m_pStream), &sSpec, &lFrames);

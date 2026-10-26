@@ -26,6 +26,8 @@ uint32_t timerVblankCount();
 // "random" seed of mog's fighters (fighters.cpp beamPosition; ROADMAP 12.3 makes it a session value in netplay).
 uint16_t timerBeamLine();
 uint16_t timerBeamVhposr();
+// The raw VPOSR word (the frame bit 15 / line bit 8 of the beam; chip-id bits on the Amiga): entropy only (netplay session seed).
+uint16_t timerBeamVposr();
 
 // Wait until the beam is on line ubLine (8-bit, the high byte of VHPOSR) and has left it again: the once-per-frame sync of
 // displayWaitBeam (line $F5). pfnWhileWaiting (may be null) is called in the wait loop before the line is reached (the program

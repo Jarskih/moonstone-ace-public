@@ -298,9 +298,9 @@ MUTATIONS = [
     # Mode: the label shows a number again / wrong text
     ('"Mode  Coop" : "Mode  Classic"', '"Mode  Classic" : "Mode  Coop"'),
     # main menu: no wrap, wrong fire row, fades
-    ('s.uwCursor = (uint16_t)(s.uwCursor == 0 ? MAIN_ITEMS - 1 : s.uwCursor - 1);', 's.uwCursor = (uint16_t)(s.uwCursor == 0 ? 0 : s.uwCursor - 1);'),
-    ('s.uwCursor = (uint16_t)(s.uwCursor + 1 >= MAIN_ITEMS ? 0 : s.uwCursor + 1);', 's.uwCursor = (uint16_t)(s.uwCursor + 1 >= MAIN_ITEMS ? MAIN_ITEMS - 1 : s.uwCursor + 1);'),
-    ('return (MainAction)(MAINACT_LOCAL + s.uwCursor);', 'return MAINACT_LOCAL;'),
+    ('s.uwCursor = (uint16_t)(s.uwCursor == 0 ? MAIN_ROWS - 1 : s.uwCursor - 1);', 's.uwCursor = (uint16_t)(s.uwCursor == 0 ? 0 : s.uwCursor - 1);'),
+    ('s.uwCursor = (uint16_t)(s.uwCursor + 1 >= MAIN_ROWS ? 0 : s.uwCursor + 1);', 's.uwCursor = (uint16_t)(s.uwCursor + 1 >= MAIN_ROWS ? MAIN_ROWS - 1 : s.uwCursor + 1);'),
+    ('return (MainAction)(MAINACT_LOCAL + mainMenuItem(s.uwCursor));', 'return MAINACT_LOCAL;'),
     ('	if (eResult == MAINACT_LOCAL) return false;', '	if (false) return false;'),
     ('	if (bFade) ops.pfnPalette(MENUPAL_TITLE);                           // after a screen', '	ops.pfnPalette(MENUPAL_TITLE);                           // after a screen'),
 ]

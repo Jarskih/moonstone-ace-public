@@ -3,13 +3,13 @@
 // (LAB_04A6, LAB_04AB, LAB_04AC button handler, LAB_04B4 roll display), the druids' ritual screen (LAB_04BF,
 // LAB_04C4), the text line printer (LAB_049E), the palette ramps of the knight colours (LAB_04C5, LAB_04CA) and the
 // two animation-script sounds (LAB_04BA, LAB_04C2).  asm/patches/mog.screens.json replaces the first instruction of each
-// with a JMP into the rt_scr_* shims at the bottom; the rest of the asm bodies is dead code.
+// with a JMP into the rt_scr_* shims (src/rt/amiga/screens_entries.cpp); the rest of the asm bodies is dead code.
 //
-// What is still asm and is called through rtScrCall (the register contract of each is named at its wrapper): the
-// blitter/loader/palette primitives (LAB_0426+2 set target, LAB_0418/0419 background blit, LAB_0C27/0CBB picture and cel
-// loaders, LAB_0CDA draw cel, LAB_0448/044E hit rectangles, LAB_0451 hit test, LAB_02D0 job spawn, the job passes
-// LAB_0322/0328/039E, the fade LAB_03F0/03F1/03F2, the joystick LAB_00EE).  Text, number formatting, frame waits, sound
-// requests, the random generator and all decisions (donationBack/More, mysticGamble, healerApply, dice) are C++.
+// The primitives (LAB_0426+2 set target, LAB_0418/0419 background blit, LAB_0C27/0CBB picture and cel loaders, LAB_0CDA draw cel,
+// LAB_0448/044E hit rectangles, LAB_0451 hit test, LAB_02D0 job spawn, the job passes LAB_0322/0328/039E, the fade LAB_03F0/03F1/03F2,
+// the joystick LAB_00EE) are typed calls of their C++ bodies (rt/prim.hpp, ROADMAP 11.1d part 2; the label of each is at its wrapper).
+// Text, number formatting, frame waits, sound requests, the random generator and all decisions (donationBack/More, mysticGamble,
+// healerApply, dice) are C++.  The shims at the end of the original's routines are src/rt/amiga/screens_entries.cpp (PC: src/rt/sdl/).
 //
 // Deliberate differences from the original:
 //  * The mystic's gamble with every stat at the limit and a lost roll modified the byte at a stale A1 (whatever the
@@ -22,6 +22,7 @@
 
 
 #include "engine/nettick.hpp"
+#include "engine/endian.hpp"
 #include "engine/util.hpp"
 #include "game/api/data.hpp"
 #include "game/scene_places.hpp"
@@ -31,11 +32,15 @@
 #include "rt/combat_ui.hpp"
 #include "rt/display_ops.hpp"
 #include "rt/gtext.hpp"
+#include "rt/mog_display.hpp"
+#include "rt/party_ai.hpp"
 #include "rt/net_session.hpp"
 #include "rt/sfx.hpp"
 #include "rt/soundbank.hpp"
 #include "rt/stubfn.h"
 #include "rt/flow.hpp"
+#include "rt/platform/blit.hpp"
+#include "rt/prim.hpp"
 
 extern "C" {
 // data addresses
@@ -60,74 +65,37 @@ namespace {
 
 using namespace ms::game;
 
-// The register block of the call helper: inputs D0-D3, D5, A0-A2; D0, D1 and A0 come back.
-struct R {
-	uint32_t d0, d1, d2, d3, d5, a0, a1, a2;
-};
-
-}  // namespace
-
-extern "C" void rtScrCall(uint32_t ulFn, R *pRegs);
-
-// rtScrCall(fn, regs): load the registers, JSR fn, store D0/D1/A0 back.  D2-D7/A2-A6 are saved around the call (the asm
-// primitives clobber freely), so the C++ above sees the normal m68k-gcc calling convention.
-asm(R"(
-	.text
-	.globl rtScrCall
-rtScrCall:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	move.l 48(%sp),%a5
-	move.l 52(%sp),%a6
-	move.l %a6,-(%sp)
-	movem.l (%a6),%d0-%d3/%d5/%a0-%a2
-	jsr (%a5)
-	move.l (%sp)+,%a6
-	move.l %d0,(%a6)
-	move.l %d1,4(%a6)
-	move.l %a0,20(%a6)
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-)");
-
-namespace {
-
 inline uint32_t addr(const void *p) { return (uint32_t)(uintptr_t)p; }
 inline const uint8_t *ptr(uint32_t ul) { return reinterpret_cast<const uint8_t *>((uintptr_t)ul); }
 inline Knight &knightAt(uint32_t ul) { return *reinterpret_cast<Knight *>((uintptr_t)ul); }
 inline Inventory &invOf(const Knight &k) { return *reinterpret_cast<Inventory *>((uintptr_t)k.ulInventory); }
 
-R call(const void *pFn, R r) {
-	rtScrCall(addr(pFn), &r);
-	return r;
-}
-R call(const void *pFn) { return call(pFn, R{0, 0, 0, 0, 0, 0, 0, 0}); }
+// ---- primitive wrappers: typed calls of the bodies behind the original's routines (rt/prim.hpp; the label of each in the comment) ------
 
-// ---- primitive wrappers (names the asm label and its inputs) ---------------------------------------------------
-
-void setTarget(uint32_t ulScreen) { call(RT_FN(rt_mog_set_planes), R{ulScreen, 0, 0, 0, 0, 0, 0, 0}); }   // D0 = screen
-void flip() { call(RT_FN(rt_mog_display_flip)); }
-void blitBackgroundBoth() { call(RT_FN(rt_mog_blit_both)); }                                              // loads A0/A1 itself
-void blit(uint32_t ulSrc, uint32_t ulDst) { call(RT_FN(rt_mog_blit_screen), R{0, 0, 0, 0, 0, ulSrc, ulDst, 0}); }  // A0 -> A1
-void loadPicture(const void *pName, uint32_t ulDst) { call(RT_FN(rt_mog_pic_file), R{0, 0, 0, 0, 0, addr(pName), ulDst, 0}); }
-void loadCels(const void *pName, uint32_t ulDst) { call(RT_FN(rt_mog_cel_load), R{0, 0, 0, 0, 0, addr(pName), ulDst, 0}); }
-void drawCel(uint32_t ulSheet, uint16_t uwFrame, uint16_t uwX, uint16_t uwY) {   // A0 sheet, D0 frame, D1 x, D2 y
-	call(RT_FN(rt_mog_draw_cel), R{uwFrame, uwX, uwY, 0, 0, ulSheet, 0, 0});
+void setTarget(uint32_t ulScreen) { rt::setDrawTarget(ulScreen); }                                          // LAB_0426+2, D0 = screen
+void flip() { rt::displayFlip(); }
+void blitBackgroundBoth() { rtMogBlitBothC(); }                                                             // LAB_0418, loads A0/A1 itself
+void blit(uint32_t ulSrc, uint32_t ulDst) { rtMogBlitScreenC(ulSrc, ulDst); }                               // LAB_0419, A0 -> A1
+void loadPicture(const void *pName, uint32_t ulDst) { rtLoadPicFile_mog(static_cast<const char *>(pName), reinterpret_cast<uint8_t *>((uintptr_t)ulDst)); }   // LAB_0C27
+void loadCels(const void *pName, uint32_t ulDst) { rtLoadCel_mog(static_cast<const char *>(pName), reinterpret_cast<uint8_t *>((uintptr_t)ulDst)); }       // LAB_0CBB
+void drawCel(uint32_t ulSheet, uint16_t uwFrame, uint16_t uwX, uint16_t uwY) {   // LAB_0CDA: A0 sheet, D0 frame, D1 x, D2 y
+	rtDrawCel_mog(uwFrame, uwX, uwY, ptr(ulSheet));
 }
 void clearHits() { rtCuiPoolClear(); }                        // LAB_044E (C++, rt/combat_ui.hpp, 7.1o)
-void fadeOut() { call(RT_FN(rt_mog_fade_out)); }
-void fadeIn() { call(RT_FN(rt_mog_fade_out_silent)); }
-void setPalette(const void *pPal) { call(RT_FN(rt_mog_fade_to), R{0, 0, 0, 0, 0, addr(pPal), 0, 0}); }       // A0 = palette
-void waitFire() { call(RT_FN(rt_mog_wait_fire)); }
-uint16_t joyFire() { return (uint16_t)call(RT_FN(rt_mog_joy_read)).d1; }                                     // D1 = LAB_0630
-void jobPass() { call(RT_FN(rt_creature_dispatch)); }
-void tickPass() { call(RT_FN(rt_combat_tick)); }
-void drawPass() { call(RT_FN(rt_mog_restore_pass)); }
-void sprOn() { call(RT_FN(rt_mog_cursor_on)); }
-void sprOff() { call(RT_FN(rt_mog_cursor_off)); }
-void waitBlit() { call(RT_FN(rt_blit_wait)); }
+void fadeOut() { rtMogFadeOutC(); }                           // LAB_03F0
+void fadeIn() { rtMogFadeOutSilentC(); }                      // LAB_03F1
+void setPalette(const void *pPal) { rtMogFadeToC(static_cast<const uint16_t *>(pPal)); }    // LAB_03F2, A0 = palette
+void waitFire() { rtMogWaitFireC(); }                         // LAB_00EC
+uint16_t joyFire() { return (uint16_t)rtMogJoyReadC(); }      // LAB_00EE: D1 = port 1 = LAB_0630
+void jobPass() { rtCreatureDispatch(); }                      // LAB_0322
+void tickPass() { rtCombatTick(); }                           // LAB_0328
+void drawPass() { rtRestorePass_mog(); }
+void sprOn() { rtMogCursorOnC(); }                            // LAB_0575
+void sprOff() { rtMogCursorOffC(); }                          // LAB_057B
+void waitBlit() { rt::platform::blitWait(); }                 // LAB_0D1B
 void waitBeam() { rt::displayWaitBeam(); }
 void copyPal(const void *pFrom, void *pTo) { rtDisplayCopyWordsC(32, static_cast<const uint16_t *>(pFrom), static_cast<volatile uint16_t *>(pTo)); }   // LAB_0422
-void clearJobs() { call(RT_FN(rt_mog_creature_clear)); call(RT_FN(rt_mog_jobs_reset)); }
+void clearJobs() { rtCreatureClear(); rtMogJobsReset(); }     // LAB_02CE, LAB_0305
 void synth(uint16_t uwSeq, uint16_t uwChannel) { rtSfxSynth(uwSeq, uwChannel); }                   // LAB_0F8C
 void wait(uint32_t ulFrames) { rt::displayWaitFrames(ulFrames); }                                  // LAB_0D74
 
@@ -136,8 +104,8 @@ void sound(uint8_t ubChannel, uint16_t uwSeq) { rt::sfxStartFixed(ubChannel, uwS
 
 // LAB_0D8A + LAB_03EE: wait for the beam, write the 32 colours to the copper list and the hardware.
 void showPalette(const void *pPal) {
-	call(RT_FN(rt_display_palette_write), R{0, 0, 0, 0, 0, addr(pPal), 0, 0});
-	call(RT_FN(rt_mog_pal_copy_live), R{0, 0, 0, 0, 0, addr(pPal), 0, 0});
+	rtDisplayPaletteWriteC(static_cast<const uint16_t *>(pPal));
+	rtPalCopyLive_mog(static_cast<const uint16_t *>(pPal));
 }
 
 // Hit rectangle scratch LAB_0A58 (24 bytes); LAB_0448 copies it into the first free slot of the list.
@@ -151,7 +119,12 @@ struct Hit {
 };
 static_assert(sizeof(Hit) == 24, "");
 Hit &hit() { return *reinterpret_cast<Hit *>(mogRecordTemplate); }
-void addHit() { call(RT_FN(rt_mog_add_record), R{0, 0, 0, 0, 0, addr(mogRecordTemplate), 0, 0}); }
+// LAB_02D0: a creature job of the given type at (160, 0, 100) facing 1, its cel list the dice / hen cel table (D5 = type; A0 = script, A2 = &LAB_0F5A).
+void spawnCreature(const uint8_t *pScript, uint32_t ulType) {
+	uint32_t aulOut[2];
+	rtCreatureSpawn(addr(pScript), addr(&mogDiceCelTable), 0xa0, 0, 0x64, 1, ulType, aulOut);
+}
+void addHit() { rtMogAddRecord(); }                                                                     // LAB_0448
 
 // Hit test at the pointer: returns the rectangle (LAB_0451 A0) or 0.
 const Hit *hitTest() {
@@ -303,6 +276,11 @@ void healerScreen() {
 	} else {
 		const uint16_t uwDonated = mogDonation;                            // D1 before the loop
 		const uint8_t ubMask = healerApply(knightAt(mogCurKnight), mogDonation, ms::game::g_gameData);
+		ms::game::ShopEcho echo = {};                                      // co-op: the computer knights give the same donation (ROADMAP 8.3b)
+		echo.kind = ms::game::ShopBuy::Healer;
+		echo.uwAmount = uwDonated;
+		rt::computerEchoBuy(mogCurKnight, echo);
+
 		if(uwDonated < ms::game::g_gameData.healer.uwHealPrice) pText = mogHealerReplyTiny;   // under the smallest donation (original: <= 9)
 		else pText = (ubMask & 1) ? mogHealerReplyHealed : mogHealerReplyPlain;
 	}
@@ -320,7 +298,7 @@ void idleScript() {            // LAB_04AD
 
 // LAB_04AB: spawn the dice thrower job.
 void diceSpawn() {
-	call(RT_FN(rt_creature_spawn), R{0xa0, 0, 0x64, 1, 68, addr(mogDiceScript), 0, addr(&mogDiceCelTable)});
+	spawnCreature(mogDiceScript, 68);
 	mogDiceMode = 5;
 }
 
@@ -332,7 +310,7 @@ void appendGp(char *pEnd) {
 // LAB_04B4: roll the three dice, draw them, pay out and show the result.
 void diceRollScreen() {
 	diceRoll(mogRandomSeed, mogDice);
-	call(RT_FN(rt_mog_palette_clear));
+	rtMogPaletteClearC();                                                   // LAB_03EB
 	sprOff();
 	rt::displayCopyScreenLongs(reinterpret_cast<const void *>((uintptr_t)mogDiceBackground), reinterpret_cast<void *>((uintptr_t)mogBackground));   // LAB_041F
 	setTarget(mogBackground);
@@ -423,7 +401,7 @@ void diceScreen() {
 	sound(1, 0x7e);
 	sound(2, 0x7f);
 	for(;;) {                                                               // LAB_04A8
-		call(RT_FN(rt_mog_palette_clear));
+		rtMogPaletteClearC();                                                   // LAB_03EB
 		mogCursorX = 0x118;
 		sprOn();
 		Knight &k = knightAt(mogDicePlayer);
@@ -499,9 +477,9 @@ void ritualScreen() {
 	mogDiceCelTable = reinterpret_cast<const uint32_t *>(mogBufTable)[2];
 	loadCels(mogFileHen1C, mogDiceCelTable);
 	rtSbLoad(SB_SCREEN);                                                      // LAB_0AB0 (C++, rt/soundbank.hpp, 7.1q)
-	*reinterpret_cast<uint32_t *>(mogHandlerTable + raw(ActorType::DragonFlight)) = addr(RT_FN(rt_scr_ritual_done));
-	call(RT_FN(rt_creature_spawn), R{0xa0, 0, 0x64, 1, 40, addr(mogHenScriptB), 0, addr(&mogDiceCelTable)});
-	call(RT_FN(rt_creature_spawn), R{0xa0, 0, 0x64, 1, 40, addr(mogHenScriptA), 0, addr(&mogDiceCelTable)});
+	ms::be::st32(mogHandlerTable + raw(ActorType::DragonFlight), addr(RT_FN(rt_scr_ritual_done)));   // the handler table: BE bytes
+	spawnCreature(mogHenScriptB, 40);
+	spawnCreature(mogHenScriptA, 40);
 	fadeIn();
 	blitBackgroundBoth();
 	flip();
@@ -513,7 +491,7 @@ void ritualScreen() {
 	sound(0, 0x9e);
 	sound(1, 0x9f);
 	sound(2, 0xa0);
-	call(RT_FN(rt_palette_set_target_mog), R{4, 0, 0, 0, 0, addr(mogUiPalette), 0, 0});
+	rtPaletteSetTarget(1, addr(mogUiPalette), 4);                             // LAB_0E55: A0 = the target palette, D0 = the period
 	mogDiceStop = 0;
 	mogDiceMode = 6;
 	for(;;) {                                                               // LAB_04C0
@@ -569,80 +547,3 @@ __attribute__((used, externally_visible)) uint8_t *rtScrRamp5(uint8_t *pBase, ui
 }
 
 }  // extern "C"
-
-// Shim contracts (asm/patches/mog.screens.json).  Every patch site is the first instruction of the original routine and
-// jumps here, so the RTS returns to the original caller.  All registers are preserved (the originals clobbered many; the
-// callers keep nothing in them that the screens return) except where stated.
-//  rt_scr_mystic / healer / dice / ritual   LAB_047C / LAB_048E / LAB_04A6 / LAB_04BF   no inputs
-//  rt_scr_lines       LAB_049E  A0 text list, D0 x, D1 y, D2 style
-//  rt_scr_ramp5       LAB_04C5  A0 = base, D0 = byte offset.  Out A0 = last word written, A1 = knight LAB_0633
-//  rt_scr_dice_idle / ritual_done   LAB_04AC / LAB_04C4  A0 = the record; leave through LAB_02BA like the originals
-asm(R"(
-	.text
-	.globl rt_scr_mystic
-rt_scr_mystic:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtScrMystic
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_scr_healer
-rt_scr_healer:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtScrHealer
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_scr_dice
-rt_scr_dice:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtScrDice
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_scr_ritual
-rt_scr_ritual:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	jsr rtScrRitual
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_scr_lines
-rt_scr_lines:
-	movem.l %d0-%d7/%a0-%a6,-(%sp)
-	move.l %d2,-(%sp)
-	move.l %d1,-(%sp)
-	move.l %d0,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtScrLines
-	lea 16(%sp),%sp
-	movem.l (%sp)+,%d0-%d7/%a0-%a6
-	rts
-
-	.globl rt_scr_ramp5
-rt_scr_ramp5:
-	movem.l %d0-%d1,-(%sp)
-	move.l %d0,-(%sp)
-	move.l %a0,-(%sp)
-	jsr rtScrRamp5
-	addq.l #8,%sp
-	move.l %d0,%a0
-	movem.l (%sp)+,%d0-%d1
-	move.l mogCurKnight,%a1
-	rts
-
-	.globl rt_scr_dice_idle
-rt_scr_dice_idle:
-	move.l %a0,-(%sp)
-	jsr rtScrDiceIdle
-	addq.l #4,%sp
-	jmp rt_mog_pair_load
-
-	.globl rt_scr_ritual_done
-rt_scr_ritual_done:
-	move.l %a0,-(%sp)
-	jsr rtScrRitualDone
-	addq.l #4,%sp
-	jmp rt_mog_pair_load
-)");
-

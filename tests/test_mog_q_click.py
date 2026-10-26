@@ -27,7 +27,7 @@ try:
 except Exception:          # pragma: no cover
     HAVE_ST = False
 
-SOURCES = ['src/rt/loot.cpp', 'src/rt/party_loot.cpp', 'src/game/party_loot.cpp', 'src/rt/party.cpp', 'src/game/loot.cpp', 'src/rt/scene_town.cpp', 'src/game/scene_town.cpp', 'src/game/rules/stats.cpp', 'src/game/rules/rituals.cpp', 'src/game/rules/levelling.cpp', 'src/game/rules/dice.cpp', 'src/game/rules/shops.cpp', 'src/game/rules/healing.cpp', 'src/game/rules/settle.cpp', 'src/game/rules/clock.cpp', 'src/game/rules/turns.cpp',
+SOURCES = ['src/rt/loot.cpp', 'src/rt/party_loot.cpp', 'src/rt/party_ai.cpp', 'src/game/party_ai_shop.cpp', 'src/game/party_loot.cpp', 'src/rt/party.cpp', 'src/game/loot.cpp', 'src/rt/scene_town.cpp', 'src/game/scene_town.cpp', 'src/game/rules/stats.cpp', 'src/game/rules/rituals.cpp', 'src/game/rules/levelling.cpp', 'src/game/rules/dice.cpp', 'src/game/rules/shops.cpp', 'src/game/rules/healing.cpp', 'src/game/rules/settle.cpp', 'src/game/rules/clock.cpp', 'src/game/rules/turns.cpp',
            'src/rt/game_rules.cpp', 'src/rt/amiga/game_rules_entries.cpp', 'src/engine/util.cpp', 'tests/click_emu_support.cpp', GAMEDATA_REL]
 CALLEES = [('LAB_04D4', 'emu_o_redraw'), ('LAB_04CF', 'emu_o_screen'), ('LAB_0AA2', 'emu_o_sfx'), ('LAB_04A3', 'emu_o_rng'),
            ('LAB_0E02', 'emu_o_force'), ('LAB_0E05', 'emu_o_ambush'), ('LAB_0E06', 'emu_o_spot'), ('LAB_05A1', 'emu_o_jgood'),

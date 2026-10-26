@@ -3,7 +3,7 @@
   * a dry run lists the expected files of both archives and writes nothing;
   * the original-data guard refuses a planted original (name, type, hash, floppy image, leak-scan run) and no archive appears;
   * the version is the header's (major.minor), and --version must agree;
-  * the archive carries a SHA256SUMS.txt that matches its members, the build is reproducible, the PC zip is marked preview.
+  * the archive carries a SHA256SUMS.txt that matches its members, the build is reproducible, the PC zip is marked preview while PC_PREVIEW is on.
 """
 import hashlib
 import io
@@ -33,6 +33,9 @@ def run(argv):
     with redirect_stdout(out), redirect_stderr(err):
         rc = package.main(argv)
     return rc, out.getvalue(), err.getvalue()
+
+
+VER = '%d.%d.0' % package.header_version()   # the archives are named after the header's version
 
 
 class Fixture(unittest.TestCase):
@@ -72,7 +75,7 @@ class TestDryRun(Fixture):
                      'Moonstone/mods_examples/mymod/rules.ini', 'moonstone-ace-a1200.uae', 'start-winuae.bat', 'README.txt',
                      'SHA256SUMS.txt', 'moonstone.exe', 'SDL3.dll', 'disks/README.txt'):
             self.assertIn(want, out)
-        self.assertIn('windows (preview)', out)
+        self.assertIn('windows (preview)' if package.PC_PREVIEW else 'windows', out)
         self.assertFalse(os.path.exists(self.out), 'a dry run writes nothing')
 
     def test_only_amiga_or_only_pc(self):
@@ -146,7 +149,7 @@ class TestGuard(Fixture):
         rc, _, err = run(self.args)
         self.assertEqual(rc, 1)
         self.assertIn('original data', err)
-        self.assertFalse(os.path.exists(os.path.join(self.out, 'moonstone-ace-0.2.0-amiga.zip')))
+        self.assertFalse(os.path.exists(os.path.join(self.out, f'moonstone-ace-{VER}-amiga.zip')))
 
     def test_planted_type_stops_the_package(self):
         with open(os.path.join(self.ex, 'mymod', 'x.adf'), 'wb') as f:
@@ -173,14 +176,14 @@ class TestGuard(Fixture):
         rc, _, err = run(args)
         self.assertEqual(rc, 1)
         self.assertIn('leak scan', err)
-        self.assertFalse(os.path.exists(os.path.join(self.out, 'moonstone-ace-0.2.0-amiga.zip')))
+        self.assertFalse(os.path.exists(os.path.join(self.out, f'moonstone-ace-{VER}-amiga.zip')))
 
 
 class TestArchive(Fixture):
     def test_manifest_matches_members_and_reproducible(self):
         rc, _, err = run(self.args)
         self.assertEqual(rc, 0, err)
-        name = 'moonstone-ace-0.2.0-amiga.zip'
+        name = f'moonstone-ace-{VER}-amiga.zip'
         root = name[:-4] + '/'
         m = self.members(name)
         sums = m[root + 'SHA256SUMS.txt'].decode()
@@ -198,36 +201,82 @@ class TestArchive(Fixture):
 
     def test_amiga_text_files_are_lf_only_and_windows_ones_crlf(self):
         run(self.args)
-        m = self.members('moonstone-ace-0.2.0-amiga.zip')
-        r = 'moonstone-ace-0.2.0-amiga/'
+        m = self.members(f'moonstone-ace-{VER}-amiga.zip')
+        r = f'moonstone-ace-{VER}-amiga/'
         self.assertEqual(m[r + 'Moonstone/s/startup-sequence'], b'moonstone\n')
         self.assertNotIn(b'\r', m[r + 'README.txt'])
         self.assertNotIn(b'\r', m[r + 'Moonstone/mods_examples/mymod/rules.ini'])
         self.assertIn(b'\r\n', m[r + 'moonstone-ace-a1200.uae'])
-        self.assertIn(b'bsdsocket_emu=true', m[r + 'moonstone-ace-a1200.uae'])
-        self.assertIn(b'6502', m[r + 'README.txt'])
-        self.assertIn(b'bsdsocket', m[r + 'README.txt'])
         self.assertNotIn(b'@VERSION@', m[r + 'README.txt'])
+        self.assertNotRegex(m[r + 'README.txt'].decode('utf-8'), r'@[A-Z_0-9]+@')
+        self.assertNotRegex(m[r + 'moonstone-ace-a1200.uae'].decode('utf-8'), r'@[A-Z_0-9]+@')
 
-    def test_pc_zip_is_a_marked_preview(self):
-        rc, _, err = run(self.args + ['--pc'])
+    def test_stock_archive_has_no_network_play_and_no_fast_ram(self):
+        """ROADMAP 2.11a: the default Amiga archive is the MS_NET=OFF game for the stock A1200."""
+        run(self.args + ['--amiga'])
+        m = self.members(f'moonstone-ace-{VER}-amiga.zip')
+        r = f'moonstone-ace-{VER}-amiga/'
+        uae, readme = m[r + 'moonstone-ace-a1200.uae'], m[r + 'README.txt']
+        self.assertIn(b'bsdsocket_emu=false', uae)
+        self.assertIn(b'z3mem_size=0', uae)
+        self.assertNotIn(b'6502', readme)
+        self.assertNotIn(b'MULTIPLAYER', readme)
+        self.assertIn(b'no network play', readme)
+        self.assertIn(b'amiga-netplay', readme)
+
+    def test_netplay_archive_needs_fast_ram_and_keeps_the_network_text(self):
+        """--netplay: moonstone-ace-<ver>-amiga-netplay.zip from the MS_NET=ON build, bsdsocket on, 8 MB fast, the lobby text, fast RAM stated."""
+        os.makedirs(os.path.join(self.tmp, 'net'))
+        with open(os.path.join(self.tmp, 'net', 'moonstone'), 'wb') as f:
+            f.write(b'\x00\x00\x03\xf3' + b'\x07' * 64)
+        rc, _, err = run(self.args + ['--netplay', '--net-build-dir', os.path.join(self.tmp, 'net')])
         self.assertEqual(rc, 0, err)
-        self.assertTrue(package.PC_PREVIEW)
-        name = 'moonstone-ace-0.2.0-windows-preview.zip'
+        name = f'moonstone-ace-{VER}-amiga-netplay.zip'
         m = self.members(name)
         r = name[:-4] + '/'
-        self.assertIn(b'PREVIEW', m[r + 'README.txt'])
+        uae, readme = m[r + 'moonstone-ace-a1200.uae'], m[r + 'README.txt']
+        self.assertIn(b'bsdsocket_emu=true', uae)
+        self.assertIn(b'z3mem_size=8', uae)
+        self.assertIn(b'6502', readme)
+        self.assertIn(b'bsdsocket', readme)
+        self.assertIn(b'needs fast RAM', readme)
+        self.assertEqual(m[r + 'Moonstone/moonstone'][-1:], b'\x07', 'the netplay exe, not the stock one')
+        self.assertNotRegex(readme.decode('utf-8'), r'@[A-Z_0-9]+@')
+        self.assertFalse(os.path.isfile(os.path.join(self.out, f'moonstone-ace-{VER}-amiga.zip')), '--netplay alone builds only the netplay archive')
+
+    def test_release_build_must_match_the_archive(self):
+        """A stock archive from an MS_NET=ON tree (or the netplay archive from an OFF one) is refused."""
+        for d, flag, extra, want in (('bld', 'ON', ['--amiga'], 'needs MS_NET=OFF'), ('net', 'OFF', ['--netplay'], 'needs MS_NET=ON')):
+            bd = os.path.join(self.tmp, d)
+            os.makedirs(bd, exist_ok=True)
+            with open(os.path.join(bd, 'moonstone'), 'wb') as f:
+                f.write(b'\x00\x00\x03\xf3' + b'\x00' * 8)
+            with open(os.path.join(bd, 'CMakeCache.txt'), 'w') as f:
+                f.write('CMAKE_BUILD_TYPE:STRING=Release\nMS_NET:BOOL=%s\n' % flag)
+            extra = extra + (['--net-build-dir', bd] if d == 'net' else [])
+            rc, _, err = run(self.args + ['--dry-run'] + extra)
+            self.assertEqual(rc, 1, err)
+            self.assertIn(want, err)
+
+    def test_pc_zip_preview_follows_the_switch(self):
+        rc, _, err = run(self.args + ['--pc'])
+        self.assertEqual(rc, 0, err)
+        name = f'moonstone-ace-{VER}-windows-preview.zip' if package.PC_PREVIEW else f'moonstone-ace-{VER}-windows.zip'
+        m = self.members(name)
+        r = name[:-4] + '/'
+        (self.assertIn if package.PC_PREVIEW else self.assertNotIn)(b'PREVIEW', m[r + 'README.txt'])
         for f in ('moonstone.exe', 'SDL3.dll', 'disks/README.txt', 'mods_examples/mymod/rules.ini', 'SHA256SUMS.txt'):
             self.assertIn(r + f, m)
         rc, _, err = run(self.args + ['--pc', '--pc-final'])
-        self.assertTrue(os.path.isfile(os.path.join(self.out, 'moonstone-ace-0.2.0-windows.zip')))
-        self.assertNotIn(b'PREVIEW', self.members('moonstone-ace-0.2.0-windows.zip')['moonstone-ace-0.2.0-windows/README.txt'])
+        self.assertTrue(os.path.isfile(os.path.join(self.out, f'moonstone-ace-{VER}-windows.zip')))
+        self.assertNotIn(b'PREVIEW', self.members(f'moonstone-ace-{VER}-windows.zip')[f'moonstone-ace-{VER}-windows/README.txt'])
 
     def test_release_notes_draft_is_filled(self):
         run(self.args)
-        t = slurp(os.path.join(self.out, 'RELEASE_NOTES_0.2.0_DRAFT.md'), 'r')
-        self.assertIn('# Moonstone ACE 0.2.0', t)
-        self.assertIn('UDP input with history', t)          # the ROADMAP release plan
+        t = slurp(os.path.join(self.out, f'RELEASE_NOTES_{VER}_DRAFT.md'), 'r')
+        self.assertIn(f'# Moonstone ACE {VER}', t)
+        plan = t.split('## Plan this release was cut from (ROADMAP)', 1)[1].split('##', 1)[0]
+        self.assertTrue(plan.strip(), 'the ROADMAP release plan of this version is filled in')
         self.assertNotRegex(t, r'@[A-Z_]+@')
 
     def test_debug_build_refused(self):
@@ -242,10 +291,10 @@ class TestRealBuild(unittest.TestCase):
     """The checked-in templates and, when a real Release exe exists, the real package passes the guard and the leak scan."""
 
     def test_templates_have_only_known_placeholders(self):
-        known = {'VERSION', 'PREVIEW_TAG', 'PREVIEW_BLOCK'}
+        known = {'VERSION', 'PREVIEW_TAG', 'PREVIEW_BLOCK'} | set(package.AMIGA_TEXT[False]) | set(package.AMIGA_TEXT[True])
         for n in os.listdir(package.REL):
             t = slurp(os.path.join(package.REL, n), 'r')
-            self.assertLessEqual(set(re.findall(r'@([A-Z_]+)@', t)), known, n)
+            self.assertLessEqual(set(re.findall(r'@([A-Z_0-9]+)@', t)), known, n)
 
     @unittest.skipUnless(os.path.isfile(os.path.join(ROOT, 'build', 'moonstone')) and os.path.isdir(os.path.join(DISKS, 'A')),
                          'needs build/moonstone and build/disks')

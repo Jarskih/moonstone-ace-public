@@ -38,6 +38,22 @@ cmake -S $P -B $P/build -G Ninja $TC -DCMAKE_BUILD_TYPE=Release
 cmake -S $P -B $P/build-debug -G Ninja $TC -DCMAKE_BUILD_TYPE=Debug
 ```
 
+### Amiga builds: stock (`MS_NET=OFF`) and netplay (`MS_NET=ON`), ROADMAP 2.11a
+
+Network play is about 100 KB of code and 90 KB of buffers, which a stock A1200 (2 MB chip, no fast RAM) cannot spare next to the game arenas
+(`docs/MEMORY.md`). The CMake option `MS_NET` (cache variable, **OFF by default on the Amiga**; the PC build always has it) chooses:
+
+| build | configure | net play | memory | shipped as |
+|---|---|---|---|---|
+| `build/` (Release, **stock**) | the lines above | no: the net sources are not linked, the main menu has LOCAL / SETTINGS only | fits 2 MB chip, no fast RAM | `moonstone-ace-<ver>-amiga.zip` |
+| `build-net/` (Release, **netplay**) | `cmake -S $P -B $P/build-net -G Ninja $TC -DCMAKE_BUILD_TYPE=Release -DMS_NET=ON` | yes (Multiplayer, lobby, lockstep, rejoin) | **needs fast RAM** (the same exe size as the old unconditional build, ~1.0 MB in memory) | `moonstone-ace-<ver>-amiga-netplay.zip` (`py tools/package.py --netplay`) |
+| `build-game-debug/`, `build-debug/` | add `-DMS_NET=ON` for network work | either | Debug needs fast RAM anyway | not shipped |
+| `build-autoplay/` (Debug) | `tools/integrate.py` configures it with `-DMS_NET=ON` (4 MB fast), so `tests/boot/net_*.txt`, `play_net*.txt`, `play_netmenu.txt` and `tools/netpair.py` work | yes | | test only |
+| `build-autoplay-rel/` (Release) | `tools/integrate.py` configures it `-DMS_NET=OFF` | no | the stock A1200 boot check | test only |
+| `build-sdl/` (PC) | `-DMS_PLATFORM=SDL` (below), `MS_NET=1` is set by `cmake/sdl.cmake` | yes | PC | `...-windows.zip` |
+
+Switching the option in an existing tree: `cmake -S $P -B $P/build -DMS_NET=ON` (the sources are globbed at configure time).
+
 ACE is shared at `../ace/`; its Bartman support library is in `tools/bartman_gcc_support/`,
 so configuring with these local copies does not require a network fetch.
 Dependencies can be copied from the original workspace with `py tools/vendor_local.py`.

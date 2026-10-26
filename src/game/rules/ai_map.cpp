@@ -174,6 +174,8 @@ void partyStart(const RecordSet &rs, PartyMap &pm, uint8_t ubSize) {
 	pm.ubSize = ubSize;
 	pm.ubBk = ubSize;                                                 // fight extras: as many black knights fight as the party has knights (decision 4)
 	pm.ubLeader = 0;                                                  // the first player leads the first round
+	pm.ubComputer = 0;                                                // the runtime fills the computer knights in (rt/party_start.cpp)
+
 	for (int i = 0; i < 4; ++i) {
 		Knight &k = rs.aRec[i];
 		if (i < ubSize) k.ubInputPort = partyPortOf(i);               // the other slots stay the original's AI black knights (2026-10-09)

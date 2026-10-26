@@ -20,6 +20,7 @@
 
 #include <stdint.h>
 
+#include "engine/endian.hpp"
 #include "engine/gtext.hpp"
 #include "game/state_bind.hpp"
 #include "rt/gtext.hpp"
@@ -62,6 +63,18 @@ struct Ctx {
 	uint32_t *pRectList;     // LAB_0641 / LAB_027C
 };
 
+// The text of a record.  A record whose text pointer is 0 (a hit rectangle whose list lies past the end of its table, e.g. the stat sheet's
+// sword / armour buttons for an item with no description) was drawn by the 68k from address 0, whose first byte is 0: an empty string.
+// On the PC address 0 is not readable (the Amiga build keeps the read).
+inline const uint8_t *textOf(uint32_t ulText) {
+#if MS_BIG_ENDIAN
+	return reinterpret_cast<const uint8_t *>(ulText);
+#else
+	static const uint8_t s_ubEmpty = 0;
+	return ulText != 0 ? reinterpret_cast<const uint8_t *>(ulText) : &s_ubEmpty;
+#endif
+}
+
 inline uint16_t rd16(const uint8_t *p) {
 	return static_cast<uint16_t>((p[0] << 8) | p[1]);
 }
@@ -81,12 +94,22 @@ void drawGlyph(void *pCtx, uint8_t ubGlyph, uint16_t uwX, uint16_t uwY) {
 // rectangle overwrites the mark and only the last one stays as terminator.
 void addRect(void *pCtx, uint16_t uwX, uint16_t uwY, uint16_t uwW, uint16_t uwH) {
 	uint32_t &ulList = *static_cast<Ctx *>(pCtx)->pRectList;
+#if MS_BIG_ENDIAN
 	uint16_t *pRect = reinterpret_cast<uint16_t *>(ulList);
 	pRect[0] = uwX;
 	pRect[1] = uwY;
 	pRect[2] = uwW;
 	pRect[3] = uwH;
 	pRect[6] = 0xFFFF;
+#else
+	// the draw list is big-endian words (ms::runRestore reads it with ms::be)
+	uint8_t *pRect = reinterpret_cast<uint8_t *>(ulList);
+	ms::be::st16(pRect, uwX);
+	ms::be::st16(pRect + 2, uwY);
+	ms::be::st16(pRect + 4, uwW);
+	ms::be::st16(pRect + 6, uwH);
+	ms::be::st16(pRect + 12, 0xFFFF);
+#endif
 	ulList += 8;
 }
 
@@ -113,7 +136,7 @@ TextExtent mogDrawList(const void *pRecords) {
 		cfg.advanceBias = 0;
 		cfg.span = static_cast<uint16_t>(mogSpanWidth - mogSpanMargin);
 		cfg.extendedStyles = true;
-		const ms::TextItem item = {reinterpret_cast<const uint8_t *>(pRec->ulText), pRec->uwX, pRec->uwY,
+		const ms::TextItem item = {textOf(pRec->ulText), pRec->uwX, pRec->uwY,
 		                           static_cast<uint8_t>(pRec->uwStyle)};
 		ms::textDrawItem(cfg, host, item, s_mogState);
 	}
@@ -171,7 +194,7 @@ extern "C" __attribute__((used, externally_visible)) void rtPrgTextList(const vo
 	for(const TextRec *pRec = static_cast<const TextRec *>(pRecords); pRec;
 	    pRec = reinterpret_cast<const TextRec *>(pRec->ulNext)) {
 		ctx.pFont = reinterpret_cast<const uint8_t *>(*reinterpret_cast<const uint32_t *>(prgFontRecord + 16));
-		const ms::TextItem item = {reinterpret_cast<const uint8_t *>(pRec->ulText), pRec->uwX, pRec->uwY,
+		const ms::TextItem item = {textOf(pRec->ulText), pRec->uwX, pRec->uwY,
 		                           static_cast<uint8_t>(pRec->uwStyle)};
 		ms::textDrawItem(cfg, host, item, s_prgState);
 	}

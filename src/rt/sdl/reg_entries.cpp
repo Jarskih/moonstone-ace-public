@@ -5,14 +5,17 @@
 // src/rt/amiga/*_entries.cpp.  The PC has no registers: rtAsmCall here calls `rt_x` as `void rt_x(rt::CallRegs &)`, and each entry below does what the
 // Amiga shim does with the registers (arguments out of CallRegs, results back into rd0 / rd1 / ra0 / ra1) around the same C++ body.
 //
-// The entries that a PC run has not needed yet are `unimplemented`: they log "STUB rt_x" once when called (MS_STUB, ROADMAP 11.1d).  Each is the work item
-// of its cluster file's conversion; what the scenes do not reach before the title screen stays so.
-// TODO(11.1d): typed call tables replace rtAsmCall and this file.
+// The entries of the cluster files themselves (combat, creatures, screens, overworld, ...) are in src/rt/sdl/<file>_entries.cpp, next to the Amiga shims in
+// src/rt/amiga/<file>_entries.cpp.  Every `rt_x` a C++ caller reaches by address (RT_FN) is defined on the PC by one of them (ROADMAP 11.1d part 2): the
+// register-contract call sites of arena / combat_ui / combat / overworld / screens run unchanged because their emulator tests intercept the labels.
 #include <stdint.h>
 
+#include "game/prims.hpp"
 #include "rt/asmcall.hpp"
 #include "rt/display_ops.hpp"
 #include "rt/mog_display.hpp"
+#include "rt/platform/blit.hpp"
+#include "rt/sdl/handlers.hpp"
 #include "rt/prim.hpp"
 #include "rt/sdl/log.hpp"
 
@@ -63,9 +66,6 @@ namespace {
 constexpr uint32_t kWordMask = 0xFFFF;   // the original left D0 = $0000FFFF where a DBF loop ended
 
 }  // namespace
-
-// An entry that is not wired yet: reports itself once (rt/sdl/log.hpp MS_STUB) and leaves the registers as they are.
-#define MS_UNIMPLEMENTED_ENTRY(name) extern "C" void name(rt::CallRegs &) { MS_STUB("11.1d"); }   // TODO(11.1d): the cluster file that owns the routine
 
 // ---- display, palette, blitter, input ---------------------------------------------------------------------------------------------------
 
@@ -186,18 +186,84 @@ void rt_ar_swap_0197(rt::CallRegs &) { rtArSwap0197(); }
 
 }  // extern "C"
 
-// ---- not wired yet: the rest of the cluster ---------------------------------------------------------------------------------------------------
 
-MS_UNIMPLEMENTED_ENTRY(rt_creature_spawn)         // creatures.cpp (rtCreatureSpawn)
-MS_UNIMPLEMENTED_ENTRY(rt_job_create)             // creatures.cpp (rtJobCreate)
-MS_UNIMPLEMENTED_ENTRY(rt_arena_meet)             // combat.cpp
-MS_UNIMPLEMENTED_ENTRY(rt_arena_dragon)           // combat.cpp
-MS_UNIMPLEMENTED_ENTRY(rt_combat_tick)            // combat_script.cpp
-MS_UNIMPLEMENTED_ENTRY(rt_mog_arena_default)      // arena_bg.cpp
-MS_UNIMPLEMENTED_ENTRY(rt_palette_set_target_mog) // engine_palette_entries (rtPaletteSetTarget)
-MS_UNIMPLEMENTED_ENTRY(rt_places_gift_gold)       // scene_places_entries
-MS_UNIMPLEMENTED_ENTRY(rt_places_gift_item)
-MS_UNIMPLEMENTED_ENTRY(rt_places_math_roll)
-MS_UNIMPLEMENTED_ENTRY(rt_scr_dice_idle)          // screens.cpp
-MS_UNIMPLEMENTED_ENTRY(rt_scr_lines)
-MS_UNIMPLEMENTED_ENTRY(rt_scr_ramp5)
+// ---- input, frame and job entries ----------------------------------------------------------------------------------------------------------
+
+namespace {
+// The joystick-shaped result of rtMogJoyReadC / rtMogWaitFireC: port 0 << 16 | port 1 into the low words of D0 / D1 (the high words stay as they were).
+void setPorts(rt::CallRegs &r, uint32_t ulPorts) {
+	r.rd0 = (r.d0 & ~kWordMask) | (ulPorts >> 16);
+	r.rd1 = (r.d1 & ~kWordMask) | (ulPorts & kWordMask);
+}
+}  // namespace
+
+extern "C" {
+
+void rtPairLoad(ms::game::PairPosition *pOut);              // src/rt/prims.cpp
+void rtCelInit_mog(uint32_t ulPlanes);                      // src/rt/engine_blit.cpp
+void rtMogKeyWaitC(void);
+void rtMogCursorOnC(void);
+void rtMogCursorOffC(void);
+uint32_t rtMogWaitFireC(void);
+void rtMogFightPaletteInitC(void);                          // src/rt/palette_glue.cpp
+void rtMogFightPaletteDoneC(void);
+void rtMogFrameStart(void);                                 // src/rt/mainloop.cpp
+void rtMogFrameWait(void);
+uint32_t rtMogJobToggle(uint32_t ulOwner);
+uint32_t rtPaletteCycleAdd(uint32_t ulMog, uint32_t ulD0, uint32_t ulD1, uint32_t ulD2, uint32_t ulD3);   // src/rt/engine_palette.cpp
+uint32_t rtPlacesGiftGold(uint32_t ulD3);                   // src/rt/scene_places.cpp
+uint32_t rtPlacesGiftItem(uint32_t ulD3);
+void rtPlacesMathRoll(void);
+void rtArenaDefault(void);                                  // src/rt/arena_bg.cpp
+extern uint32_t mogFightVars;                               // LAB_061D: the script interpreter's next script
+
+void rt_mog_key_reset(rt::CallRegs &) { rtMogKeyResetC(); }
+void rt_mog_key_wait(rt::CallRegs &) { rtMogKeyWaitC(); }
+void rt_mog_cursor_on(rt::CallRegs &) { rtMogCursorOnC(); }
+void rt_mog_cursor_off(rt::CallRegs &) { rtMogCursorOffC(); }
+void rt_mog_wait_fire(rt::CallRegs &r) { setPorts(r, rtMogWaitFireC()); }
+void rt_mog_key_xlat(rt::CallRegs &r) { r.rd0 = rtMogKeyXlatC(r.d0); }           // LAB_0D8D: D0 = (index << 16) | the game key
+
+void rt_blit_wait(rt::CallRegs &) { rt::platform::blitWait(); }
+void rt_mog_blit_screen(rt::CallRegs &r) { rtMogBlitScreenC(r.a0, r.a1); }       // LAB_0419: A0 -> A1
+void rt_mog_draw_buf_clear(rt::CallRegs &r) { rtDrawBufClear(); r.rd0 = kWordMask; }
+void rt_mog_cel_init(rt::CallRegs &r) { rtCelInit_mog(r.d5); }                  // SECSTRT_28: the plane count (D7 of the original, carried in d5 by rtOwAsm)
+void rt_mog_fade_to(rt::CallRegs &r) { rtMogFadeToC(reinterpret_cast<const uint16_t *>(static_cast<uintptr_t>(r.a0))); }
+void rt_mog_fight_palette_init(rt::CallRegs &) { rtMogFightPaletteInitC(); }
+void rt_mog_fight_palette_done(rt::CallRegs &) { rtMogFightPaletteDoneC(); }
+
+void rt_mog_frame_start(rt::CallRegs &) { rtMogFrameStart(); }
+void rt_mog_frame_wait(rt::CallRegs &) { rtMogFrameWait(); }
+void rt_mog_job_toggle(rt::CallRegs &r) { r.rd0 = rtMogJobToggle(r.d0); }        // LAB_0319: D0 = the owner record; out D0 = the job (0 none)
+
+// The colour slot allocators: the slot address, or D0 unchanged when every slot is busy.
+void rt_palette_ramp_add_mog(rt::CallRegs &r) {
+	const uint32_t ulSlot = rtPaletteRampAdd(1, r.d0, r.d1, r.d2, r.d3);
+	r.rd0 = ulSlot != 0 ? ulSlot : r.d0;
+}
+void rt_palette_cycle_add_mog(rt::CallRegs &r) {
+	const uint32_t ulSlot = rtPaletteCycleAdd(1, r.d0, r.d1, r.d2, r.d3);
+	r.rd0 = ulSlot != 0 ? ulSlot : r.d0;
+}
+void rt_palette_slot_free(rt::CallRegs &r) { rtPaletteSlotFreeC(r.d0); }
+void rt_palette_set_target_mog(rt::CallRegs &r) { rtPaletteSetTarget(1, r.a0, r.d0); }   // LAB_0E55: A0 = the target palette, D0 = the period
+
+// scene_places: D3 = who (0 the current knight, 1 the current lair, 2 the market stock) -> D0 = the amount / the slot
+void rt_places_gift_gold(rt::CallRegs &r) { r.rd0 = rtPlacesGiftGold(r.d3); }
+void rt_places_gift_item(rt::CallRegs &r) { r.rd0 = rtPlacesGiftItem(r.d3); }
+void rt_places_math_roll(rt::CallRegs &) { rtPlacesMathRoll(); }
+
+void rt_mog_arena_default(rt::CallRegs &) { rtArenaDefault(); }
+
+}  // extern "C"
+
+// LAB_02BA: the way out of a creature handler (rt/sdl/handlers.hpp): the pair position of the current fighter (rtPairLoad, src/rt/prims.cpp) and the next script, LAB_061D.
+void rt::sdl::handlerExit(ms::game::HandlerResult *pOut) {
+	ms::game::PairPosition sPos;
+	rtPairLoad(&sPos);
+	pOut->ulScript = mogFightVars;
+	pOut->uwX = sPos.uwX;
+	pOut->uwY = sPos.uwY;
+	pOut->uwZ = sPos.uwDepth;
+	pOut->ubFacing = sPos.ubFacing;
+}

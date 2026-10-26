@@ -102,7 +102,7 @@ ShopVisit::ShopVisit() : m_bOn(partyCoop()), m_ulCur(mogCurKnight), m_ulAct(mogA
 	if (!m_bOn) return;
 	shopQueueBegin(s_queue, recordSet());
 	s_pVisit = this;
-	turnActivate(true);                                            // the corner token / name and the banner (ROADMAP 8.5a)
+	turnActivate(true);                                            // the corner name and the banner (ROADMAP 8.5a)
 	turnBegin();                                                   // the first member's turn: banner due
 }
 
@@ -126,7 +126,12 @@ void shopSwitch(void *, int iDir) {
 	turnBegin();                                                   // the new member's turn: banner due
 }
 
+unsigned shopHumans() {
+	return s_pVisit ? shopQueueHumans(s_queue) : 0;
+}
+
 unsigned shopMembers(uint32_t aAddr[PARTY_MAX]) {
+
 	if (!s_pVisit) return 0;
 	const RecordSet rs = recordSet();
 	for (unsigned i = 0; i < s_queue.ubCount; ++i) aAddr[i] = rs.addr(s_queue.aubRec[i]);

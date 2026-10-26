@@ -127,6 +127,111 @@ int main() {
 		r = fighterCaster(g_e, K(5));
 		check(r.ulScript == S0869 && jobs[0].ulScript == 0, "squeeze_classic", "no roster: LAB_0869 as in the original");
 	}
+	// ---- a flyer's finishing blow (owner report 2026-10-26, network co-op: "when the other knight dies the other disappears and the combat ends") ----
+	{
+		static CombatJob jobs[16]; static CombatWork works[16]; static FightVars vars; static uint32_t ulTarget, ulSelf, ulFirst, ulSecond, ulDemo;
+		struct Env { static Joystick joy() { Joystick j; j.uwPort0 = 0; j.uwPort1 = 0; return j; } };
+		auto prepare = [&](bool bParty) {
+			setup(false);
+			memset(jobs, 0, sizeof jobs); memset(works, 0, sizeof works); memset(&vars, 0, sizeof vars);
+			g_e.pVars = &vars; g_e.pJobs = jobs; g_e.pTarget = &ulTarget; g_e.pSelf = &ulSelf; g_e.pFirst = &ulFirst; g_e.pSecond = &ulSecond; g_e.pDemoFlag = &ulDemo;
+			g_e.joystick = Env::joy;
+			ulFirst = A(0); ulDemo = 0;
+			K(5).ulHitTarget = A(1);                          // the flyer struck party fighter 1 ...
+			K(1).swHp = 0;                                    // ... and took its last point; fighter 0 stands, nearer to the flyer than the fallen one is
+			K(5).uwX = K(0).uwX = 100; K(1).uwX = 200; K(0).ubType = K(1).ubType = 0x1E;   // knights (type 0 is the flyer's own kind)
+			jobs[0].ubActive = 1; jobs[0].ulOwner = A(0); jobs[0].ulWork = ms::jobHostAddr(&works[0]);
+			jobs[1].ubActive = 1; jobs[1].ulOwner = A(1); jobs[1].ulWork = ms::jobHostAddr(&works[1]);
+			if (!bParty) g_e.pRoster = 0;
+		};
+		prepare(true);
+		fighterFlyer(g_e, K(5));
+		snprintf(g_b, sizeof g_b, "hp0 %d hp1 %d job0 %d job1 %d active %d", K(0).swHp, K(1).swHp, jobs[0].ubActive, jobs[1].ubActive, g_act.ubFightActive);
+		check(K(1).swHp == -1 && K(0).swHp == 100 && jobs[0].ubActive == 1 && jobs[1].ubActive == 0 && g_act.ubFightActive == 1, "flyer_finishes_the_struck_knight", g_b);
+		prepare(true);
+		K(0).swHp = -1;                                   // fighter 0 was down already: the last knight's fall ends the fight
+		fighterFlyer(g_e, K(5));
+		check(K(1).swHp == -1 && g_act.ubFightActive == 0, "flyer_last_knight_ends", "the whole party down: the fight ends");
+	}
+	// ---- the other creatures' kill paths in a party fight (audit 2026-10-26, branch wt-coop-kill) --------------------------------------------
+	{
+		static CombatJob jobs[16]; static CombatWork works[16]; static FightVars vars; static uint32_t ulTarget, ulSelf, ulFirst, ulSecond, ulDemo; static uint8_t ubSnatch;
+		struct Env { static Joystick joy() { Joystick j; j.uwPort0 = 0; j.uwPort1 = 0; return j; } };
+		auto prepare = [&](bool bParty) {
+			setup(false);
+			memset(jobs, 0, sizeof jobs); memset(works, 0, sizeof works); memset(&vars, 0, sizeof vars);
+			g_e.pVars = &vars; g_e.pJobs = jobs; g_e.pTarget = &ulTarget; g_e.pSelf = &ulSelf; g_e.pFirst = &ulFirst; g_e.pSecond = &ulSecond; g_e.pDemoFlag = &ulDemo;
+			g_e.pSnatchFlags = &ubSnatch; ubSnatch = 0;
+			g_e.joystick = Env::joy;
+			g_e.scripts.s081C = 0x9300; g_e.scripts.s0884 = 0x9301; g_e.scripts.s0895 = 0x9302; g_e.scripts.s0896 = 0x9303; g_e.scripts.s08A3 = 0x9304;
+			ulFirst = A(0); ulDemo = 0;
+			K(0).uwX = K(5).uwX = 100; K(1).uwX = 200; K(0).ubType = K(1).ubType = raw(ActorType::KnightFight);   // fighter 0 stands next to the creature
+			jobs[0].ubActive = 1; jobs[0].ulOwner = A(1); jobs[0].ulWork = ms::jobHostAddr(&works[0]);
+			if (!bParty) g_e.pRoster = 0;
+		};
+		// the spear trogg's finishing blow (LAB_024B -> LAB_081C, whose LAB_000D marks the knight the creature holds): the struck knight is down, so the
+		// handler's pick has moved on to fighter 0, who was marked dead and ended the fight
+		prepare(true);
+		K(5).ubType = raw(ActorType::TroggSpear); K(5).ulHitTarget = A(1); K(1).swHp = 0;
+		HandlerResult r = fighterBrawler(g_e, K(5));
+		bool bRan = run(0x0D, 5);
+		snprintf(g_b, sizeof g_b, "script %x slot %d hp0 %d hp1 %d", (unsigned)r.ulScript, K(5).ubTargetSlot, K(0).swHp, K(1).swHp);
+		check(r.ulScript == 0x9300 && bRan && K(1).swHp == -1 && K(0).swHp == 100, "spear_kills_the_struck_knight", g_b);
+		prepare(false);
+		K(5).ubType = raw(ActorType::TroggSpear); K(5).ulHitTarget = A(1); K(1).swHp = 0;
+		r = fighterBrawler(g_e, K(5));
+		check(r.ulScript == 0x9300 && K(5).ubTargetSlot == 0, "spear_classic", "no roster: the original handler, no slot written");
+		// the dragon's bite (LAB_028C -> LAB_028D, script LAB_0884: LAB_000D, LAB_0006)
+		prepare(true);
+		K(5).uwAction = raw(Action::Strike4); K(5).ulHitTarget = A(1); K(1).swHp = 0;
+		r = fighterDragon(g_e, K(5));
+		check(K(1).swHp == -1 && K(0).swHp == 100, "dragon_bite_marks_at_once", "party fight: the bitten knight is marked dead by the handler itself, the script may be replaced");
+		K(1).swHp = 5;
+		bRan = run(0x0D, 5);
+		snprintf(g_b, sizeof g_b, "script %x slot %d hp0 %d hp1 %d", (unsigned)r.ulScript, K(5).ubTargetSlot, K(0).swHp, K(1).swHp);
+		check(r.ulScript == 0x9301 && bRan && K(1).swHp == -1 && K(0).swHp == 100, "dragon_bite_kills_the_struck_knight", g_b);
+		// the Be of the balok: it carries a knight (flag 0x20); the carried one is down, the other stands nearer: the gloat script (LAB_0895 / 0896) is for the carried one
+		prepare(true);
+		K(5).ubTargetSlot = 2; K(1).swHp = 0; vars.ubDrakeFlags[0] = 0x20;
+		r = fighterDrake(g_e, K(5));
+		snprintf(g_b, sizeof g_b, "script %x target %x (carried %x)", (unsigned)r.ulScript, (unsigned)ulTarget, (unsigned)A(1));
+		check(ulTarget == A(1) && (r.ulScript == 0x9302 || r.ulScript == 0x9303) && jobs[0].uwPaused == 0, "drake_carry_keeps_the_carried_knight", g_b);
+		// a mudman's grab (script LAB_08A2 ends by `kill`: the mudman is gone for good): with another knight standing it leaves as a creature that died
+		prepare(true);
+		K(6).ubType = raw(ActorType::Mudmen); K(7).ubType = 0x24;
+		ubSnatch = SNATCH_GONE;
+		check(fightOpRemap(g_e, FIGHT_OP_TAG | 0x06, A(6)) == (FIGHT_OP_TAG | 0x05) && ubSnatch == 0, "mudman_grab_leaves_as_died", "LAB_0006 of the grab script counts the mudman as gone and frees the others");
+		check(fightOpRemap(g_e, FIGHT_OP_TAG | 0x06, A(6)) == (FIGHT_OP_TAG | 0x06), "mudman_grab_counts_once", "the script's second LAB_0006 (its `loop 2`) is the plain one: the mudman is counted once");
+		ubSnatch = SNATCH_GONE;
+		check(fightOpRemap(g_e, FIGHT_OP_TAG | 0x06, A(7)) == (FIGHT_OP_TAG | 0x06) && fightOpRemap(g_e, FIGHT_OP_TAG | 0x0D, A(6)) == (FIGHT_OP_TAG | 0x0D) && ubSnatch == SNATCH_GONE,
+		      "mudman_remap_only_the_grab", "another creature / another op: unchanged");
+		K(0).swHp = K(1).swHp = -1;
+		check(fightOpRemap(g_e, FIGHT_OP_TAG | 0x06, A(6)) == (FIGHT_OP_TAG | 0x06), "mudman_last_knight_ends", "the whole party under: LAB_0006 ends the fight");
+		prepare(false);
+		ubSnatch = SNATCH_GONE;
+		check(fightOpRemap(g_e, FIGHT_OP_TAG | 0x06, A(6)) == (FIGHT_OP_TAG | 0x06) && ubSnatch == SNATCH_GONE, "mudman_remap_classic", "no roster: the original op");
+		// the partner kills a mudman that carries a knight: the carried one is let go (its job was paused by the grab)
+		prepare(true);
+		K(6).ubType = raw(ActorType::Mudmen); K(6).ubBehaviourFlags = SNATCH_CARRY; K(6).ubTargetSlot = 2; K(6).swHp = 0; K(6).ulAttacker = A(0);
+		ubSnatch = SNATCH_CARRY; jobs[0].uwPaused = 1;
+		fighterSnatcher(g_e, K(6));
+		snprintf(g_b, sizeof g_b, "flags %x own %x paused %d", ubSnatch, K(6).ubBehaviourFlags, jobs[0].uwPaused);
+		check(ubSnatch == 0 && (K(6).ubBehaviourFlags & SNATCH_CARRY) == 0 && jobs[0].uwPaused == 0, "mudman_killed_while_carrying_lets_go", g_b);
+		// the partner strikes a mudman that is dragging a knight under: no hurt script over the grab animation, no damage
+		prepare(true);
+		K(6).ubType = raw(ActorType::Mudmen); K(6).ubBehaviourFlags = SNATCH_GONE; K(6).swHp = 30; K(6).ulAttacker = A(0); ubSnatch = SNATCH_GONE;
+		r = fighterSnatcher(g_e, K(6));
+		check(r.ulScript == 0xFFFFFFFFu && K(6).swHp == 30, "mudman_sinking_ignores_blows", "the grab script runs on");
+		prepare(false);
+		K(6).ubType = raw(ActorType::Mudmen); K(6).ubBehaviourFlags = SNATCH_GONE; K(6).swHp = 30; K(6).ulAttacker = A(0); ubSnatch = SNATCH_GONE;
+		r = fighterSnatcher(g_e, K(6));
+		check(r.ulScript == 0x9304 && K(6).swHp <= 30, "mudman_sinking_classic", "no roster: the original hurt reply");
+		prepare(false);
+		K(6).ubType = raw(ActorType::Mudmen); K(6).ubBehaviourFlags = SNATCH_CARRY; K(6).ubTargetSlot = 2; K(6).swHp = 0; K(6).ulAttacker = A(0);
+		ubSnatch = SNATCH_CARRY; jobs[0].uwPaused = 1;
+		fighterSnatcher(g_e, K(6));
+		check(ubSnatch == SNATCH_CARRY && jobs[0].uwPaused == 1, "mudman_carry_classic", "no roster: untouched");
+	}
 	// ---- a fallen party knight whose death script has run out stays down (no ghost standing beside its corpse) ----------------------------------
 	{
 		static FightVars vars; static uint32_t ulTarget, ulSelf, ulFirst, ulSecond, ulDemo;
@@ -170,7 +275,7 @@ def results():
             fh.write(DRIVER)
         exe = os.path.join(tmp, 'driver.exe' if os.name == 'nt' else 'driver')
         g = lambda *p: os.path.join(ROOT, 'src', *p)
-        srcs = [g('game', 'fighters.cpp'), g('game', 'fight_ops.cpp'), g('game', 'fight_creatures.cpp'), g('game', 'creatures.cpp'), g('game', 'roster.cpp'),
+        srcs = [g('game', 'fighters.cpp'), g('game', 'fight_ops.cpp'), g('game', 'fight_creatures.cpp'), g('game', 'creatures.cpp'), g('game', 'roster.cpp'), g('game', 'party_ai_fight.cpp'),
                 g('engine', 'util.cpp'), g('game', 'rules', 'damage.cpp'), GAMEDATA_SOURCE]
         srcs += [g('game', 'rules', n + '.cpp') for n in ('ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight',
                                                           'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker')]
@@ -212,6 +317,16 @@ class CoopScriptOpsTest(unittest.TestCase):
 
     def test_dead_knight_stays_down(self):
         self.ok('dead_knight_stays_down', 'zero_hp_stays_down', 'live_knight_idles', 'classic_dead_unchanged')
+
+    def test_flyer_finishing_blow(self):
+        self.ok('flyer_finishes_the_struck_knight', 'flyer_last_knight_ends')
+
+    def test_other_creature_kill_paths(self):
+        self.ok('spear_kills_the_struck_knight', 'spear_classic', 'dragon_bite_kills_the_struck_knight', 'dragon_bite_marks_at_once', 'drake_carry_keeps_the_carried_knight')
+
+    def test_mudman_grab(self):
+        self.ok('mudman_grab_leaves_as_died', 'mudman_grab_counts_once', 'mudman_sinking_ignores_blows', 'mudman_sinking_classic', 'mudman_remap_only_the_grab', 'mudman_last_knight_ends', 'mudman_remap_classic',
+                'mudman_killed_while_carrying_lets_go', 'mudman_carry_classic')
 
     def test_classic_untouched(self):
         self.ok('classic_untouched')

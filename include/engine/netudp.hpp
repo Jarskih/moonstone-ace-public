@@ -32,7 +32,13 @@ constexpr uint32_t NU_ESCALATE_MS = 250;         // the peer's ack has not moved
 constexpr uint32_t NU_LOSS_MS = 5000;            // ... this long: the link reverts to TCP for the rest of the session
 constexpr uint32_t NU_ALIVE_MS = 2500;           // a peer that sent nothing at all (no datagram, no TCP: its PINGs come every second) this long is not pumping: its silence is no loss
 constexpr uint32_t NU_KEEPALIVE_MS = 4000;       // an ack-only datagram when nothing else went out (a NAT forgets quiet UDP mappings, the relay expires members)
-constexpr uint8_t NU_RX_ROUNDS = 16;             // datagrams one pump reads at most
+constexpr uint8_t NU_RX_ROUNDS = 16;
+// ---- relay-assisted direct path (NETPLAY.md 2.2b) ----
+constexpr uint32_t NU_PUNCH_REG_MS = 500;        // PUNCH_REG is repeated this often while the relay has not answered with PUNCH_INFO
+constexpr uint32_t NU_PUNCH_INFO_GIVEUP_MS = 8000;   // pump time without PUNCH_INFO (an old relay, a peer that cannot do it): the link stays on the relay
+constexpr uint32_t NU_PUNCH_PROBE_MS = 100;      // direct probes go to every candidate address this often (both ends send at once: that opens the NAT mappings)
+constexpr uint32_t NU_PUNCH_GIVEUP_MS = 5000;    // pump time of probing without a two-way direct handshake: the link stays on the relay
+constexpr uint32_t NU_DIRECT_STALL_MS = 400;     // on the direct path the peer's ack has not moved this long (pump time): back to the relay path (no TCP escalation meanwhile: it would move the acks and hide the stall)             // datagrams one pump reads at most
 
 enum NetUdpState : uint8_t {
 	NU_OFF = 0,        // not started (or UDP not wanted on this link)
@@ -58,6 +64,47 @@ struct NetDgramPeer {
 	bool isSet;
 };
 
+// ---- the direct path of a relayed link ----
+//   OFF     not wanted (a direct game, the player disabled it, or the link is not started)
+//   REG     PUNCH_REG goes to the relay every NU_PUNCH_REG_MS until PUNCH_INFO tells the peer's endpoints
+//   PUNCH   probes (datagrams with NET_UDP_DIRECT) go to the peer's candidate addresses; a two-way handshake (NET_UDP_DHEARS) completes it
+//   DIRECT  this side's datagrams go to NetDirect::peer (the address the peer's direct datagrams came from); the relay path stays alive with keep-alives
+//   RELAY   gave up or lost the direct path for good (ubWhy says why): everything goes via the relay
+// Each direction chooses its own path: the receiver accepts a valid datagram from either, so a one-way failure only moves the sender that notices it.
+enum NetDirectState : uint8_t { ND_OFF = 0, ND_REG, ND_PUNCH, ND_DIRECT, ND_RELAY };
+enum NetDirectWhy : uint8_t {
+	NDW_NONE = 0,
+	NDW_NO_INFO,       // the relay never sent PUNCH_INFO (an old relay, the peer cannot do it, or it never registered)
+	NDW_NO_ANSWER,     // the punch handshake did not complete in NU_PUNCH_GIVEUP_MS (symmetric NAT, a firewall)
+	NDW_LOST,          // on the direct path the acks stopped for NU_DIRECT_STALL_MS
+	NDW_REASONS
+};
+
+struct NetDirect {
+	uint8_t eState;            // NetDirectState
+	uint8_t ubWhy;             // NetDirectWhy once RELAY
+	NetDgramPeer sPublic;      // the peer's address as the relay sees it
+	NetDgramPeer sLocal;       // the peer's own (LAN) address: only when it is behind the same public address
+	NetDgramPeer peer;         // the source of the peer's latest accepted direct datagram: where direct datagrams go
+	bool isPeerLocal;          // peer is the local candidate (preferred: a LAN path beats a hairpinned or punched one)
+	bool isHeard;              // a direct datagram of the peer arrived
+	bool isReplyDue;           // answer a direct datagram at once (the handshake takes three datagrams, not three probe intervals)
+	bool isRegSent;
+	uint32_t ulLastPlan;
+	uint32_t ulBudgetMs;       // pump time spent in REG or PUNCH (the give-up budgets)
+	uint32_t ulLastReg, ulLastProbe;
+	uint32_t ulLastRelayTx;    // clock of the last datagram that went via the relay (the relay path needs its keep-alive while DIRECT)
+	uint32_t ulDirectSince;    // clock when the state became DIRECT
+};
+
+// What the direct state machine wants now: a PUNCH_REG to the relay, probes to up to three addresses, a failure to log.
+struct NetDirectPlan {
+	bool isReg;
+	uint8_t ubProbes;          // destinations in aTo
+	NetDgramPeer aTo[3];
+	bool isFailed;             // the state moved to RELAY now (ubWhy)
+};
+
 struct NetUdpLink {
 	uint8_t eState;            // NetUdpState
 	uint8_t ubWhy;             // NetUdpWhy once TCP
@@ -78,6 +125,7 @@ struct NetUdpLink {
 	uint32_t ulStuckMs;        // pump time with ticks unacked and the peer's ack not moving while the peer was alive: the escalation and the loss rule run on it
 	uint32_t ulSentNext;       // the first tick no datagram has carried yet
 	uint32_t ulTcpNext;        // ticks below this one were also sent over TCP (or the peer got them there)
+	NetDirect dir;             // the direct path of this (relayed) link
 };
 
 struct NetUdpPlan {
@@ -87,6 +135,9 @@ struct NetUdpPlan {
 	uint8_t ubCount;
 	uint32_t ulTcpFrom, ulTcpTo;   // ticks [from, to) go over TCP now, once (empty when equal)
 	bool isFellBack;           // the plan moved the link to TCP (loss or no answer): the node logs it
+	bool isDirect;             // the datagram goes to NetDirect::peer with NET_UDP_DIRECT (else to NetUdpLink::peer, the relay or the direct game's host)
+	bool isRelayKeep;          // an extra ack-only datagram via the relay: the direct path is up and the relay path must not go stale
+	bool isDirectLost;         // the plan moved the direct path to RELAY (stall): the node logs it
 };
 
 void netUdpLinkInit(NetUdpLink &u);
@@ -112,6 +163,21 @@ bool netUdpOnDatagram(NetUdpLink &u, uint32_t ulNow, uint8_t ubFlags, uint32_t u
 inline bool netUdpIsActive(const NetUdpLink &u) { return u.eState == NU_ACTIVE; }
 // True when the host's drop counter is not ahead of the receiver's own: a datagram sent after a DROP must not be applied before the DROP (TCP) has been.
 bool netUdpDropSeqOk(uint8_t ubHostSeq, uint8_t ubMySeq);
+
+// ---- the direct path ----------------------------------------------------------------------------------------------------------
+// OFF -> REG.  Call when the link starts probing and the link is relayed and direct is wanted.
+void netDirectStart(NetDirect &d, uint32_t ulNow);
+// What to send for the direct path now (REG: PUNCH_REG repeats, PUNCH: probes).  Budgets run on pump time like the probe handshake.
+void netDirectPlan(NetDirect &d, uint32_t ulNow, NetDirectPlan &out);
+// The relay's PUNCH_INFO: REG -> PUNCH.  ulLocalAddr / uwLocalPort count only with isLocalValid (and a non-zero port).
+void netDirectOnInfo(NetDirect &d, uint32_t ulNow, const NetDgramPeer &sPublic, bool isLocalValid, uint32_t ulLocalAddr, uint16_t uwLocalPort);
+// A valid datagram that carries NET_UDP_DIRECT arrived from sFrom.  Returns true when it completed the handshake (state DIRECT now).
+bool netDirectOnDatagram(NetDirect &d, uint32_t ulNow, const NetDgramPeer &sFrom, uint8_t ubFlags);
+// To RELAY for good, with the reason (no effect when already RELAY).
+void netDirectFail(NetDirect &d, uint8_t ubWhy);
+inline bool netDirectIsUp(const NetDirect &d) { return d.eState == ND_DIRECT; }
+// The flags a datagram to the peer carries: NET_UDP_HEARS when anything was heard, plus DIRECT / DHEARS for the direct path.
+uint8_t netUdpFlags(const NetUdpLink &u, bool isDirect);
 
 // ---- the acks we send ---------------------------------------------------------------------------------------------------------
 // The client's ack of the host's TICKs: every tick below the result is complete in its ring.  Counts the complete ticks ahead of the current one as well, unless a

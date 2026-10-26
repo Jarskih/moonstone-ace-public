@@ -68,7 +68,11 @@ PadAdapterBits padAdapterDecode(uint8_t ubPrb, uint8_t ubCiabPra) {
 }
 
 const char *padName(uint8_t ubSource) {
+	if(ubSource == PAD_COMPUTER) {
+		return "Computer";
+	}
 	return ubSource < PAD_SOURCE_COUNT ? kNames[ubSource] : "None";
+
 }
 
 }  // namespace ms

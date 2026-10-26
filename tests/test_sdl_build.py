@@ -81,12 +81,16 @@ class SdlSources(unittest.TestCase):
         self.assertIn('cmake/sdl.cmake', text)
 
     def test_every_stub_names_its_task(self):
-        """Each MS_STUB line sits next to a TODO(11.x) whose task matches the stub's argument: the stub list is the work queue."""
+        """Each MS_STUB line sits next to a TODO(11.x) whose task matches the stub's argument: the stub list is the work queue.
+
+        Zero stubs is the goal (M11): the scan then checks nothing and passes."""
         sdl = os.path.join(ROOT, 'src', 'rt', 'sdl')
         count = 0
+        scanned = 0
         for name in sorted(os.listdir(sdl)):
             if not name.endswith('.cpp'):
                 continue
+            scanned += 1
             with open(os.path.join(sdl, name), encoding='utf-8') as f:
                 lines = f.read().split('\n')
             for i, line in enumerate(lines):
@@ -97,7 +101,7 @@ class SdlSources(unittest.TestCase):
                 near = lines[max(0, i - 1):i + 1]
                 tags = [t for l in near for t in re.findall(r'TODO\((11\.[0-9a-z]+)\)', l)]
                 self.assertTrue(any(t.startswith(m.group(1)) or m.group(1).startswith(t) for t in tags), '%s:%d %s' % (name, i + 1, line.strip()))
-        self.assertGreater(count, 10)   # sanity: the scan found the stubs (ROADMAP 11.9 removed the input, files and crash ones; 11.10 most of the rest)
+        self.assertGreater(scanned, 0)   # the scan really read the sdl sources (a wrong path must not pass silently); zero MS_STUB lines is the goal (M11)
 
     def test_platform_sources_use_no_raw_sdl_pairs(self):
         """SDL_Init / CreateWindow / CreateRenderer / SDL_Quit appear only in the guards header (docs/RAII.md)."""

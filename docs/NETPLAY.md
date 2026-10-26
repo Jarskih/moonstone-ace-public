@@ -244,7 +244,7 @@ hitch:
 * **Fallback:** the session starts on TCP; the nodes then exchange a UDP probe both ways. If no UDP arrives within a few seconds
   (a firewall that only passes TCP, an old stack), the session simply stays on TCP. The player sees nothing either way.
 * **Relay:** the lobby server gets a UDP socket on 6510 that forwards UDP between session members, identified by the relay
-  session id in each packet (no IP addresses handed out, as for TCP).
+  session id in each packet (no IP addresses handed out, as for TCP; 2.2b adds the optional direct path, for which the relay does introduce the two ends of a link).
 * **Amiga side:** `bsdsocket.library` has UDP (`socket(AF_INET, SOCK_DGRAM)`, `sendto`, `recvfrom`) in every stack; the
   packets go in the same short lean windows as today, so the window cost does not change.
 * **Wire format:** new messages INPUT_UDP / TICK_UDP (a small header with session id, sender node, ack, first tick, count, then
@@ -297,12 +297,71 @@ Code: `engine/netudp` (pure: the planner, the probe handshake, the acks), `engin
   the tokens from the CONFIG messages it forwards over the TCP pipes, registers the source address of the datagrams it sees (a client's INPUT_UDP registers the client and
   is forwarded to the host's address; a TICK_UDP from the registered host IP registers the host and is forwarded to the client of its token), forgets silent addresses after
   60 s, drops what is oversized, undecodable, of another kind, of an unknown session or token, from a non-host IP as TICK_UDP, or above 400 datagrams/s per source IP
-  (burst 800), allows 3 clients per session, logs and hands out no address.  Without UDP on the server (or a firewall) the games stay on TCP.
+  (burst 800), allows 3 clients per session, logs and hands out no address (except the PUNCH_INFO of 2.2b to the two ends of a link).  Without UDP on the server (or a firewall) the games stay on TCP.
 * **Log lines** (docs/AUTOPLAY.md): `net: udp: probe sent (node N)`, `net: udp: ok (node N)`, `net: udp: fallback to tcp (reason) node N`, and at the end of a session
   `net: udp: session: sent N received M covered C escalated E bad B probes P, links active A tcp T` ("covered" = frames that arrived new in a datagram that was not the
   newest one: the history paid for a lost or late datagram; "escalated" = ticks that also went over TCP).  The PERF heartbeat of an autoplay build adds
   `PERFU udp tx= rx= covered= esc= bad= active= tcp=`.  `tools/netpair.py` expects `udp: ok` on both windows and no fallback (`--tcp` runs the A/B with TCP forced).
-* **Not done.**  A rejoiner on UDP; NAT hole punching (client to client); a measured comparison of the window cost on real hardware (WinUAE only so far); resend requests.
+* **Not done.**  A rejoiner on UDP; NAT hole punching is 2.2b (client to host only, the star stays); a measured comparison of the window cost on real hardware (WinUAE only so far); resend requests.
+
+#### 2.2b Relay-assisted direct connection (hole punching, owner request 2026-10-26)
+
+A game joined through FIND runs through the lobby server's relay, so every tick makes the detour client -> relay -> host (about 100 ms of ping for a player with 30-45 ms to the
+relay on both sides).  The relay now also introduces the two ends of a link to each other; they try a **direct UDP path** and move the per-tick traffic there when it works.  Whatever
+does not work stays exactly as in 2.2a: the relayed UDP path, and below it TCP through the relay.  TCP control (HELLO, CONFIG, PING, HASH, DROP, BYE, the rejoin) always stays on the relay.
+
+* **Per link, never per session.**  The topology is the star of section 2: clients only ever talk to the host.  So the direct path is a property of **one client-host link**.
+  A 4-player game has three links; each one goes direct (a punched NAT, or the LAN) or stays on the relay, and each one falls back on its own.  A mixed session (client 1 direct,
+  client 2 via the relay, client 3 direct) is normal: the host's tick broadcast is one TICK per client link anyway (`udpFlushLink` per link), and every client acknowledges what it
+  holds whatever path it came by.  There is no client-to-client path.
+* **Every sender picks its own path.**  A receiver accepts a valid datagram (session, token, node fit) from any source and only looks at the ack and the frames in it.  So a path that
+  works in one direction only costs nothing: the sender whose acks do not come moves to the relay, the other direction keeps going direct.  Frames are keyed by tick, so a tick that
+  arrives by both paths is a duplicate (`NET_PUT_DUP`), never a conflict, and the 8-tick history window of 2.2a repeats everything the peer has not acknowledged on whatever path is
+  current: a path change cannot lose a tick or desync.
+* **Messages** (UDP only, between a node and the relay; same protocol version 6, no version bump):
+  `PUNCH_REG` (type 23, 16 bytes): session, the **client's token** (it names the link), role (host / client), capability bit `DIRECT`, the node's own address and port of its
+  datagram socket (0 = unknown).  `PUNCH_INFO` (type 24, 21 bytes): session, token, flags (`LOCAL`), the peer's public address and port as the relay saw its datagrams, and the peer's
+  own local address and port (valid with `LOCAL`).  The two directly exchanged probes are ordinary `INPUT_UDP` / `TICK_UDP` datagrams without frames, with two new flag bits:
+  `NET_UDP_DIRECT` (2: "this datagram travelled the direct path") and `NET_UDP_DHEARS` (4: "I have received a DIRECT datagram of yours").
+* **Compatibility is by silence.**  A node sends `PUNCH_REG` only when it is built with this feature and `net.ini direct` is not `no`.  The relay answers only to a registered pair.
+  An **old client** never registers, so the relay never sends anything about it, and its host (new) simply gives up on that link after 8 s (`NU_PUNCH_INFO_GIVEUP_MS`; log
+  `direct failed, via relay (no answer from the relay)`) and goes on with the relayed UDP as before.  An **old relay** drops `PUNCH_REG` as an unknown type (it fails the decode
+  of `tools/netserver/netproto.py`), so new nodes give up the same way after 8 s.  An old node never receives a type or a flag it cannot decode.  The types 23 / 24 are not game
+  messages (`GAME_TYPES` ends at 20): they cannot pass the TCP pipes.
+* **The relay's part** (`tools/netserver/server.py`, `_punch_reg`): it checks session and token exactly as for `INPUT_UDP` (the token must have passed a forwarded CONFIG), takes the
+  node's public address from the **source of the PUNCH_REG datagram** (the NAT mapping of the socket that talks to the relay, i.e. the one the peer has to hit), and when both
+  ends of the link have registered it sends `PUNCH_INFO` to **both** (and again to whoever repeats its `PUNCH_REG`).  The peer's local address is handed over only when both ends
+  come from the **same public IP** (they are on one LAN) **and** the address is private / link-local / loopback (a node cannot make its peer probe an arbitrary internet address).
+  The host's registration only counts from the IP that registered the game.  Nothing is logged; the addresses live in RAM and expire with the UDP registration (60 s).
+  **Privacy change:** until now no node ever learned another player's address through the relay.  A client now learns the host's public IP and the host the clients' (that is what a
+  direct connection is).  `net.ini direct = no` keeps a player out of it; `--no-punch` makes a server ignore `PUNCH_REG`.
+* **The state machine per link** (`engine/netudp` `NetDirect`, pure and host-tested): `REG` (the link is relayed and probing; `PUNCH_REG` every 500 ms, at most 8 s) -> `PUNCH`
+  (`PUNCH_INFO` arrived; **both ends send probes at once** to the candidate addresses every 100 ms, from the same socket that talks to the relay so the NAT mapping matches; at most 5 s)
+  -> `DIRECT`; any failure -> `RELAY` for the rest of the session (never back, like TCP).  Candidates: the peer's public address, and its local address when `PUNCH_INFO` has one; a
+  datagram from the local address replaces a public source ("on one LAN the direct local path is preferred") and a public source never replaces the local one; a source address
+  different from the one the relay saw (a NAT that picked another port) is answered as well.  The handshake is two-way like the relay one: a link is `DIRECT` when a datagram that
+  carries `DHEARS` arrives (the peer hears us and we hear the peer), three datagrams, and the one that completes it is answered at once so the peer completes too.
+* **Using the path.**  The link's own state (probe handshake of 2.2a, `ACTIVE`) is untouched; once it is `ACTIVE` and the direct path is `DIRECT`, this side's datagrams (ticks, acks, the
+  4 s keep-alive) go to the direct address with the `DIRECT` flag.  While direct, an extra ack-only datagram goes **via the relay** every 4 s, so the relay path (the relay's registration of
+  the member, the NAT mapping towards the relay) is still alive when it is needed.  The direct path's own NAT mapping is kept by the normal 4 s keep-alive of the link.
+* **When the direct path dies** (the mapping expired, a route changed, a firewall closed): the sender's acks stop.  After `NU_DIRECT_STALL_MS` = 400 ms of pump time with ticks
+  unacknowledged (the same stall clock as the loss rule; it does not count while the peer is silent in a scene load) the sender moves to the relay path, logs
+  `direct failed, via relay (path lost)`, and gives the relay path its own full loss budget (250 ms TCP escalation, 5 s to TCP).  On the direct path the TCP escalation is suspended
+  (it would move the acks and hide the stall).  The other end notices on its own.  Nobody waits for the other: no tick is lost, the lockstep waits at most those 400 ms.
+* **Log lines** (docs/AUTOPLAY.md): `net: udp: direct ok (node N, a.b.c.d:port)` when a link goes direct (the address is the peer's direct address; node = the client's node, on both
+  ends), `net: udp: direct failed, via relay (node N, no answer from the relay | no answer from the peer | path lost)`, and `direct D` appended to the session summary line.  Not done:
+  the on-screen ping line does not show DIRECT / RELAY yet (the lobby text has its own work in progress).
+* **Test options** (`net.ini [net]`, tests only): `direct = no` (never register), `direct_test = block` (drop every received direct datagram: the punch cannot succeed) and
+  `direct_test = kill` with `direct_kill_ms = N` (drop them N ms after the link went direct: the path dies).  Because the options act on the receiver they work on one node of a
+  session only, which is how a mixed session is made on localhost.
+* **Code:** `engine/netudp` (state machine, `netUdpPlan` path choice, flags), `engine/netnode` (PUNCH_REG / PUNCH_INFO, probes, receive), `engine/netproto` (messages),
+  `rt/net_session` (local address, log lines, options), `rt/net` / `rt/sdl/net_winsock` (`udpLocal`: the node's own address and port, from `getsockname`; the Amiga call is the SFD's
+  -102, not yet run on hardware), `tools/netserver/server.py` (`_punch_reg`).  Tests: `tests/netudp_driver.cpp` (`direct`: machine, plan, pair), `tests/netsession_driver.cpp`
+  (`testDirect`: real nodes over a fake relay: 2 and 4 nodes, mixed links, an old client, an old relay, loss, a dying path), `tests/test_netproto.py`, `tools/netserver/selftest.py`
+  (leg 5), `tests/test_netserver.py`, and the end-to-end run `tests/pc_net/pc_net_relay.py` (two to four PC instances through a local `server.py`).
+* **Not done / limits.**  Symmetric NATs (a different mapping per destination) and strict firewalls cannot be punched: those links stay on the relay, by design.  IPv4 only.  The
+  direct path is not retried after it failed.  A rejoiner's link is TCP-only as before.  Nothing was measured on a real NAT or in a real 100 ms case yet: the localhost runs prove the
+  logic, the lockstep and the fallbacks, not the NAT behaviour.
 
 ## 3. Who controls what (the merge)
 
@@ -595,7 +654,7 @@ sessions of 2 to 3 nodes with the game side, classic and co-op), `tests/netplay_
   link, START rules, the mode line, CONFIG -> identical knight records on every node).
 * **START button** (host only): below the portraits (y 172, the same line as the name entry and the controller line, which replace it while the host
   is choosing): the host moves down to it (the menu arrow) and presses fire. It is drawn greyed out (recoloured to palette entry 3) until at least one
-  other player has joined and everyone has picked a knight (`roomStartEnabled`, checked again by the transport). Joined players see **WAITING FOR HOST**
+  other player has joined and everyone has picked a knight (`roomStartEnabled`, checked again by the transport). Until a player (the host included) has picked a knight, the line reads **SELECT YOUR KNIGHT** (the host sees START once it moves down to the START row); joined players who have picked see **WAITING FOR HOST**
   in its place. Fire on START sends **CONFIG** (mode, portraits, names, controllers, seed): the nodes are the joined seats in seat order (a hole where a
   player left is closed), record i is played at node i. `LOBBY_*` pokes: `poke netaction 3` presses START (autoplay).
 * **Every machine builds the same knight records from CONFIG** (`game/net_knights`, `netKnightsApply`; called by `rtSceneKnightsRun` in place of the screen):
@@ -832,7 +891,7 @@ main menu (`rtGameRun: enter mog` after the close) and the host's `net: lobby: u
 
 ### 4.7 The link line: ping and packet loss on screen (owner request 2026-10-12)
 
-One short line in the bottom rows of the screen during a network game, in the small menu font: `PING 38MS  LOSS 2 PCT` (UDP carries the ticks) or `PING 38MS  TCP` (a link is not
+One short line in the bottom rows of the screen during a network game, in the small menu font: `PING 38MS  LOSS 2 PCT  F10` (UDP carries the ticks) or `PING 38MS  TCP` (a link is not
 on UDP: no datagrams, fell back, or still probing).  The unit is spelled `PCT`: the small font has no glyph for `%` (nor `:` `/` `-`; `engine/netstats` formats with upper case letters,
 digits and spaces only, and the test checks it).  The first second shows nothing (no round trip yet).
 
@@ -899,7 +958,8 @@ A screen that lists open games so a player can pick one instead of typing an add
     port, and tests it with a connect back. The list itself shows only name, mode, players and ping; the lobby hands the
     address to a client **when it picks that game to join**, and the client then connects directly.
   * **joining through the relay** instead when the connect back failed (the host cannot forward a port): the client gets
-    the relay's address and a session id, so no host IP is handed out at all.
+    the relay's address and a session id, so no host IP is handed out by JOIN_REPLY.  Once the game runs, the two ends of each link are introduced to each other for the optional
+    direct path (2.2b): from then on the client does learn the host's public IP and the host the client's, unless `net.ini direct = no`.
   * Wire format: the same versioned binary messages as the game (`engine/netproto`), plain TCP. No HTTP and no TLS on the
     Amiga side (AmiSSL would be a big dependency); nothing secret travels, the list is public by nature.
   * Abuse limits on the server: one listing per address, name length / character filter (the game's font set only), rate
@@ -993,3 +1053,8 @@ Still open:
 7. **Seed range**: the host sends one of the original four seeds (default, as single-player) or any 32-bit value?
 8. **Who runs the public lobby server** (and the relay): **the owner runs it on their own server** (2026-10-10). Open for 12.19:
    the host name to build into the game, and whether the server can run Python 3 as a service (or a container).
+
+**Fight pause key disabled in network games (2026-10-26).** The lockstep delivers the keyboard events of ONE node per tick (the owner of the stick, `netMerge`), so
+the original fight pause (`$20` = Space, `endAndPause`, a poll-free spin that waits for the NEXT key) could be started by one player and never ended by the other: both machines
+hung (found with `pc_net.sh ... fightj`, where only the joiner presses keys); on a Keys-arrows pad Space is also the fire button.  `opTranslateKey` (`src/rt/combat.cpp`) now
+returns 0 for the pause key while `netDeterministic()`, on every node alike; classic and local play keep the original pause.

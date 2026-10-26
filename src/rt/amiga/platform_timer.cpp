@@ -20,6 +20,10 @@ uint16_t timerBeamVhposr() {
 	return g_pCustom->vhposr;
 }
 
+uint16_t timerBeamVposr() {
+	return g_pCustom->vposr;
+}
+
 // The original's beam wait (LAB_0552 / LAB_0D77): the program overlay's poll first (it may leave the overlay), then line ubLine reached and left.
 void timerWaitBeam(uint8_t ubLine, TickFn pfnWhileWaiting) {
 	volatile UBYTE *pLine = reinterpret_cast<volatile UBYTE *>(&g_pCustom->vhposr);  // CMPI.B #$f5,VHPOSR: the high byte

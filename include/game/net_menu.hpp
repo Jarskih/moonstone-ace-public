@@ -46,6 +46,9 @@ struct NetConfig {
 	char szLobby[NET_ADDR_MAX + 1];   // net.ini `lobby`: a lobby of the own; empty = the built-in one (engine/lobby.hpp).  Read only, never written
 	uint16_t uwLobbyPort;          // net.ini `lobby_port`; 0 = the built-in port
 	bool bStats;                   // net.ini `stats = yes|no` (default yes; read only, never written): no hides the ping / loss line of a network game (NETPLAY.md 4.7)
+	bool bDirect;                  // net.ini `direct = yes|no` (default yes; read only): no never tries the relay-assisted direct path of a relayed game (NETPLAY.md 2.2b)
+	uint8_t ubDirectTest;          // net.ini `direct_test = block|kill` (tests only, default none): 0 none, 1 drop every received direct datagram, 2 drop them after direct_kill_ms
+	uint32_t ulDirectKillMs;       // net.ini `direct_kill_ms`: how long a link has been direct when `direct_test = kill` blackholes it
 	bool bUdp;                     // net.ini `udp = yes|no` (default yes; read only, never written): no keeps the per-tick traffic on TCP (ROADMAP 12.21)
 };
 

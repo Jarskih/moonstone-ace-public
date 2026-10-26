@@ -3,6 +3,7 @@
 // is a bare RTS (patch fight-ops-hurt-tables) and nothing reads the tables it used to fill.
 #include "game/mainloop.hpp"
 
+#include "engine/endian.hpp"
 #include "game/flow/flow.hpp"
 
 namespace ms { namespace game {
@@ -39,6 +40,10 @@ void mainBoot(const MainEnv &env, const MainOps &ops, const BootRegs &regs) {
 // LAB_04A5 (mog.asm 15164)
 uint32_t mainRngSeed(uint16_t uwVhposr, const uint32_t aulSeeds[4]) {
 	return aulSeeds[uwVhposr & 3];                            // MOVE.W VHPOSR,D0 ; ANDI.W #3,D0 ; LSL.W #2,D0 ; MOVE.L 0(A0,D0.W),LAB_0973
+}
+
+uint32_t mainRngSeedBe(uint16_t uwVhposr, const uint8_t *pubSeeds) {
+	return ms::be::ld32(pubSeeds + 4 * (uwVhposr & 3));            // the same long as above, read as the bytes of the image (PC_ENDIAN.md 2)
 }
 
 // The scenes are flow scenes since ROADMAP 9.2a (src/game/scenes/{title,practice,campaign,quit,map}.cpp, the manager

@@ -71,12 +71,12 @@ casts; `ACE/OS headers` = distinct ACE, `hardware/`, `proto/`, `dos/`, `exec/`, 
 | `audio.cpp` | A | 181 | 1 / 3 | 0 | 0 | 0 | 0 | 3 | 1 | ACE ptplayer (CIA-B timers, Paula DMA), `g_pCustom->aud[]`; module sanitising is neutral and could be shared |
 | `autoplay.cpp` | B | 455 | 0 / 0 | 0 | 0 | 0 | 0 | 8 | 2 | scripted-input engine neutral; reads/acks `intreq` and injects Amiga raw keys (MS_AUTOPLAY only) |
 | `autoplay_game.cpp` | N | 356 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | MS_AUTOPLAY poke hooks on game cells (not built in normal builds) |
-| `combat.cpp` | N* | 522 | 2 / 9 | 0 | 1 | 0 | 7 | 0 | 0 | rt wiring of game/combat.cpp: register-ABI entries, FightEnv over cells |
+| `combat.cpp` | N | 435 | 0 / 0 | 0 | 1 | 0 | 7 | 0 | 0 | rt wiring of game/combat.cpp: FightEnv over cells; entries in `amiga/combat_entries.cpp` (11.1d part 2) |
 | `combat_load.cpp` | N* | 396 | 1 / 1 | 0 | 1 | 1 | 13 | 1 | 0 | wiring of game/combat_load; asm-label cell, calls rt_file_* directly |
 | `combat_pool.cpp` | N | 64 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | creature-pool glue; address helper only |
-| `combat_script.cpp` | N* | 203 | 1 / 7 | 0 | 1 | 0 | 0 | 0 | 0 | CombatEnv wiring; register-ABI entries |
+| `combat_script.cpp` | N | 129 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | CombatEnv wiring; entries in `amiga/combat_script_entries.cpp` |
 | `combat_ui.cpp` | N* | 1201 | 1 / 0 | 0 | 0 | 0 | 17 | 0 | 0 | stat sheet / loot icons / cursor in C++; rd32/st32 on 68k addresses |
-| `creatures.cpp` | N* | 174 | 1 / 5 | 0 | 1 | 0 | 0 | 0 | 0 | wiring of game/creatures; register-ABI entries |
+| `creatures.cpp` | N | 109 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | wiring of game/creatures; entries in `amiga/creatures_entries.cpp` |
 | `display.cpp` | A | 49 | 0 / 0 | 0 | 0 | 0 | 0 | 2 | 5 | ACE view/vport/simplebuffer creation; AGA FMODE/BPLCON resets |
 | `display_ops.cpp` | B | 280 | 1 / 6 | 3 | 0 | 2 | 0 | 1 | 5 | screen swap/clear/palette write neutral in shape; beam wait polls VHPOSR, copper stub + DMACON writes, 3 inline-asm loops |
 | `engine_anim.cpp` | N* | 134 | 1 / 4 | 0 | 2 | 0 | 0 | 1 | 0 | anim interpreter entries; register-ABI entries + 2 jsr call helpers |
@@ -91,7 +91,7 @@ casts; `ACE/OS headers` = distinct ACE, `hardware/`, `proto/`, `dos/`, `exec/`, 
 | `example_scene.cpp` | N | 24 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | optional example scene (MS_EXAMPLE_SCENE); not built by default |
 | `fight_roster.cpp` | N | 12 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | roster storage |
 | `fight_seed.cpp` | N | 42 | 0 / 0 | 0 | 0 | 0 | 1 | 0 | 0 | roster seed; 1 address cast |
-| `fighters.cpp` | N* | 294 | 1 / 5 | 0 | 0 | 0 | 0 | 0 | 0 | FighterEnv wiring; shim entries |
+| `fighters.cpp` | N | 252 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | FighterEnv wiring; trampolines in `amiga/fighters_entries.cpp` |
 | `files.cpp` | B | 467 | 4 / 4 | 0 | 0 | 0 | 0 | 7 | 0 | search order, art override, buffer: neutral; Open/Read/Seek/Examine/Lock are dos.library; systemUse guards |
 | `flow.cpp` | N | 124 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | scene-manager instance; calls rt::fatal + serLog |
 | `game.cpp` | B | 237 | 1 / 4 | 0 | 1 | 0 | 0 | 3 | 0 | overlay entry + image snapshot/restore neutral; crash install, display handover, fast-memory backup |
@@ -103,13 +103,13 @@ casts; `ACE/OS headers` = distinct ACE, `hardware/`, `proto/`, `dos/`, `exec/`, 
 | `irq.cpp` | A | 404 | 1 / 5 | 0 | 1 | 0 | 0 | 6 | 6 | INTENA/INTREQ/POTGO, ACE systemSetInt, private-stack trampolines; `irqLevel3` body is neutral and moves to the timer seam |
 | `knight_colours.cpp` | B | 147 | 0 / 0 | 0 | 0 | 0 | 0 | 2 | 0 | palette ramp maths neutral; chip block via memAlloc(MEMF_CHIP) |
 | `loaders.cpp` | N* | 276 | 2 / 0 | 0 | 0 | 1 | 0 | 1 | 0 | loader entries over engine/loaders + rt_file_*; asm-label cell, trampolines |
-| `loot.cpp` | N* | 357 | 1 / 3 | 0 | 0 | 0 | 5 | 0 | 0 | click handler + screen setup; address casts |
+| `loot.cpp` | N | 337 | 0 / 0 | 0 | 0 | 0 | 5 | 0 | 0 | click handler + screen setup; address casts |
 | `mainloop.cpp` | N* | 347 | 1 / 11 | 0 | 2 | 0 | 1 | 0 | 0 | main loop wiring (MainEnv/MogJobEnv): 11 entries + 2 jsr helpers |
 | `modload.cpp` | B | 161 | 0 / 0 | 0 | 0 | 0 | 0 | 2 | 0 | mod loader: parser neutral (game/data/modload); file list/read via rt_file_*; ACE log |
 | `mog_display.cpp` | B | 160 | 1 / 5 | 0 | 0 | 0 | 0 | 1 | 11 | display helpers: DIWSTRT/DIWSTOP + blitter register writes |
 | `noop.cpp` | N* | 10 | 1 / 1 | 0 | 0 | 0 | 0 | 0 | 0 | `rtNoop`, a bare RTS in asm (needs a C function) |
 | `origload.cpp` | B | 172 | 0 / 0 | 0 | 0 | 0 | 0 | 3 | 0 | reads program+mog through the file layer at start-up (10.2a); neutral logic, uses rt::system/log |
-| `overworld.cpp` | N* | 927 | 2 / 3 | 0 | 1 | 0 | 12 | 0 | 0 | overworld wiring; 12 address casts |
+| `overworld.cpp` | N | 913 | 0 / 0 | 0 | 0 | 0 | 12 | 0 | 0 | overworld wiring; 12 address casts; `rtOwAsm` and the dragon handler in `amiga/overworld_entries.cpp` |
 | `palette_aga.cpp` | A | 42 | 0 / 0 | 0 | 0 | 0 | 0 | 2 | 2 | AGA colour registers (BPLCON3 banks + COLORxx, LOCT) |
 | `palette_enh.cpp` | N | 119 | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 | 24-bit palette state of the enhanced mode (empty without MS_ENHANCED) |
 | `palette_glue.cpp` | B | 238 | 1 / 10 | 1 | 0 | 1 | 0 | 0 | 0 | fade/scene helpers neutral; inline `jsr rt_mog_pal_copy_live` with A0 |
@@ -126,7 +126,7 @@ casts; `ACE/OS headers` = distinct ACE, `hardware/`, `proto/`, `dos/`, `exec/`, 
 | `scene_menu.cpp` | N* | 232 | 1 / 1 | 0 | 1 | 0 | 3 | 1 | 0 | menu/knight select wiring; 1 entry block + 1 jsr helper |
 | `scene_places.cpp` | N* | 236 | 1 / 3 | 0 | 0 | 0 | 8 | 0 | 0 | place screens wiring; address casts |
 | `scene_town.cpp` | N* | 150 | 1 / 1 | 0 | 0 | 0 | 3 | 0 | 0 | town screens wiring |
-| `screens.cpp` | N* | 642 | 2 / 9 | 0 | 1 | 0 | 9 | 0 | 0 | town/place screen builders; `rtScrCall` (jsr helper) |
+| `screens.cpp` | N | 542 | 0 / 0 | 0 | 0 | 0 | 9 | 0 | 0 | town/place screen builders; entries in `amiga/screens_entries.cpp` (`rtScrCall` is gone) |
 | `sfx.cpp` | N* | 66 | 1 / 1 | 0 | 0 | 0 | 0 | 0 | 0 | sound-request front end; synth start through a shim |
 | `soundbank.cpp` | N* | 104 | 0 / 0 | 0 | 0 | 0 | 0 | 1 | 0 | sound-bank loaders over rt_file_* |
 | `sprites.cpp` | B | 191 | 1 / 2 | 1 | 0 | 0 | 0 | 1 | 1 | hardware-sprite data builder neutral; SPRxPT via the copper stub, DMACON SPREN, 1 barrier |
@@ -279,7 +279,7 @@ Follow-ups (numbers are suggestions; ROADMAP is the integrator's):
 * **11.1c** Split the B files into a neutral core and a seam: `display_ops`, `engine_blit`, `files`, `input`, `irq`, `game`, `sprites`, `synth`, `enhanced`,
   `perf`, `autoplay`, `mog_display`, `arena_bg`, `palette_glue`, `prg_ops`, `modload`, `origload`, `knight_colours`, `adfdisks`.
 * **11.1d** Replace the register-ABI layer by typed C calls (section 4: K1 + K2, 306 `RT_FN` references). Largest item; unblocks 11.4 (the PC
-  build cannot contain a single m68k `asm` block). **Done so far (2026-10-10, session 1): 20 files, see section 6.1.**
+  build cannot contain a single m68k `asm` block). **Done: part 1 (2026-10-10, 20 files) and part 2 (2026-10-12, the mog scene cluster), see section 6.1; what is left is the by-address callers (arena / combat_ui / overworld), which run through PC adapters.**
 
 ### 6.1 11.1d: how it is done, what is done, what is left
 
@@ -304,12 +304,41 @@ Files made host-clean (listed in `src/rt/host_clean.txt`, 17 -> 38 with `net_stu
 `engine_anim`, `engine_intro`, `engine_jobs`, `wipe`, `progmain`, `loaders`, `combat_load`. New neutral pieces: `rt/file_handle.hpp` (`rt::FileHandle`, split from
 `guards.hpp`), `rt/logwrite.hpp`, `rt/prim.hpp`.
 
-Left (the "mog scene cluster", 8 `MS_STUB("11.1d")` sites in `src/rt/sdl/stubs.cpp`): `combat` (`rtScreenRedraw`, `rtKnightTables`), `combat_ui` (`rtCuiCursorStep`),
-`fighters` (`rtKnightDefaults`), `overworld` (`rtOw*`), plus their neighbours `arena`, `creatures`, `screens`, `loot`, `mainloop`, `combat_script`. They call each
-other through 236 `RT_FN` sites (306 before this step; arena 58, combat_ui 53, overworld 51, combat 35, screens 29) and 8 register-block helpers (`rtFightAsm`, `rtScrCall`, `rtOwAsm`, `rtMainCall`, `rtMainCallD`, `rtAsmCall`, `rtCreatureCall`, `rtCombatCall`), plus the `rtFighter*` trampolines, and the creature/handler tables hold shim addresses with register contracts (`LAB_08C8`: `rt_arena_meet`, the map handlers
-`rt_scr_*`), which need typed function-pointer tables, not just calls. Their emulator tests (`test_arena_emu` passes, `test_creatures_emu`, `test_fighters_emu`,
-`test_places_emu`, `test_boot_map_emu`, `test_mainloop_emu`, `test_palette_glue`, `test_display` do not even set up on this branch: stale symbols such as
-`rt::combatPool`, `rt::netDeterministic`) intercept the `rt_*` labels, so convert them together with those tests and repair the tests first.
+**Part 2 (2026-10-12): the mog scene cluster.**  `combat`, `combat_script`, `creatures`, `fighters`, `loot`, `overworld` and `screens` are host-clean (listed in
+`host_clean.txt`: 57 -> 64 files; `MS_STUB("11.1d")` sites 8 -> 0), so the PC build links the map, the fights, the town screens and the loot screens; `arena`, `combat_ui` and
+`mainloop` already were.  The method is part 1's plus one rule for what is still called by address:
+
+1. Shim asm blocks of the seven files moved unchanged to `src/rt/amiga/<file>_entries.cpp` (`combat`, `combat_script`, `creatures`, `fighters`, `overworld`, `screens`;
+   `loot` needed none: its three trampolines became direct calls of `rtRngPercent` / `rtCuiJingleGood` / `rtCuiJingleBad`).  The unicorn rigs list the entries file next
+   to the file they test (`test_creatures_emu`, `test_fighters_emu`, `test_mog_q_ops`, `test_boot_map_emu`, `test_mainloop_emu`, `test_places_emu`); `abs_symbols.json`
+   and `mog.screens.json` name the entries files as `impl`.
+2. `combat.cpp` and `screens.cpp` call the primitives' C++ bodies through `rt/prim.hpp` (64 `RT_FN` sites -> 1: `rt_scr_ritual_done`, an address written into the handler
+   table; `rtScrCall` and `call()` are gone, so the Amiga code is smaller: Release `.text` 578668 -> 578552).  No unicorn test links these two files, so nothing needed a
+   reverse shim; `rtFightAsm` stays for the two arena-table dispatches of combat (`opCallSpawn`, `opCreatureArena`).
+3. What other files (arena, combat_ui, overworld, ...) still reach by address -- `RT_FN(rt_x)`, the handler / arena tables, `rtAsmCall`, `rtFightAsm`, `rtOwAsm` -- needs a
+   PC definition of every `rt_x`: `src/rt/sdl/reg_entries.cpp` (the mog primitives and the creature tables of arena.cpp, as in part 1) and one
+   `src/rt/sdl/<file>_entries.cpp` per file whose Amiga shims moved.  Each is `void rt_x(rt::CallRegs &)`, i.e. the Amiga shim with the registers read from /
+   written to the block, around the same C++ body; the call helpers of the cluster (`rtFightAsm`, `rtOwAsm`) convert their own register block to a `CallRegs` and call
+   `rtAsmCall` (one detail: `CallRegs` has no D7; the plane count of `rt_mog_cel_init` travels in the unused `d5` slot).
+4. **Creature handlers are typed tables on the PC** (`rt/sdl/handlers.hpp`): the three handler-table entries that are not ported fighters (`rt_scr_dice_idle`,
+   `rt_scr_ritual_done`, `rt_ow_dragon_handler`) are `void (*)(uint32_t owner, HandlerResult *)` on the PC, `rtCreatureCall` calls them as that, and they end in
+   `handlerExit` (what `LAB_02BA` / `rt_mog_pair_load` does with registers).  The Amiga keeps the register entries; both use the same table address.
+5. Other platform seams: `fighters.cpp` reads the beam through `platform::timerBeamVhposr()` (was a raw `$DFF006` read); `overworld.cpp` pins `rt_enh_pic_sz` like
+   `combat_load.cpp` does; `rtMogEnterMap` / `rt_mog_quit` have PC entries (`sdl/mainloop_entries.cpp`: the map loop runs in place, the quit scene as a call;
+   unwinding the scene stack on quit is the flow's job, 11.4).
+
+Counts: `RT_FN` lines in `src/rt/*.cpp` 228 -> 165 (arena 58, combat_ui 53, overworld 51, files / palette_glue / screens 1 each; the 31 `rt_ar_*` and the arena /
+handler table addresses are among them), register-block helpers 8 -> 3 live (`rtAsmCall` in arena / combat_ui, `rtOwAsm`, `rtFightAsm`; `rtScrCall` and the old
+`rtMainCall` / `rtMainCallD` are gone, `rtCreatureCall` / `rtCombatCall` are trampolines of the entries files), `rt/prim.hpp` +22 primitives.  Release `.text` -116 B,
+Debug unchanged in kind.
+
+Left of 11.1d: the cluster's *callers* of those entries -- `arena.cpp` (58 `RT_FN`), `combat_ui.cpp` (53), `overworld.cpp` (51) -- still call by address through `rtAsmCall` /
+`rtOwAsm` and the PC adapters above, because their emulator tests (`test_arena_emu`, `test_combat_ui_emu`, `test_boot_map_emu`, `test_mainloop_emu`, `test_places_emu`)
+intercept the `rt_*` labels (`RT_LABELS`: the label of the original routine is the oracle).  Turning those calls into `rt/prim.hpp` calls needs a reverse shim per primitive
+in the rigs (C arguments -> registers -> the original's label, like `rtCopyRect` in `tests/wipe_emu_support.cpp`) -- about 55 distinct primitives; the arena set-up /
+swap / init tables (`rt_ar_*`, 42 `RT_FN`) become typed function-pointer tables then, as the handler entries above already are.  The PC does not need it to run them.
+First light (`build-sdl`, ADFs copied to a temp drawer, `--fast --skip-intro`): the title menu comes up with no `STUB` line (`tests/test_pc_firstlight.py`); the menu does not
+react to scripted keys on the PC yet (the same on the commit before this step), so the map and a fight were not reached headless: that is 11.4.
 
 * **11.1e** Host `ace/types.h` shim (`UWORD`, `ULONG`, ... on `<stdint.h>`) and a ratchet test that compiles the 18 clean files and the eight platform
   headers on host (the header half exists: `tests/test_platform_headers.py`); `-D__CODE_CHECKER__` is a stopgap, not a design.
@@ -441,6 +470,17 @@ SDL3 notes (port from SDL2, owner decision 2026-10-10; `src/rt/sdl`, the only pl
   rectangle. `SDL_SetRenderLogicalPresentation(..., SDL_LOGICAL_PRESENTATION_INTEGER_SCALE)` was evaluated and not used: it scales by whole factors only, so a 320x240
   logical size (the 6:5 pixel shape) letterboxes on every window that is not an exact multiple, while `fitRect` fills the window with the same 6:5 aspect (and the mouse scaling
   of the input module is derived from the same rectangle). The pixel-exact `--dump-frame` path (`engine/dispframe`, `engine/planar`) is untouched.
+* CRT effect (optional, off by default; `src/rt/sdl/crt.cpp`): `--crt` starts with it, `--no-crt` forces it off, **F12** toggles it while playing (the Amiga keyboard ends at F10 and
+  F11 is fullscreen, so the game never sees F12; the key is consumed in `frame_loop.cpp` before the input module). The choice F12 makes is remembered in `crt.txt` in the user directory
+  (`--pref`), read at start unless `--crt` / `--no-crt` is given; headless runs never read it. Implementation, chosen for robustness over looks: no shader (SDL3's GPU API is a second
+  device next to the 2D renderer and fails on old drivers), no per-frame CPU work. Three renderer passes inside the pixel-perfect rectangle: the nearest-filtered picture; the same texture
+  bilinear-filtered and added at 110/255 (`SDL_BLENDMODE_ADD`, the glow / horizontal bleed, it also makes up most of the brightness the next pass takes away); an overlay texture multiplied over
+  it (`SDL_BLENDMODE_MOD`) holding scanlines (beam centre off-centre in each source row so even 2x shows a dark row), an RGB aperture grille (one triad per 3 output columns, only from 3x)
+  and a vignette. The overlay is computed on the CPU once per output size (`crtOverlayPixel`; ~20 ms at 1280x800, ~80 ms estimated at 2560x1600, so a hitch when the window or fullscreen
+  changes size) and uploaded as a static texture; per frame it costs two extra quads (CPU submit 0.003 ms, no measurable change in present time at 4x with Direct3D). Below 2x (window smaller than
+  640x400) the effect is skipped. Not done: barrel curvature (a warped mesh would break the pixel-perfect scale; would need a shader). Tuning constants are at the top of `crt.cpp`.
+  Debug: `--dump-output F.png [N]` writes the composed window (scaling, effect, bars; `SDL_RenderReadPixels` before the present) of the N-th presented frame (default 20; with `--fast` only
+  every 50th timer frame is presented); together with `SDL_VIDEO_DRIVER=dummy` (software renderer) and `--scale 3|4` (honoured headless too) it gives the 3x / 4x pictures without a window.
 * Input: scancodes are still USB HID usages, so `engine/pcinput` tables hold (the `static_assert`s in `input.cpp` check the anchors against the SDL3 enum). Key events carry
   `down` / `repeat` booleans and `mod` (`SDL_KMOD_CTRL | SDL_KMOD_ALT` for the Ctrl+Alt+G chord); the mouse uses `SDL_SetWindowRelativeMouseMode` and float `xrel` / `yrel`;
   game controllers are `SDL_Gamepad` (`SDL_EVENT_GAMEPAD_ADDED` carries the joystick id to open; A / X / right shoulder -> `SDL_GAMEPAD_BUTTON_SOUTH` / `WEST` / `RIGHT_SHOULDER`,
@@ -527,28 +567,81 @@ writes are the display's `$8380/$8040/$8020/$8400`, the blitter and sprite bits;
    again; the module player clears the DMACON bit, writes LC/LEN/PER/VOL and sets the bit.
 5. **Period and volume are changed freely while a channel plays**: the period is read when a byte starts (a change applies from the next byte), the volume at once.
 
-**Not modelled** (never used): `AUDxDAT`, attach modulation (`ADKCON` bits 0..7 are stored and reported, never applied), the LED filter, the
-sub-sample start-up delay of the real chip, CIA-B timers (the module tick is the vblank), and `LEN 0` / `PER` below 113 beyond the documented rules
+**Not modelled** (never used): `AUDxDAT`, attach modulation (`ADKCON` bits 0..7 are stored and reported, never applied), the LED filter *as a machine state*
+(the game never toggles it; the PC's post filter has LED variants for listening only, below), the sub-sample start-up delay of the real chip, CIA-B timers (the module tick is the vblank), and `LEN 0` / `PER` below 113 beyond the documented rules
 (`LEN 0` = 65536 words, `PER 0` = 65536, `PER < 113` plays as 113: the DMA slot limit of PAL).
 
 ### The model and the platform (`include/engine/paula.hpp`, `src/rt/sdl/audio.*`)
 
 * `ms::paula` (pure, `src/engine/paula.cpp`): register file + four DMA machines advanced in output frames at any rate (48000 Hz), big-endian sample bytes
-  from the `ChipView`, exact integer box-filter resampling, Amiga panning (0,3 left; 1,2 right) with an optional separation, optional one-pole low-pass
-  (`--audio-filter a500|a1200`, off by default). `ms::modplay` (pure) is the ProTracker replayer for program's music.
+  from the `ChipView`, Amiga panning (0,3 left; 1,2 right) with a separation (default 70), and two renderers for the staircase Paula outputs (below): band-limited
+  steps (default) or the exact integer box filter. The analogue output stage (`--audio-filter`) is a separate post filter, `engine/outfilter`.
+  `ms::modplay` (pure) is the ProTracker replayer for program's music.
 * **Threading** (SDL3 push model): the model runs on the *game thread in virtual time* (`audioOnBoundary` after each 50 Hz vblank handler: modTick, 960 output
   frames, `synthInt4` called from inside the render at the exact chip time of the buffer end). The finished frames are handed to SDL with one
   `SDL_PutAudioStreamData` per vblank into the stream of `SDL_OpenAudioDeviceStream` (guard `SdlAudioStream`; SDL converts to the device format and its own
   audio thread pulls from the stream under its own lock). There is no callback, no ring and no atomics of ours; SDL's thread never touches the model or a
-  register. The device opens paused and is resumed when 2 vblanks (1920 frames) are queued (prefill); `SDL_GetAudioStreamQueued` drives the accounting: a chunk
-  that would take the queue past 16384 frames (~340 ms) is dropped (`--fast`: the game outruns the device), a stream found empty after playing started counts
-  an underrun, pauses the device and buffers up again. (SDL2 version: a hand-written lock-free SPSC ring and an `SDL_OpenAudioDevice` callback, same prefill and
+  register. The device opens paused and is resumed when 2400 frames (50 ms: 10 ms of silent pad + 2 vblanks) are queued (prefill, "Output robustness" below);
+  `SDL_GetAudioStreamQueued` drives the accounting: a chunk that would take the queue past 16384 frames (~340 ms) is dropped (`--fast`: the game outruns the
+  device), a stream found empty after playing started counts an underrun, pauses the device and buffers up again with a larger pad. (SDL2 version: a hand-written lock-free SPSC ring and an `SDL_OpenAudioDevice` callback, same prefill and
   capacity; the WAV dump and the model are untouched, `--dump-audio` is byte-identical.)
   Why not a command queue rendered in SDL's thread: the level-4 handler must run between statements of the game thread, and output that depends on audio-thread
   scheduling could not be tested or dumped. Consequence: the samples are a pure function of the register writes and the vblank count (`--dump-audio f.wav`,
-  `--fast` reproducible); latency is about 2 vblanks (prefill) plus the 1024-frame device buffer (`SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES`).
-* Smoke: `moonstone.exe --smoke N --fast --dump-audio f.wav` plays a four-channel test tone through `platform::paulaWrite16/32` (rt/sdl/smoke.hpp); the test
-  compares the WAV sample for sample with the Python model.
+  `--fast` reproducible); latency is the queue (~40 ms on average, 50 ms right after the prefill) plus the 512-frame device buffer (`SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES`, ~11 ms).
+* Smoke: `moonstone.exe --smoke N --fast --dump-audio f.wav --audio-render box --audio-filter off --audio-separation 100` plays a four-channel test tone through `platform::paulaWrite16/32` (rt/sdl/smoke.hpp); the test
+  compares the WAV sample for sample with the Python model (the options pin the box renderer; the defaults are compared with the BLEP model, below).
+
+### PC audio quality: band-limited synthesis, filters, settings, robustness (2026-10-26, ROADMAP 11.8a)
+
+Options (all PC only; the Amiga build and its sound are untouched, `engine/paula*`, `engine/outfilter` and `rt/sdl/audio*` are not part of it):
+
+| option | values | default | what |
+|---|---|---|---|
+| `--audio-render` | `blep`, `box` | `blep` | `blep`: every step of Paula's staircase is inserted as a band-limited step (below); `box`: the exact box filter (the old renderer, kept for A/B and as the test reference) |
+| `--audio-separation N` | 0..100 | 70 | 100 = Amiga hard panning (channels 0, 3 left; 1, 2 right), 0 = mono; 70 sounds natural on headphones |
+| `--audio-filter` | `off`, `a500`, `a500led`, `a1200`, `a1200led` | `a1200` | the analogue output stage of the machine (below) |
+| `--audio-save` | | | write the settings in force to `<user directory>/audio.txt` |
+
+**Settings file** `audio.txt` in the user directory (`--pref DIR`, else SDL's pref path): `render=blep`, `separation=70`, `filter=a1200`, one per line, `#`
+comments, case-insensitive; a missing file, key or a value that does not parse leaves that setting at its default (the other lines still apply). The command
+line overrides the file for that run; `--audio-save` writes the effective settings back (so `moonstone.exe --audio-separation 100 --audio-save` is remembered).
+Nothing else writes the file: a plain launch and every headless run leave the user directory alone, and `--smoke` without `--pref` does not read it (tests must
+not depend on the developer's file). The CRT toggle of the display branch keeps its own file; the two do not share one.
+
+**Band-limited steps** (`RENDER_BLEP`, `engine/paula.cpp` + `engine/paulablep.cpp`). Paula's output is a staircase: each byte is held for one period (>= 113
+ticks of 3.5469 MHz, i.e. a step rate up to 31 kHz) and the box renderer averages it over each 48 kHz frame. That averaging folds everything the staircase has above
+24 kHz back into the audible band as aliasing (a 28.6 kHz staircase of a 447 Hz sine puts an image at 19.8 kHz, -42 dB below the tone). BLEP instead keeps the
+staircase exact in chip time and adds each step (a byte or volume change of a channel, with its exact position inside the frame) to the output as a band-limited
+step: the integral of a half-band Kaiser-windowed sinc (beta 8, 32 taps, -6 dB at 24 kHz, > 80 dB down above ~28 kHz); output = the held level at the sample
+instant + the residual `delta * (S(x) - U(x))` of the steps within +-16 samples. That is the staircase low-passed at Nyquist and then sampled: aliasing is gone
+(the same test tone: -113 dB), a held level is reproduced exactly once a step's kernel has passed (DC exact, tests), and the true high-frequency content of the
+staircase (the "Paula grit" up to 20 kHz, which the box renderer rolls off by 1 to 4 dB there) is kept. The kernel is linear-phase, so the output lags the chip by 16
+frames (0.33 ms); the interrupts are unaffected (they run in the chip-time loop, not in the output). The kernel table (32 taps x 1025 phases, Q24, linear
+interpolation between phases) is computed in double at start and used with integers only. Gain: with the default separation 70 the output is 1.3 to 2.3 dB quieter than
+hard-panned (the channels share both speakers), the renderers themselves agree within 0.1 dB.
+
+**The game hears the same Paula.** Both renderers are fed by one chip-time loop (`stepFrame` / `integrateFrame`: the only place that advances a channel, fetches a
+word, raises and delivers a request), the BLEP code only records the level steps that loop produces. `tests/test_paula_blep.py` runs random scenarios in both modes
+and requires identical (frame, channel) interrupt logs; headless play (`pc_play.sh`, title music and a lair fight) logged 236 interrupts in 6100 vblanks with the old
+build, `--audio-render box`, and BLEP alike, and the box WAVs are byte-identical to the old build's.
+
+**Output filters** (`engine/outfilter`, applied to the model's frames before the device and the dump): the real machines' analogue stage is a 5.2 Hz high-pass (AC
+coupling, removes the DC of a held sample); on the **A500** a fixed one-pole low-pass of 360 ohm / 0.1 uF = 4421 Hz; on the **A1200** the fixed low-pass sits at ~34.4 kHz
+(a 48 kHz output is hardly touched: about -0.1 dB at 20 kHz); and on both the **LED filter**, a second-order low-pass (3090 Hz, Q 0.66) that the CIA-A PRA bit 1
+(power LED) switches in on top. Figures as modelled by the pt2-clone / WinUAE (from memory of those sources, not re-derived from schematics). **The game never
+touches that bit** (ptplayer's `mt_reset` clears it, i.e. LED filter off), so the faithful A1200 is `a1200` (the default); `a500` is the dull A500 sound, the `led`
+variants exist for listening.
+
+**Output robustness.** The game thread pushes 960 frames per vblank; the device pulls whole buffers. The queue must hold more than one buffer after the vblank-sized
+pushes have taken their share, or the stream runs dry (the old 1920-frame prefill with a 1024-frame device buffer left no slack for a vblank later than ~19 ms, and
+`SDL_GetAudioStreamQueued` hitting 0 is how an underrun is logged). Now: device buffer 512 frames; prefill 2400 frames (10 ms of silent pad before the first vblank + 2 vblanks =
+50 ms; the average latency, queue + device, stays about 50 to 60 ms); each underrun adds 10 ms of pad (up to 20 ms) for the re-prefill; the exit log gives the
+fewest frames the queue held before a push (`least queued`), the slack actually used. Clock drift between the 50 Hz timer (performance counter) and the sound card
+is steered away: in real-time runs the queue level after each push is averaged over half a second and compared with the level the first seconds settled at; beyond
+8 ms the stream's playback ratio is moved by `error / 480000` (at most +-0.4 %, so < 7 cents; SDL resamples only then, with a mild loss above 18 kHz), inside the dead band it is
+exactly 1. The WAV dump is taken before all of this. Measuring caveat: SDL's `dummy` audio driver rounds its buffer period to whole milliseconds, so its effective rate
+differs from 48 kHz by a few percent for most buffer sizes (512 frames: 10 ms = +6.7 %): underrun and drop counts under `SDL_AUDIO_DRIVER=dummy` say nothing about a real
+device; the 1024-frame setting happens to be close to real time there.
 
 ## Input, files, log and crash (ROADMAP 11.9)
 
@@ -574,8 +667,39 @@ Code: `include/engine/pcinput.hpp` + `src/engine/pcinput.cpp` (pure, host-tested
   A / X / right shoulder = fire, B / Y = `isRight1`); port 0 = gamepad 2 while one is connected (it replaces the mouse, as a stick in the mouse
   port does), else the mouse. Direction bits are written as `JOYxDAT` exactly as `ms::joyDirections` reads them (`ms::joyEncode`); opposite directions cancel.
   The keyboard joystick keys also reach the game as keys (the co-op key set A reads them from the key table).
-* **Script**: `--keys "@2 Right +Left_Ctrl -Left_Ctrl ~Right mouse=3,-2 lmb+"` (see `inputScriptParse`) injects the same events at chosen frames and
+* **Script**: `--keys "@2 Right +Left_Ctrl -Left_Ctrl ~Right mouse=3,-2 lmb+"` (or `--keys-file F`, the same text from a file: a soak script does not fit the command line;
+  32768 events at most) (see `inputScriptParse`) injects the same events at chosen frames and
+
   `--smoke` logs `input: frame N key down 0x4E` / `input: frame N ports joy0=.. joy1=.. fire0=..` lines: the proof that they reach the platform state.
+
+### Local co-op on one PC (ROADMAP M8; 2026-10-25)
+
+The co-op game of the Amiga (title menu Players 2..4 + Mode Coop, one controller per knight on the knight screen) runs unchanged on the PC: the
+controllers are the four of `engine/pad.hpp`, fed by this platform layer.
+
+| controller | on the PC | fire |
+|---|---|---|
+| Joystick 1 | cursor keys, or gamepad 1 (port 1) | Right Ctrl or Space (Space is the status sheet on the map: the pad word is the same, the key is also a game key) |
+| Joystick 2 | gamepad 2 only (port 0; without one port 0 is the mouse) | gamepad A / X / right shoulder |
+| Keys arrows | cursor keys again, as the Amiga's keyboard set (Ctrl / Right Shift fire): only usable with `--joykeys none`, else it is Joystick 1's keys | Left / Right Ctrl, Right Shift |
+| Keys WASD | W A S D, always there (the game's own keyboard set, read from the key table) | Left or Right Alt |
+
+Two players on one keyboard need nothing: knight 1 gets Joystick 1 (arrows), the Control line of knight 2 starts on **Keys WASD** (the
+knight screen skips controllers the PC cannot drive, `rt/sdl/input.cpp` `padUsable` through `ms::game::g_pfnPadUsable`, null on the Amiga =
+unchanged offer; left / right on the Control line still cycle the free usable ones, and when none is left an unusable one is offered rather than
+nothing).  Three or four players: gamepads for Joystick 1 / 2 (`--joykeys none` then frees the arrow keys for "Keys arrows" of knight 3 or 4),
+W A S D for the other.  Two keyboard sets at once were ghosting-checked for the Amiga matrix (`tests/test_keyghost.py`); a PC keyboard has its own
+rollover, so three keys of two sets in a corner of the matrix (arrows + Right Ctrl + W / A / Alt together) can drop on cheap keyboards.
+The sheets and the loot screen are closed by the owner's own fire after moving the cursor onto the pillar with the owner's own keys (the other
+players' keys do nothing in that moment: the party layer reads the current knight's controller).  `--keys` drives every set by key name
+(`+Left_Alt -Left_Alt`, `+D`, `+Right_Ctrl`), so the whole co-op game is scriptable: `tests/pc_play/pc_play.sh coopmap|coopfight|cooploot|cooptown|coopswitch|coopshop|coopsheet|coop4|coop4lair`.
+
+**One human, computer team-mates** (ROADMAP 8.3b, `docs/MOONSTONE2.md` section 9): the Control line of knights 2..4 has **Computer** as one more stop after the
+last controller (one Right from Keys WASD on a PC without gamepads), so one player with the cursor keys plays a whole party.  The human walks the party every round, the
+computer knights fight beside it and buy what it buys in town.  Scripts: `pc_play.sh coopaiknight|coopai|coopaifight|coopailoot|coopaisheet|coopaishop|coopaishopsheet|coop4ai|coop4ailair`;
+the random-key soak `py tests/pc_play/coop_soak.py --players 4 --frames 90000 --seeds 1 2 3` (1 human + 3 computers; the script is written to a file and run with `--keys-file F`,
+the command line is too short for a soak).
+
 
 ### Files
 
@@ -700,10 +824,9 @@ What it took (pattern of 11.1c: neutral core + platform seam; Amiga code moved, 
 * **PC twins** (`src/rt/sdl/`, TODO(11.1c) to merge with the neutral files): `game` (overlay chain), `rt_files` (the `rt_file_*` C API over `gamedata`),
   `irq` (`irqLevel3` split into the vblank and blit-done handlers of `platform::timer`), `music` (module music through `platform::musicPlay`),
   `synth_entries`, `modload` (live data = `kDefaults`; the mods folder is not read yet), `display_hw`, `reg_entries`.
-* **`reg_entries.cpp`**: the mog scene cluster (`arena`, `combat_ui`, ...) still calls routines by address with a register contract (`call(RT_FN(rt_x), d0, a0..)` ->
-  `rtAsmCall`).  On the PC `rtAsmCall` calls `rt_x` as `void rt_x(rt::CallRegs &)`; the entries that the boot reaches are written, 13 more log `STUB name` when called.
+* **`reg_entries.cpp`** and `sdl/<file>_entries.cpp`: the mog scene cluster (`arena`, `combat_ui`, `overworld`, ...) still calls routines by address with a register contract
+  (`call(RT_FN(rt_x), d0, a0..)` -> `rtAsmCall`).  On the PC `rtAsmCall` calls `rt_x` as `void rt_x(rt::CallRegs &)`; every entry is written since 11.1d part 2 (no `unimplemented` ones left).
 * Idle loops (`ms::tickIdle`: wait for a key) pump the frame through `platform::timerIdle()`; on the Amiga the interrupts do it.
 
-Left for the boot beyond the title (the stubs; the exe logs `STUB name` once per stub that a run reaches): the scene files `combat`, `overworld`, `screens`, `loot`, `creatures`,
-`fighters`, `combat_script` (still asm blocks and `rtFightAsm`-style helpers), `arena_bg` (arena backdrop), `knight_colours` (co-op colours), `options_io`, the
+Left for the boot beyond the title (the stubs; the exe logs `STUB name` once per stub that a run reaches): `arena_bg` (arena backdrop; the scene files themselves are linked since 11.1d part 2), `knight_colours` (co-op colours), `options_io`, the
 mods folder, the art override drawer, the `rt_file_list_dirs` drawer listing, and the enhanced 64-colour mode (11.6d).

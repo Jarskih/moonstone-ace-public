@@ -12,6 +12,7 @@
 #include "game/rules.hpp"
 #include "game/scene_town.hpp"
 #include "game/state_bind.hpp"
+#include "rt/combat_ui.hpp"
 #include "rt/party.hpp"
 #include "rt/party_loot.hpp"
 #include "rt/sfx.hpp"
@@ -55,11 +56,10 @@ void rtScreenRedraw(void);
 void rtTownRedraw(void);                   // scene_town.cpp: LAB_04D4 with every register preserved
 void rtTownSound(const uint8_t *pText);    // scene_town.cpp: LAB_0BB3 with A0 = text
 
-uint32_t rtLootRoll(void);
+uint32_t rtRngPercent(uint32_t *pSeed);       // engine_util.cpp: LAB_04A3, the percent roll 0..100 (rtLootRoll was an asm trampoline around rt_rng_percent)
+extern uint32_t mogRandomSeed;              // LAB_0973
 uint32_t rtLootNextKnight(void);
 uint32_t rtLootNextKnightFresh(void);
-void rtLootJingleGood(void);
-void rtLootJingleBad(void);
 void rtOwModeForce(void);                  // overworld.cpp: LAB_0E02 (position remembered, forced fight)
 void rtOwModeAmbush(ms::game::Knight *pKnight);   // LAB_0E05
 void rtOwRandomSpot(void);                 // LAB_0E06
@@ -160,7 +160,7 @@ __attribute__((used, externally_visible)) uint32_t rtLootUseItem(uint32_t ulSlot
 	const bool bWizard = mogSceneId == SCENE_WIZARD;
 	uint16_t uwD1 = 0;
 	if (bWizard) uwD1 = sfxClick(uwSlot);                             // MOVE.W #$9c,D0 ; JSR LAB_0AA2, D1 not saved (QUIRK)
-	const uint32_t ulRoll = useItemNeedsRoll(uwSlot, bWizard) ? rtLootRoll() : 0;   // JSR LAB_04A3
+	const uint32_t ulRoll = useItemNeedsRoll(uwSlot, bWizard) ? rtRngPercent(&mogRandomSeed) : 0;   // JSR LAB_04A3
 	LootWords w = loadWords();
 	w.uwLastSlot = 0xFFFF;                                            // MOVE.W #$ffff,LAB_053B at LAB_052D
 	const UseEffect eff = useItem(me, own, uwSlot, bWizard, uwD1, ulRoll, mogSceneId, w);
@@ -171,34 +171,34 @@ __attribute__((used, externally_visible)) uint32_t rtLootUseItem(uint32_t ulSlot
 			break;
 		case UE_TURNS_UP:
 		case UE_LUCK_GOOD:
-			rtLootJingleGood();
+			rtCuiJingleGood();
 			break;
 		case UE_TURNS_DOWN:
-			rtLootJingleBad();
+			rtCuiJingleBad();
 			break;
 		case UE_SCENE_8:
-			rtLootJingleGood();
+			rtCuiJingleGood();
 			rtLootNextKnightFresh();                                  // JSR LAB_0527 (counter = 0 first)
 			return 8;
 		case UE_MARK_POS:
-			rtLootJingleGood();
+			rtCuiJingleGood();
 			rtOwModeForce();                                          // JSR LAB_0E02, C++ since 7.1l
 			break;
 		case UE_TELEPORT_GOOD:
-			rtLootJingleGood();
+			rtCuiJingleGood();
 			rtOwModeAmbush(knightAt(mogUiKnight));                   // MOVEA.L LAB_068B,A0 ; JSR LAB_0E05
 			break;
 		case UE_TELEPORT_BAD:
-			rtLootJingleBad();
+			rtCuiJingleBad();
 			rtOwRandomSpot();                                         // JSR LAB_0E06
 			break;
 		case UE_SCENE_11:
-			rtLootJingleGood();
+			rtCuiJingleGood();
 			rtLootNextKnightFresh();                                  // JSR LAB_0527
 			return 11;
 		case UE_LUCK_BAD:
-			rtLootJingleBad();
-			rtLootJingleBad();
+			rtCuiJingleBad();
+			rtCuiJingleBad();
 			break;
 		default:
 			break;
@@ -335,23 +335,3 @@ __attribute__((used, externally_visible)) void rtLootClick(uint32_t ulBtn) {
 }
 
 }  // extern "C"
-
-// rtLootRoll: LAB_04A3 (the generator, patched to rt_rng_percent) with every register the C side keeps saved.
-asm(R"(
-	.text
-	.globl rtLootRoll
-rtLootRoll:
-	movem.l %d2-%d7/%a2-%a6,-(%sp)
-	jsr rt_rng_percent
-	movem.l (%sp)+,%d2-%d7/%a2-%a6
-	rts
-
-	.globl rtLootJingleGood
-rtLootJingleGood:
-	jmp rtCuiJingleGood                 | LAB_05A1, C++ since 7.1o (src/rt/combat_ui.cpp)
-
-	.globl rtLootJingleBad
-rtLootJingleBad:
-	jmp rtCuiJingleBad                  | LAB_05A0
-)");
-

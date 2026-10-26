@@ -14,9 +14,16 @@
 // Why not "write commands into a queue, render in the audio thread": the interrupt handler would then have to run on the audio thread (or
 // be postponed by up to a buffer), and the output would depend on its scheduling; here the samples are a pure function of the register
 // writes and the vblank count, so --dump-audio (and the tests) get exactly what the speakers get, and --fast runs are reproducible.  The
-// price is latency: the device is held paused until ~2 vblanks (40 ms) are queued, plus the device buffer (1024 frames requested).
+// price is latency: the device is held paused until 2400 frames (50 ms: 10 ms of silent pad + 2 vblanks) are queued, plus the device buffer
+// (512 frames requested, ~11 ms).  Why that much: the device pulls whole buffers, so the queue must always hold more than one buffer
+// (512) after the vblank-sized pushes (960) have taken their share; 2400 leaves ~19 ms of slack for a late vblank.
 // Accounting: a chunk that would take the queue past 16384 frames (~340 ms) is dropped (the game is faster than the device: --fast); a
-// stream found empty after playing started counts an underrun, pauses the device and buffers up again.
+// stream found empty after playing started counts an underrun, pauses the device and buffers up again with a larger pad (up to 60 ms in
+// all, so repeated underruns buy margin).  The smallest queue seen before a push is reported (AudioStats::ulMinQueued).
+// Clock drift: the vblank timer and the sound device run on different clocks, so over minutes the queue would creep to empty (an
+// underrun) or to full (dropped chunks).  While the game runs in real time the queue level (averaged over a second) steers the stream's
+// playback ratio by at most +-0.4 % (SDL resamples; 0.4 % is 7 cents) with a dead band, and the ratio is exactly 1 otherwise.  The WAV
+// dump is taken from the model, before any of this.
 //
 // A session is a stack guard (docs/RAII.md): audio subsystem, device and WAV dump are released in reverse order on every exit path.
 #pragma once
@@ -32,19 +39,16 @@ namespace sdl {
 
 constexpr uint32_t kAudioRate = 48000;
 
-enum AudioFilter : uint8_t {
-	AUDIO_FILTER_OFF = 0,
-	AUDIO_FILTER_A500,       // one-pole low-pass at 4.4 kHz (the A500 / A2000 fixed RC filter)
-	AUDIO_FILTER_A1200       // one-pole low-pass at 20 kHz (the A1200 has little more than the DAC reconstruction)
-};
+constexpr uint8_t kAudioDefaultSeparation = 70;
 
 struct AudioOptions {
 	const char *szDumpWav;   // write every rendered frame to this 16-bit stereo WAV (nullptr = no dump)
 	uint8_t ubSeparation;    // 0..100, 100 = Amiga hard panning (channels 0, 3 left; 1, 2 right)
-	uint8_t ubFilter;        // AudioFilter
+	uint8_t ubFilter;        // ms::FilterModel (engine/outfilter): the analogue output stage applied to the model's frames
+	uint8_t ubRender;        // ms::paula::Render: band-limited steps (default) or the exact box filter
 };
 
-// Defaults: no dump, separation 100, filter off.
+// Defaults: no dump, separation 70, the A1200 filter (fixed stage only), band-limited steps.
 AudioOptions audioDefaultOptions();
 
 struct AudioStats {
@@ -52,6 +56,7 @@ struct AudioStats {
 	uint32_t ulFrames;       // sample frames produced
 	uint32_t ulDropped;      // chunks the stream had no room for (the device is slower than the game: --fast)
 	uint32_t ulUnderruns;    // vblanks that found the stream empty after playing started
+	uint32_t ulMinQueued;    // the fewest frames the stream held just before a push while playing (the slack against a late vblank)
 	uint32_t ulInterrupts;   // AUDx interrupt handler calls
 };
 AudioStats audioStats();

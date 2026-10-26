@@ -366,4 +366,47 @@ direct:
 
 curated:
   program: {}
-  mog: {}
+  mog:
+    # the scene palette tables the C++ reads as UWORD arrays (src/rt/palette_glue.cpp paletteScene): 12-bit colour words
+    LAB_08D1: 2
+    LAB_08D2: 2
+    LAB_08D3: 2
+    LAB_08D4: 2
+    LAB_08D5: 2
+    # the loot screen palette (rt/combat.cpp: rtPalCopyLive_mog, game/combat.cpp screenPalette read and edit it as UWORDs)
+    LAB_09F0: 2
+    LAB_09F1: 2
+    # the list of scene ids with the wide layout (rt/combat_ui.cpp screenList, game/combat.cpp): words ended by $FFFF, read as uint16_t
+    LAB_098A: 2
+    # the creature spawn lists (rt/arena.cpp spawnOne): {x, height, depth, facing} words read as uint16_t
+    LAB_07BA: 2
+    LAB_07BB: 2
+    LAB_07BC: 2
+    # the map node table (game/overworld.cpp scanMap, struct MapNode: three words per node, id -1 ends): read as uint16_t / int16_t
+    LAB_069F: 2
+    # the palette of the menu screens (knight select ...), read as 32 uint16_t colour words by rt/scene_menu.cpp opPalette
+    LAB_06FD: 2
+    # the stat gift rows {offset long, text pointer} x 9 (rt/scene_places.cpp reads the table as uint32_t[18]) and the two mystic text tables
+    # {stat long, text pointer} x 6 (LAB_095B raise, LAB_095C lower): the longs between the pointers are native u32 cells, named by the
+    # member the generator cuts the run into (`<label>_<k>`, tools/gen_data.py apply_units)
+    LAB_090A: 4
+    LAB_090A_2: 4
+    LAB_090A_4: 4
+    LAB_090A_6: 4
+    LAB_090A_8: 4
+    LAB_090A_10: 4
+    LAB_090A_12: 4
+    LAB_090A_14: 4
+    LAB_090A_16: 4
+    LAB_095B: 4
+    LAB_095B_2: 4
+    LAB_095B_4: 4
+    LAB_095B_6: 4
+    LAB_095B_8: 4
+    LAB_095B_10: 4
+    LAB_095C: 4
+    LAB_095C_2: 4
+    LAB_095C_4: 4
+    LAB_095C_6: 4
+    LAB_095C_8: 4
+    LAB_095C_10: 4

@@ -195,6 +195,16 @@ int main(int argc, char **argv) {
 	check(draw(5, 0x7100) == 0x7100 && draw(1, 0x7000) == 0x9000, "inactive_creatures_off", "no roster: only the owner test remains (the skin owner is cleared with the roster)");
 	r.ulSkinOwner = 0;
 	check(draw(1, 0x7000) == 0x7000 && draw(5, 0x7100) == 0x7100, "no_skin_no_copy", "nobody skinned");
+	// the duel: the copies of one skin belong to several owners (a class shared by two fighters), another skin to a foe; an alias row names its owner
+	r.ubActive = 1;
+	r.ubAlias = 3;
+	r.aAlias[0].ulOrig = 0x7000; r.aAlias[0].ulClone = 0x9000; r.aAlias[0].ulOwner = A(8);
+	r.aAlias[1].ulOrig = 0x7000; r.aAlias[1].ulClone = 0x9500; r.aAlias[1].ulOwner = A(1);
+	r.aAlias[2].ulOrig = 0x7100; r.aAlias[2].ulClone = 0x9600; r.aAlias[2].ulOwner = A(1);
+	check(draw(8, 0x7000) == 0x9000 && draw(1, 0x7000) == 0x9500, "owner_rows", "each owner draws its own copy of the same table");
+	check(draw(1, 0x7100) == 0x9600 && draw(8, 0x7100) == 0x7100, "owner_rows_other_table", "a table the owner has no copy of stays");
+	check(draw(0, 0x7000) == 0x7000, "owner_rows_unskinned", "a fighter without a row keeps the original");
+	check(draw(5, 0x7000) == 0x9500, "owner_rows_holder", "a creature holding the owner of a row draws with its copy");
 	check(rosterCelFor(0, rosterDrawSkin(0, &g_k[1], A(1)), 0x7000) == 0x7000, "classic_null_roster", "a null roster (classic) changes nothing");
 	printf(g_fails ? "FAILS\n" : "END\n");
 	return g_fails;

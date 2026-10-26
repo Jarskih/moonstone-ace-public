@@ -406,16 +406,18 @@ struct ListCtx {
 	void *pUser;
 	const char *szSkipIfInDir;   // names that exist in this directory are not repeated (the user directory shadows the install directory)
 	int32_t lCount;
+	bool isDirs;                 // list the drawers instead of the files
 };
 
 bool listVisit(const char *szName, bool isDir, void *pUser) {
 	ListCtx *pCtx = static_cast<ListCtx *>(pUser);
-	if(isDir) {
+	if(isDir != pCtx->isDirs) {
 		return true;
 	}
 	if(pCtx->szSkipIfInDir != nullptr) {
 		char szOther[sdl::kPathMax];
-		if(snprintf(szOther, sizeof(szOther), "%s/%s", pCtx->szSkipIfInDir, szName) < static_cast<int>(sizeof(szOther)) && sdl::pathKind(szOther) == 1) {
+		if(snprintf(szOther, sizeof(szOther), "%s/%s", pCtx->szSkipIfInDir, szName) < static_cast<int>(sizeof(szOther))
+			&& sdl::pathKind(szOther) == (pCtx->isDirs ? 2 : 1)) {
 			return true;
 		}
 	}
@@ -426,14 +428,14 @@ bool listVisit(const char *szName, bool isDir, void *pUser) {
 	return true;
 }
 
-}  // namespace
-
-int32_t fileList(const char *szDir, void (*pfnEach)(const char *szName, void *pUser), void *pUser) {
+// The listing of fileList (isDirs false) and fileListDirs (true): the user directory first, then the install directory, a name the user
+// directory has is not repeated.  -1 when the drawer exists in neither.
+int32_t listDrawer(const char *szDir, void (*pfnEach)(const char *szName, void *pUser), void *pUser, bool isDirs) {
 	sdl::ensurePaths();
 	const char *szRest = nullptr;
 	char szRel[sdl::kPathMax];
 	const bool isProg = sdl::classify(szDir, &szRest) == sdl::VOL_PROGDIR;
-	ListCtx sCtx = {pfnEach, pUser, nullptr, 0};
+	ListCtx sCtx = {pfnEach, pUser, nullptr, 0, isDirs};
 	bool isFound = false;
 	if(isProg) {
 		char szPref[sdl::kPathMax], szProg[sdl::kPathMax];
@@ -454,6 +456,16 @@ int32_t fileList(const char *szDir, void (*pfnEach)(const char *szName, void *pU
 		sdl::dirEach(szRel, listVisit, &sCtx);
 	}
 	return isFound ? sCtx.lCount : -1;
+}
+
+}  // namespace
+
+int32_t fileList(const char *szDir, void (*pfnEach)(const char *szName, void *pUser), void *pUser) {
+	return listDrawer(szDir, pfnEach, pUser, false);
+}
+
+int32_t fileListDirs(const char *szDir, void (*pfnEach)(const char *szName, void *pUser), void *pUser) {
+	return listDrawer(szDir, pfnEach, pUser, true);
 }
 
 bool fileDirExists(const char *szDir) {

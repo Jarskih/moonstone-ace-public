@@ -25,7 +25,6 @@
 //                        is applied as dropped, with this node as the taker of co-op members.  A desync stops with the dumps, as before.
 #include "rt/net_session.hpp"
 
-#include <ace/managers/log.h>
 
 #include "engine/netglue.hpp"
 #include "engine/netnode.hpp"
@@ -44,8 +43,9 @@
 #include "game/state_bind.hpp"
 #include "rt/display_ops.hpp"
 #include "rt/enhanced.hpp"
-#include "rt/guards.hpp"
+#include "rt/file_handle.hpp"
 #include "rt/input.hpp"
+#include "rt/logwrite.hpp"
 #include "rt/irq.hpp"
 #include "rt/net_box.hpp"
 #include "rt/net_lobby.hpp"
@@ -54,9 +54,10 @@
 #include "rt/net_session_int.hpp"
 #include "rt/net_state.hpp"
 #include "rt/net_tick.hpp"
+#include "rt/platform/timer.hpp"
 
 extern "C" {
-extern uint32_t mogSeedTable[4];   // LAB_0974
+extern uint8_t mogSeedTable[];     // LAB_0974: four longs, big-endian bytes
 extern uint32_t mogGore;           // LAB_06DA
 extern uint32_t mogRandomSeed;     // LAB_0973
 }
@@ -98,6 +99,10 @@ struct Session {
 Session s_s;
 bool s_isByeLogged;          // a joiner logs the host's BYE (the reason it was refused) once per node
 bool s_isUdpIniOff;          // net.ini `udp = no` (netSessionAllowUdp): read before any session starts
+bool s_isDirectIniOff;       // net.ini `direct = no` (netSessionAllowDirect)
+uint8_t s_ubDirectTest;      // net.ini `direct_test`: ms::NDT_*
+uint32_t s_ulDirectKillMs;
+ULONG s_ulLocalTryMs;        // clock of the last attempt to learn this node's own datagram address
 bool s_isGamePending;        // netSessionBegin succeeded and the game has not taken the CONFIG yet
 UBYTE s_ubLoggedPeers;
 UBYTE s_aubLoggedState[ms::ROOM_SEATS];   // the lobby log: the last state and (when claimed) portrait of each seat that was written down
@@ -156,6 +161,15 @@ const char *udpWhyText(uint8_t ubWhy) {
 	}
 }
 
+const char *directWhyText(uint8_t ubWhy) {
+	switch(ubWhy) {
+		case ms::NDW_NO_INFO: return "no answer from the relay";
+		case ms::NDW_NO_ANSWER: return "no answer from the peer";
+		case ms::NDW_LOST: return "path lost";
+		default: return "?";
+	}
+}
+
 // Opens the session's datagram socket and lets the node probe.  Inside a window.  False (and the reason in the log) = the session stays on TCP.
 bool udpPrepare(NetTransport &t, UWORD uwBindPort, ULONG ulSession) {
 	if(s_s.isUdpPrepared) {
@@ -171,7 +185,24 @@ bool udpPrepare(NetTransport &t, UWORD uwBindPort, ULONG ulSession) {
 		return false;
 	}
 	ms::netNodeUdpEnable(s_s.node, ulSession);
+	ms::netNodeUdpSetDirect(s_s.node, !s_isDirectIniOff);   // only a relayed link (a session id) ever tries it
+	ms::netNodeUdpSetDirectTest(s_s.node, s_ubDirectTest, s_ulDirectKillMs);
+	s_ulLocalTryMs = netClockMs() - 1000;
 	return true;
+}
+
+// The node's own datagram address (the LAN candidate it tells the relay), once the sockets can say it.  A few tries a second at most.
+void learnLocalEndpoint(NetTransport &t, ULONG ulNow) {
+	ms::NetNode &n = s_s.node;
+	if(!n.udp.isEnabled || !n.udp.isDirectWanted || n.udp.local.isSet || ulNow - s_ulLocalTryMs < 500) {
+		return;
+	}
+	s_ulLocalTryMs = ulNow;
+	ULONG ulAddr = 0;
+	UWORD uwPort = 0;
+	if(t.udpLocal(ulAddr, uwPort)) {
+		ms::netNodeUdpSetLocal(n, ulAddr, uwPort);
+	}
 }
 
 // The log lines of the node's UDP events: probe sent / ok / fallback.
@@ -181,6 +212,12 @@ void logUdpEvents() {
 		switch(sEv.ubKind) {
 			case ms::NUE_PROBE: logWrite("net: udp: probe sent (node %u)\n", static_cast<unsigned>(sEv.ubNode)); break;
 			case ms::NUE_OK: logWrite("net: udp: ok (node %u)\n", static_cast<unsigned>(sEv.ubNode)); break;
+			case ms::NUE_DIRECT_OK:
+				logWrite("net: udp: direct ok (node %u, %u.%u.%u.%u:%u)\n", static_cast<unsigned>(sEv.ubNode), static_cast<unsigned>(sEv.peer.ulAddr >> 24),
+					static_cast<unsigned>((sEv.peer.ulAddr >> 16) & 0xFF), static_cast<unsigned>((sEv.peer.ulAddr >> 8) & 0xFF), static_cast<unsigned>(sEv.peer.ulAddr & 0xFF),
+					static_cast<unsigned>(sEv.peer.uwPort));
+				break;
+			case ms::NUE_DIRECT_FAIL: logWrite("net: udp: direct failed, via relay (node %u, %s)\n", static_cast<unsigned>(sEv.ubNode), directWhyText(sEv.ubWhy)); break;
 			default: logWrite("net: udp: fallback to tcp (%s) node %u\n", udpWhyText(sEv.ubWhy), static_cast<unsigned>(sEv.ubNode)); break;
 		}
 	}
@@ -199,9 +236,9 @@ void logUdpStats(const char *szWhen) {
 	if(!udpStats(sSt)) {
 		return;
 	}
-	logWrite("net: udp: %s: sent %lu received %lu covered %lu escalated %lu bad %lu probes %lu, links active %u tcp %u\n", szWhen, static_cast<unsigned long>(sSt.ulTx),
+	logWrite("net: udp: %s: sent %lu received %lu covered %lu escalated %lu bad %lu probes %lu, links active %u tcp %u direct %u\n", szWhen, static_cast<unsigned long>(sSt.ulTx),
 		static_cast<unsigned long>(sSt.ulRx), static_cast<unsigned long>(sSt.ulCovered), static_cast<unsigned long>(sSt.ulEscalated), static_cast<unsigned long>(sSt.ulBad),
-		static_cast<unsigned long>(sSt.ulProbes), static_cast<unsigned>(sSt.ubActive), static_cast<unsigned>(sSt.ubTcp));
+		static_cast<unsigned long>(sSt.ulProbes), static_cast<unsigned>(sSt.ubActive), static_cast<unsigned>(sSt.ubTcp), static_cast<unsigned>(sSt.ubDirect));
 }
 
 // ---- identity of this build / data / rules -------------------------------------------------------------------------------
@@ -362,6 +399,7 @@ void step(NetTransport &t, bool isWaiting) {
 		}
 	}
 	s_ubTraceStage = STEP_NODE;
+	learnLocalEndpoint(t, ulNow);
 	ms::netNodePump(n, s_io, ulNow, isWaiting);
 	logUdpEvents();
 	s_ubTraceStage = STEP_CLOSE;
@@ -714,7 +752,7 @@ bool seedHook(ULONG &ulSeed) {
 		return false;
 	}
 	if(s_s.isHost) {
-		ulSeed = ms::game::mainRngSeed(*reinterpret_cast<volatile uint16_t *>(0x00DFF006), mogSeedTable);   // the host draws as the original does
+		ulSeed = ms::game::mainRngSeedBe(rt::platform::timerBeamVhposr(), mogSeedTable);   // the host draws as the original does
 		const ULONG ulTick = ms::netNodeTick(n);
 		pT->window([&]() { ms::netNodeSendSeed(n, ulTick, ulSeed, s_io, netClockMs()); });
 		logWrite("net: seed %08lX sent for tick %lu\n", static_cast<unsigned long>(ulSeed), static_cast<unsigned long>(ulTick));
@@ -808,6 +846,12 @@ void netSessionSetArgs(const NetArgs &sArgs) {
 
 const NetArgs &netSessionArgs() {
 	return s_s.args;
+}
+
+void netSessionAllowDirect(bool isAllowed, uint8_t ubTest, uint32_t ulKillMs) {
+	s_isDirectIniOff = !isAllowed;
+	s_ubDirectTest = ubTest;
+	s_ulDirectKillMs = ulKillMs;
 }
 
 void netSessionAllowUdp(bool isAllowed) {
@@ -1039,7 +1083,7 @@ bool netSessionLobbyStart() {
 		if(ms::roomStartEnabled(s_s.node.room)) {
 			udpPrepare(*pT, s_s.uwHostPort, 0);   // the datagram socket on the game port, before the clients get their CONFIG and start to probe
 		}
-		const ULONG ulSeed = ms::game::mainRngSeed(*reinterpret_cast<volatile uint16_t *>(0x00DFF006), mogSeedTable);
+		const ULONG ulSeed = ms::game::mainRngSeedBe(rt::platform::timerBeamVhposr(), mogSeedTable);
 		isOk = ms::netNodeStart(s_s.node, ulSeed, s_io, netClockMs(), netsess::entropy());
 		if(isOk) {
 			rejoinHostBegin(s_s.node, s_s.uwHostPort);   // the tokens and the bindings of the start: a dropped player can come back (NETPLAY.md 4.5)
@@ -1294,10 +1338,10 @@ void markClient() {
 
 ULONG entropy() {
 	ULONG ulCrc = ms::crc32Begin();
-	ulCrc = ms::crc32U32(ulCrc, *reinterpret_cast<volatile uint16_t *>(0x00DFF006));
+	ulCrc = ms::crc32U32(ulCrc, rt::platform::timerBeamVhposr());
 	ulCrc = ms::crc32U32(ulCrc, netClockMs());
 	ulCrc = ms::crc32U32(ulCrc, irqVblCount());
-	ulCrc = ms::crc32U32(ulCrc, *reinterpret_cast<volatile uint16_t *>(0x00DFF004));
+	ulCrc = ms::crc32U32(ulCrc, rt::platform::timerBeamVposr());
 	return ms::crc32End(ulCrc);
 }
 

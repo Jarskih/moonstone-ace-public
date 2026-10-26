@@ -5,6 +5,7 @@
 namespace ms { namespace game {
 
 PartyConfig g_party;   // zero (BSS): inactive = classic
+bool (*g_pfnPadUsable)(uint8_t ubPad);   // null (BSS) = no platform hint (Amiga)
 
 void partyReset(PartyConfig &p) {
 	p.active = false;
@@ -42,7 +43,40 @@ bool partyPadTaken(const PartyConfig &p, uint8_t ubBefore, uint8_t ubPad) {
 	return false;
 }
 
+bool partyIsComputer(const PartyConfig &p, uint8_t ubMember) {
+	return p.active && ubMember < p.n && ubMember < PARTY_MAX && p.aubPad[ubMember] == PAD_COMPUTER;
+}
+
+bool partyMayBeComputer(const PartyConfig &p, uint8_t ubMember) {
+	return p.active && !p.isNet && ubMember >= 1 && ubMember < p.n;   // knight 1 stays human; netplay has no computer knights (open item)
+}
+
+uint8_t partyComputerMask(const PartyConfig &p) {
+	uint8_t ubMask = 0;
+	for(uint8_t i = 0; i < p.n && i < PARTY_MAX; ++i) {
+		if(partyIsComputer(p, i)) {
+			ubMask = static_cast<uint8_t>(ubMask | (1u << i));
+		}
+	}
+	return ubMask;
+}
+
+uint8_t partyHumanFor(const PartyConfig &p, uint8_t ubMember) {
+	if(!partyIsComputer(p, ubMember)) {
+		return ubMember;
+	}
+	for(uint8_t i = 0; i < p.n && i < PARTY_MAX; ++i) {
+		if(!partyIsComputer(p, i)) {
+			return i;
+		}
+	}
+	return 0;
+}
+
 bool partyPadTakenFor(const PartyConfig &p, uint8_t ubMember, uint8_t ubPad) {
+	if(ubPad == PAD_COMPUTER) {
+		return false;   // any number of members may be played by the computer
+	}
 	// Local co-op: the members before ubMember (the later ones still hold their defaults).  Net game: every OTHER member at the same node (the
 	// later ones are PAD_NONE until they pick, except those a drop handed over to this node, partyNetDrop).
 	const uint8_t ubEnd = p.isNet ? PARTY_MAX : (ubMember < PARTY_MAX ? ubMember : PARTY_MAX);
@@ -54,23 +88,49 @@ bool partyPadTakenFor(const PartyConfig &p, uint8_t ubMember, uint8_t ubPad) {
 	return false;
 }
 
-uint8_t partyNextPad(const PartyConfig &p, uint8_t ubMember, uint8_t ubFrom, int8_t sbDir) {
-	uint8_t ubPad = ubFrom < PAD_SELECTABLE_COUNT ? ubFrom : 0;
-	for(uint8_t step = 0; step < PAD_SELECTABLE_COUNT; ++step) {
-		ubPad = static_cast<uint8_t>((ubPad + PAD_SELECTABLE_COUNT + (sbDir < 0 ? -1 : 1)) % PAD_SELECTABLE_COUNT);
-		if(!partyPadTakenFor(p, ubMember, ubPad)) {
+// One pass over the choices from ubFrom in direction sbDir: the selectable controllers and, with isComputerToo, for a member that may be
+// played by the computer "Computer" as one more stop of the ring (after the last controller).  The first stop no earlier member holds (and,
+// with isUsableOnly and a platform hint, a controller this machine can drive; the computer needs none); ubFrom itself when there is none.
+static uint8_t nextFree(const PartyConfig &p, uint8_t ubMember, uint8_t ubFrom, int8_t sbDir, bool isUsableOnly, bool isComputerToo) {
+	const uint8_t ubRing = static_cast<uint8_t>(PAD_SELECTABLE_COUNT + (isComputerToo && partyMayBeComputer(p, ubMember) ? 1 : 0));
+	uint8_t ubAt = ubFrom == PAD_COMPUTER ? PAD_SELECTABLE_COUNT : (ubFrom < PAD_SELECTABLE_COUNT ? ubFrom : 0);
+	for(uint8_t step = 0; step < ubRing; ++step) {
+		ubAt = static_cast<uint8_t>((ubAt + ubRing + (sbDir < 0 ? -1 : 1)) % ubRing);
+		const uint8_t ubPad = ubAt == PAD_SELECTABLE_COUNT ? static_cast<uint8_t>(PAD_COMPUTER) : ubAt;
+		if(!partyPadTakenFor(p, ubMember, ubPad) && (!isUsableOnly || ubPad == PAD_COMPUTER || g_pfnPadUsable(ubPad))) {
 			return ubPad;
 		}
 	}
 	return ubFrom;
 }
 
+// The cycle of the knight screen with or without the computer stop.  With a platform hint (the PC) the cycle stays on what this machine can
+// drive (and the computer) while the current stop is one of those; from a controller nobody can drive it goes to a usable controller when
+// there is one, else through every free stop.
+static uint8_t cycle(const PartyConfig &p, uint8_t ubMember, uint8_t ubFrom, int8_t sbDir, bool isComputerToo) {
+	if(g_pfnPadUsable != nullptr && !p.isNet) {
+		const bool isFromUsable = ubFrom == PAD_COMPUTER || (ubFrom < PAD_SELECTABLE_COUNT && !partyPadTakenFor(p, ubMember, ubFrom) && g_pfnPadUsable(ubFrom));
+		if(isFromUsable) {
+			return nextFree(p, ubMember, ubFrom, sbDir, true, isComputerToo);   // (possibly the current stop itself: the only usable one)
+		}
+		const uint8_t ubUsable = nextFree(p, ubMember, ubFrom, sbDir, true, false);
+		if(ubUsable != ubFrom) {
+			return ubUsable;   // a controller this machine can drive
+		}
+	}
+	return nextFree(p, ubMember, ubFrom, sbDir, false, isComputerToo);
+}
+
+uint8_t partyNextPad(const PartyConfig &p, uint8_t ubMember, uint8_t ubFrom, int8_t sbDir) {
+	return cycle(p, ubMember, ubFrom, sbDir, true);
+}
+
 uint8_t partyFirstFreePad(const PartyConfig &p, uint8_t ubMember) {
 	const uint8_t ubDefault = p.isNet ? PAD_JOY1 : partyDefaultPad(ubMember);   // net: everybody has a Joystick 1 of their own
-	if(ubDefault != PAD_NONE && !partyPadTakenFor(p, ubMember, ubDefault)) {
+	if(ubDefault != PAD_NONE && !partyPadTakenFor(p, ubMember, ubDefault) && (p.isNet || g_pfnPadUsable == nullptr || g_pfnPadUsable(ubDefault))) {
 		return ubDefault;
 	}
-	return partyNextPad(p, ubMember, ubDefault == PAD_NONE ? 0 : ubDefault, 1);
+	return cycle(p, ubMember, ubDefault == PAD_NONE ? 0 : ubDefault, 1, false);   // the offer is always a controller: the computer is picked by the player
 }
 
 void partyNetBind(PartyConfig &p, const uint8_t *paubNodes) {
@@ -132,7 +192,8 @@ uint8_t partySlot(const PartyConfig &p, uint8_t ubMember) {
 	if(ubMember >= PARTY_MAX) {
 		return PAD_NONE;
 	}
-	return p.isNet ? ubMember : p.aubPad[ubMember];
+	return p.isNet ? ubMember : p.aubPad[partyHumanFor(p, ubMember)];   // a computer knight's screens are driven by the first human's pad
+
 }
 
 uint16_t partyPadBits(const PartyConfig &p, const PadFrame &f, uint8_t ubMember) {

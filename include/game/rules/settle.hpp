@@ -30,6 +30,9 @@ void settleFight(Knight &winner, Knight &loser, Inventory &winInv, Inventory &lo
 // LAB_000E: a fighter whose HP is <= 0 (signed) gets HP = max HP and loses one life.  Returns the defeat bits
 // (the byte the asm stores in LAB_05DC): bit 0 = first fighter, bit 1 = second.
 uint8_t settleDefeats(Knight &first, Knight &second);
+// The same with a second fighter that may be absent: a creature fight leaves ActiveKnights::ulOpponent at 0 (nothing stale to read), where
+// the 68k read the word at address 80 (the exception vector table, a positive half-address) and never found a defeat.  Null = no second fighter.
+uint8_t settleDefeats(Knight &first, Knight *pSecond);
 
 // LAB_000D: the "dead" marker, HP = $FFFF.
 void knightMarkDead(Knight &k);

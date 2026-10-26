@@ -1,226 +1,53 @@
 # moonstone-ace
 
-**Moonstone: A Hard Days Knight** (Mindscape, 1991) rebuilt from its 68k machine code into C++ on
-[ACE](https://github.com/AmigaPorts/ACE), running on the Amiga 1200 (68020, AGA, Kickstart 3.x).
+**Moonstone: A Hard Days Knight** (Mindscape, 1991) rebuilt in C++ on [ACE](https://github.com/AmigaPorts/ACE), for the
+**Amiga 1200** and **Windows PC**, with local co-op and online play for up to four knights.
 
-It plays like the original, because it was checked against the original at every step. This repository holds
-**none of Moonstone's data, art, music or code**. The game reads all of that from your own copy of the three original
-disks every time it starts.
-
----
-
-## How to play
-
-### What you need
-
-- **An Amiga 1200** or **WinUAE** set up as one: 68020, AGA, Kickstart 3.x, 2 MB chip RAM. Fast RAM is recommended but
-  not required.
-- **The original game**: the three Moonstone floppies (Mindscape, 1991) as ADF images with any file names, as the files
-  copied off them, or as real disks.
-
-### Install on a hard disk (real A1200)
-
-1. Make a drawer, for example `DH0:Moonstone`, and copy the `moonstone` executable into it.
-2. Put your three ADF files into the same drawer or into a `disks` drawer inside it. The names don't matter; the game
-   recognises each disk by its contents.
-3. Double-click `moonstone` (give it any Tool icon) or start it from a Shell: `DH0:Moonstone/moonstone`.
-
-If a disk is missing or is a different version, the game stops with a message saying which disk is missing.
-Floppies in DF0:-DF3: work too, but the hard disk is the supported way.
-
-### WinUAE
-
-Use an A1200 configuration (68020, 2 MB chip, fast RAM if you like). Add the Moonstone drawer as a directory hard drive,
-boot and start `moonstone` as above. `build/aca1232.uae` in a developer checkout is a ready-made configuration of an
-A1200 with a 68020 accelerator and 8 MB fast RAM. Map a joystick, or the arrow keys plus a fire key, to the joystick port.
-
-### Playing
-
-- **Up to four knights** play in turns. Pick your knights and names on the start screens; knights nobody picks are
-  played by the computer. **Practice** on the title menu is a single training fight.
-- **Co-op:** team up as one party and travel, fight and collect treasure together. Co-op supports up to four players,
-  locally or over a network.
-- **Multiplayer:** play either classic competitive Moonstone or co-op over a LAN or the internet. Host or find a game
-  through the lobby, or connect directly; a relay is available when players cannot connect directly. Network games
-  support two to four players, and a dropped player can rejoin.
-- **Network setup:** network play needs `bsdsocket.library` (provided by WinUAE's emulation or an Amiga TCP/IP stack).
-  Direct connections use TCP and UDP port 6502; lobby and relay traffic uses port 6510. See
-  [docs/NETPLAY.md](docs/NETPLAY.md) for details.
+This repository holds **none of Moonstone's data, art, music or code**. You need your own copy of the game: the three
+original disks or disk images (`.adf`) made from them. The game reads them every time it starts.
 
 ![Four-player co-op knight selection](multiplayer.jpg)
 
-- **Joystick:** player one uses the joystick port (port 1); a second human player uses the mouse port (port 0).
-  Knights take turns, so more players can share the sticks. The joystick moves your knight on the map, picks buttons in
-  towns and on the loot screens, and fights in the arenas: direction plus fire gives the different strikes and blocks.
-- **On the map:** move to a place and press fire to go in. Towns have the smith, the market, the healer and more;
-  lairs hold monsters and treasure; Stonehenge, the wizard and the Valley of the Gods are where the story is.
-  **Space** opens the status screen, **E** ends your turn.
-- **The goal:** fight through the lairs, the black knights and the dragon, win the keys to the Valley of the Gods, and
-  complete the quest at Stonehenge with the Moonstones, before the other knights do.
-- There is no quit-to-Workbench yet; leave with a reset (Ctrl-Amiga-Amiga).
+## Windows PC
 
-### Ready-to-play releases
+**Get it**
 
-The **Amiga 0.2.0 release** is available as an HD-install archive with a ready WinUAE configuration. Unpack it, put your
-three ADFs into `Moonstone/disks/`, and start the game. The archive contains no original game data (verified by a leak
-scan); see [BUILD.md](BUILD.md) "Release packages".
+1. Download `moonstone-ace-…-windows.zip` from [Releases](https://github.com/Jarskih/moonstone-ace-public/releases) and unzip it.
+2. Copy your three disk images (`.adf`) into its `disks` folder. The file names do not matter.
+3. Start `moonstone.exe`. If Windows asks for a runtime, install the Microsoft Visual C++ Redistributable (x86).
 
-The **PC/Windows build is not ready for play yet** and is not part of the 0.2.0 release. Its SDL port is still in
-development.
+**Play**
 
-### Mods
+- Cursor keys and Right Ctrl or Space; a second player in co-op uses W A S D and Alt; gamepads work too.
+- F11 fullscreen, F12 CRT effect, F10 shows or hides the ping line in online games.
+- **Online:** Multiplayer, then **Find** to join a public game, or **Host game** to start one (no router setup needed;
+  allow Moonstone through the Windows firewall when asked). On the same home network, **Join game** with the host's
+  address, for example `192.168.1.20`. Choose your knight in the lobby; the host starts the game.
 
-Rule tweaks need no rebuild: put an `.ini` file into the `mods` drawer next to the game.
-`mods/defaults/rules.ini` lists every setting with its default value. A broken file is skipped with a message in
-`mods.log`, and the game plays on with the original values. See [docs/MODDING.md](docs/MODDING.md) and
-[docs/MOD_KEYS.md](docs/MOD_KEYS.md).
+## Amiga 1200
 
----
+**Get it**
 
-## How it was made
+1. Download `moonstone-ace-…-amiga.zip` from [Releases](https://github.com/Jarskih/moonstone-ace-public/releases), unzip it and
+   copy the `Moonstone` drawer to your hard disk. (WinUAE: the zip includes a ready configuration.)
+2. Put your three disk images (`.adf`) into `Moonstone/disks`.
+3. Start `moonstone` from a Shell or its icon.
 
-The whole conversion took three days (5-7 October 2026) and about 100 commits. It was done by AI agents (Claude),
-working in parallel git worktrees, with one integrator merging their branches through a fixed gate. The owner
-playtested on a real A1200 and made the design decisions. The plan, with every task and its proof, is
-[ROADMAP.md](ROADMAP.md).
+**Play**
 
-### 0. Ground truth
+- Joystick or keyboard; co-op knights can use a second joystick or the keyboard.
+- **Online:** use `moonstone-ace-…-amiga-netplay.zip` instead (needs fast RAM and a TCP/IP stack: Roadshow, AmiTCP,
+  Genesis or Miami). Then Multiplayer, **Find** or **Host game**, or **Join game** with the host's address on a home network.
 
-- Extract the three floppies with our own OFS reader (`tools/adfx.py`): 34, 88 and 91 files, every block chain and size
-  checked.
-- The game is three programs:
-  - `nb`, the 15 KB boot loader;
-  - `program`, 60 KB: the intro, menus and knight selection;
-  - `mog`, 172 KB: the game itself.
-  They overlay each other and never return.
-- Disassemble them with IRA into 494, 1,499 and 4,247 labels, and **reassemble** them with vasm until the result is
-  *load-equivalent*: same hunks, memory flags, every data byte, same relocations. A few places where IRA had decoded
-  data as code had to be rewritten so they encode the same bytes again.
-- One surprise: **99 of program's 223 routines are instruction-identical to routines in mog.** These are the disk
-  driver, interrupts, the file cache, the picture decoder and the custom-chip set-up. They became one shared engine.
+Everyone in an online game needs the same game version. Windows and Amiga cannot play together yet.
 
-### 1. The original running on ACE
+## Mods
 
-- Link the reassembled code with a small ACE runtime instead of the original's hardware takeover. ACE owns the CPU
-  vectors, the keyboard and memory. The game still owns the copper, blitter, sound and disk.
-- Absolute RAM addresses in the original were turned back into symbols, so the code could be relinked anywhere.
-- Milestones:
-  - the first visible frame, the Mindscape logo;
-  - the intro playing through to "Select a Knight";
-  - a full boot into the game, all still 100% original code.
+Rule tweaks need no rebuild: put an `.ini` file into the `mods` folder next to the game. `mods/defaults/rules.ini` lists
+every setting with its default value. See [docs/MODDING.md](docs/MODDING.md).
 
-### 2. Lifting, one routine at a time
+## Building from source
 
-- **`tools/lift.py`** turns a routine into *literal* C++: every 68000 instruction becomes a line with exact flag
-  semantics, and branches become `goto`. It refuses anything it doesn't understand.
-- **A differential harness** runs the original routine and the C++ side by side on the PC: 500 random cases per routine
-  (seed 1), comparing registers, flags and memory. A routine counts as *lifted* only when every case passes. Larger
-  pieces were checked in **unicorn** (a 68k emulator) against the reassembled original image.
-- **Thunks** let a proven C++ routine replace its asm in the running game behind a register-marshalling wrapper. Every
-  swap could be bisected: the same body could go in and out.
-- About 220 routines went through this pipeline before the work moved from literal lifting to writing idiomatic C++
-  directly against the proven behaviour.
-
-### 3. Idiomatic C++, scene by scene
-
-- **`src/engine`:** the pure parts: blitter-style cel drawing, RLE/RNC/packbits decoders, palettes, jobs, the music
-  synth.
-- **`src/game`:** the rules and scenes: the map, towns, places, fights with per-creature AI, loot, the ending.
-- **`src/rt`:** the Amiga-specific runtime.
-- Game data that lived in the original's data sections became **typed C++ data**. A generator names all 851 data cells,
-  so the code reads `mogFightTotal` instead of `LAB_05EC`.
-- On 7 October the last asm left the link: **the game is entirely C++** (milestone 7.1r). The Release build is about
-  470 KB with link-time optimisation, against 406 KB for the original-code build.
-
-### 4. Proving it plays the same
-
-- **A headless boot harness** (`tools/integrate.py --boot`, [docs/AUTOPLAY.md](docs/AUTOPLAY.md)) runs WinUAE from a
-  script: keys, joystick pulses, `wait` for a file, a log line or a game variable, pokes into game state, and screenshots.
-  Each screenshot is compared with a reference within a stated tolerance.
-- **17 play scripts** cover the game:
-  - the map, both towns and the shops, the wizard, the castle, Stonehenge and the ritual, the Valley of the Gods and its
-    guardian;
-  - lair fights against five different creature arenas, the knight duel, the dragon;
-  - two players, death and the ending.
-- **Every merge goes through the same gate:** build Release and Debug, about 85 test modules, the boot regression on both
-  builds and the play scripts.
-- **The checks caught real bugs.** One example: in the dragon fight the knight left a trail of copies and the dragon was
-  drawn as stripes. The arena was re-using the dragon's map-flight record: the original resets 15 fields when the dragon
-  lands, and the C++ had reset 4. A test of every one of those writes now guards it.
-
-### 5. Readable, moddable code
-
-- **Names and constants:** fields and cells got real names, magic numbers became `enum class`es (actor types, actions,
-  items, moon phases, scenes, script opcodes). The renamed build was byte-identical to the build before.
-- **A game API** (`include/game/api/`): party, items and gold, clock and dice, fights, lairs. Rules call named functions
-  instead of poking memory. A layer lint test keeps hardware code out of game logic.
-- **Scenes:** every screen is its own scene with a list of the files it loads, run by one scene manager (switch / push
-  / pop) with mark-and-release memory. Adding a scene is one file and one table line
-  ([docs/GAME_FLOW.md](docs/GAME_FLOW.md)).
-- **Data-file mods:** an INI reader, a schema, and generated defaults. Bad files are skipped with a line-numbered
-  message.
-- **Monster kit** ([docs/MONSTER_KIT.md](docs/MONSTER_KIT.md)):
-  - a fight-script assembler and disassembler that round-trips all original creatures byte for byte;
-  - a catalog of the eight creature AIs and the animations each one needs;
-  - a browser editor (`py tools/monsterkit.py serve`) to clone a monster, repaint it in the game palette, move its
-    attack points, pick its AI and build it back into the game.
-
-### 6. Shipping without the original
-
-The repository holds no original bytes:
-
-- **The build needs no original files.** A table of facts (where each data cell lives, what it points to, the checksum
-  of the known version) replaces the original data.
-- **The game fills its data at start-up** from the original executables on your disks. A memory dump of a booted game
-  matches the old built-in data exactly: 131,392 data bytes and 7,724 synth bytes.
-- **The game reads ADF images directly**, identifying each disk by its files.
-- **A leak scan** in every gate compares every published file with the original disks: byte runs, number tables and
-  texts.
-
-### What's next
-
-- **Mods without rebuilding:** creatures, items, lairs, shops and prices become data files, then the rules become
-  readable C++ against the API.
-- **Moonstone 2** ([docs/MOONSTONE2.md](docs/MOONSTONE2.md)): two to four knights as a co-op party, new weapons
-  including bows, playable monsters, and maybe Golden-Axe-style scrolling lairs.
-
----
-
-## Building
-
-- **Needs:** the Amiga C/C++ toolchain (Bartman's "Amiga C/C++ Compile, Debug & Profile" VS Code extension), CMake,
-  Ninja, Python 3 with PyYAML, and clang++ for the host tests.
-- **ACE** is the `ace/` git submodule (`git clone --recursive`); a sibling `../ace` checkout also works.
-- **Local tools**, git-ignored: `tools/toolchain/`, `tools/AmigaCMakeCrossToolchains/` and `tools/bartman_gcc_support/`.
-- Commands, configure lines and build variants: [BUILD.md](BUILD.md).
-- `py tools/setup.py A.adf B.adf C.adf` (or `py tools/setup.py <folder with the three>`) does it all, see below.
-  The compiled game itself contains no original byte.
-
-### Build it yourself
-
-You need the three original Moonstone disks as ADF images (any file names, any order, or all in one folder) and the tools
-above. One command from the repository root:
-
-```sh
-git clone --recursive <this repository> && cd moonstone-ace
-py tools/setup.py "path/to/disks-folder"                  # or: py tools/setup.py A.adf B.adf C.adf
-```
-
-It (1) checks the disks (floppy size, the files of each disk, the SHA-1 of the known dump; disk A's `program`/`mog`/`nb`
-against `tools/facts`) and says what is wrong with a wrong, damaged or duplicate disk; (2) checks the toolchain and lists
-exactly what is missing and how to get it (`--dry-run` stops here and prints the steps); (3) extracts the disks into `build/disks`;
-(4) configures and builds the Release game (the generators `gen_data`/`gen_moddata` run inside that build) and runs `hdinstall`;
-(5) writes `build/moonstone-ace-hd.uae` and prints where the playable folder is: **`build/hd`**. Start it in WinUAE with
-`"C:\Program Files\WinUAE\winuae64.exe" -config="<repo>\build\moonstone-ace-hd.uae"` (your Kickstart 3.1 A1200 ROM: `--kickstart ROM`
-or edit the config), or copy `build/hd` to a real A1200. Options: `--fetch-deps` clones `bartman_gcc_support` at the pinned revision,
-`--toolchain`/`--cmake-toolchains`/`--ace` point at the pieces, `--debug` also builds the Debug game, `--hd DIR` copies the install.
-
-**Docs:**
-
-| Doc | What it covers |
-|---|---|
-| [ROADMAP.md](ROADMAP.md) | status and every task |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | layers and the modding design |
-| [docs/MODULES.md](docs/MODULES.md), [docs/LABEL_INDEX.md](docs/LABEL_INDEX.md) | which file holds which original routine |
-| [docs/BOOT_CHAIN.md](docs/BOOT_CHAIN.md), [docs/DISPLAY.md](docs/DISPLAY.md), [docs/FILES.md](docs/FILES.md), [docs/MEMORY.md](docs/MEMORY.md), [docs/PERF.md](docs/PERF.md) | how the Amiga side works |
-| [docs/PUBLISHING.md](docs/PUBLISHING.md) | what is and isn't in this repository |
+`py tools/setup.py "path/to/disks-folder"` checks your disks and the toolchain, extracts the disks and builds the Amiga game.
+The toolchain, configure lines for the Amiga and PC builds and all build variants are in [BUILD.md](BUILD.md); project
+status is in [ROADMAP.md](ROADMAP.md), and [docs/PUBLISHING.md](docs/PUBLISHING.md) explains what is and isn't in this repository.

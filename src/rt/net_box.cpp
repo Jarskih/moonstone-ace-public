@@ -270,7 +270,7 @@ void noteOnFlip(ULONG ulScreen, DisplayFlipPhase ePhase) {
 // about to be shown) and kept as a bitmap; a flip with an unchanged line is a copy of five longs per plane and row.
 
 constexpr UWORD kStatY = 192, kStatH = 8;         // the bottom eight rows of the 320 x 200 screen (the glyphs are six rows tall)
-constexpr UWORD kStatLongs = 5;                   // 20 bytes = 160 pixels: the widest line ("PING 999MS  LOSS 100 PCT") is about 125
+constexpr UWORD kStatLongs = 6;                   // 24 bytes = 192 pixels: the widest line ("PING 999MS  LOSS 100 PCT  F10") is about 150
 constexpr UWORD kStatChars = 32;
 constexpr UWORD kStatTextX = 3, kStatTextY = kStatY + 1;
 constexpr ULONG kStatStaleMs = 3000;              // the session refreshes the line every half second; one that is not refreshed any more (the session ended) is not drawn

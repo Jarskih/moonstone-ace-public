@@ -149,6 +149,17 @@ inline LONG getsockopt(LONG lSock, LONG lLevel, LONG lOpt, void *pVal, ULONG *pu
 	return d0;
 }
 
+// getsockname(sock d0, name a0, namelen a1) -102 (bsdsocket.h of the Roadshow SDK: "jsr a6@(-102:W)", d0/a0/a1 in, d0 out)
+inline LONG getsockname(LONG lSock, void *pName, ULONG *pulLen) {
+	register LONG d0 __asm("d0") = lSock;
+	register LONG d1 __asm("d1");
+	register void *a0 __asm("a0") = pName;
+	register ULONG *a1 __asm("a1") = pulLen;
+	register struct Library *a6 __asm("a6") = SocketBase;
+	__asm volatile(MS_BSD_JSR(102) : "+r"(d0), "=r"(d1), "+r"(a0), "+r"(a1) : "r"(a6) : "cc", "memory");
+	return d0;
+}
+
 inline LONG IoctlSocket(LONG lSock, ULONG ulReq, void *pArg) {
 	register LONG d0 __asm("d0") = lSock;
 	register ULONG d1 __asm("d1") = ulReq;

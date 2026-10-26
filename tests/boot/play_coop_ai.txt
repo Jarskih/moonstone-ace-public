@@ -1,0 +1,70 @@
+# Moonstone 2 co-op with a COMPUTER partner (ROADMAP 8.3b, docs/MOONSTONE2.md 9; twin of play_coop_fight): `poke party 2`, Players 2, knight 1 takes
+# Joystick 1; on knight 2's controller line the stick-left key steps back over the taken Joystick 1 to "Computer" (the ring: Joystick 1..Keys WASD,
+# Computer) and fire takes it (shot play-coop-ai-pad2).  The party walks onto lair 0 (the ratmen): both knights are in the arena, only joy1 is
+# played (mash joy1; nothing drives knight 2), `poke fightdump 1` logs the roster: knight 2 must move and strike on its own.  The lair is cleared
+# (`wait var scene 2` = the creature loot screen, the human's pad closes it) and the map is back.
+# the fight is random (the enemies): loose tolerances
+# shotcmp-tol play-coop-ai-pad2 1.8
+# shotcmp-tol play-coop-ai-map 3
+# shotcmp-tol play-coop-ai-arena 15
+# shotcmp-tol play-coop-ai-mash 15
+# shotcmp-tol play-coop-ai-loot 5
+# shotcmp-tol play-coop-ai-end 5
+wait file mindscape max 900
+frame 20 key SPACE tap
+wait input 10 max 3000
+frame 20 joy1 fire pulse
+frame 140 poke party 2
+frame 180 joy1 right pulse
+frame 220 shot play-coop-ai-players
+frame 230 joy1 down pulse
+frame 260 joy1 down pulse
+frame 290 joy1 down pulse
+frame 340 joy1 fire pulse
+frame 790 joy1 fire pulse
+frame 1090 joy1 fire pulse
+frame 1160 joy1 fire pulse
+frame 1490 joy1 right pulse
+frame 1540 joy1 fire pulse
+frame 1890 joy1 fire pulse
+frame 1960 joy1 left pulse
+frame 2010 shot play-coop-ai-pad2
+frame 2020 joy1 fire pulse
+frame 2550 poke who 0
+frame 2551 poke strength 9
+frame 2553 poke constitution 30
+frame 2556 poke endurance 9
+frame 2560 poke hpmax 310
+frame 2565 poke hp 310
+frame 2571 poke who 1
+frame 2578 poke strength 9
+frame 2586 poke constitution 30
+frame 2595 poke endurance 9
+frame 2605 poke hpmax 310
+frame 2616 poke hp 310
+frame 2628 poke who 0
+frame 2641 poke warp_lair 0
+frame 2655 poke lair_left 5
+frame 2685 shot play-coop-ai-map
+frame 2695 poke dump 1
+frame 2705 joy1 fire pulse 8
+frame 3305 poke fightdump 1
+frame 3505 shot play-coop-ai-arena
+frame 3515 poke fightdump 1
+frame 3545 poke fightdump 1
+frame 3555 poke fightdump 1
+frame 3565 mash joy1 10
+frame 3865 shot play-coop-ai-mash
+frame 3875 poke fightdump 1
+wait var scene 2 max 12000
+frame 0 mash joy1 off
+frame 1 joy1 none
+frame 151 shot play-coop-ai-loot
+frame 161 poke fightdump 1
+frame 171 poke dump 1
+frame 181 poke cursorx 308
+frame 181 poke cursory 140
+frame 206 joy1 fire pulse 8
+frame 606 shot play-coop-ai-end
+frame 616 poke dump 1
+frame 716 quit

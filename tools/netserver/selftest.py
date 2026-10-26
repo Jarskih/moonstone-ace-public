@@ -8,6 +8,9 @@ Plays a host and a client against the server, the way the game will:
   3. version check: a JOIN with another build hash is refused with the host's version.
   4. UDP relay (protocol 6): in a relayed game the server forwards INPUT_UDP (client -> host) and TICK_UDP (host -> client)
      datagrams on the same port number over UDP; the tokens it accepts are the ones it saw in the CONFIG that passed the pipe.
+  5. direct path (NETPLAY.md 2.2b): PUNCH_REG from both ends of a relayed link is answered with PUNCH_INFO (the other end's public address and, only for
+     the same public IP and a LAN address, its local address); nothing for one end alone, for a wrong token, or for a wrong session.  A server from before
+     the direct path ignores PUNCH_REG: this step then says so and passes, unless --require-punch is given.
 
     py tools/netserver/selftest.py                      # server on 127.0.0.1:6510
     py tools/netserver/selftest.py --server lobby.example.org --port 6510
@@ -29,6 +32,7 @@ import netproto as P  # noqa: E402
 BUILD = 0x12345678
 VERSION = (1 << 8) | 0
 FRAME = bytes(P.FRAME_BYTES)
+BIND = '0.0.0.0'      # where the test's own sockets listen (--bind 127.0.0.1 for a server on this machine: nothing then listens on the network)
 
 
 def send(sock, msg):
@@ -96,7 +100,7 @@ def step(text, ok):
 def test_direct(srv):
     print('-- direct game')
     game = socket.socket()
-    game.bind(('0.0.0.0', 0))
+    game.bind((BIND, 0))
     game.listen(1)
     game_port = game.getsockname()[1]
     got = {}
@@ -151,7 +155,7 @@ def test_direct(srv):
 def test_relay(srv):
     print('-- relayed game')
     dead = socket.socket()
-    dead.bind(('0.0.0.0', 0))
+    dead.bind((BIND, 0))
     dead_port = dead.getsockname()[1]
     dead.close()                            # nobody listens there: the connect-back fails
     lob, _, reg = register(srv, 'RELAY TEST', dead_port)
@@ -187,7 +191,7 @@ def test_relay(srv):
 def test_udp_relay(srv):
     print('-- UDP relay (protocol 6: per-tick input over UDP with history)')
     dead = socket.socket()
-    dead.bind(('0.0.0.0', 0))
+    dead.bind((BIND, 0))
     dead_port = dead.getsockname()[1]
     dead.close()
     lob, _, reg = register(srv, 'UDP TEST', dead_port)
@@ -246,10 +250,107 @@ def test_udp_relay(srv):
     return ok
 
 
+def test_punch(srv, is_required):
+    print('-- direct path (PUNCH_REG / PUNCH_INFO)')
+    dead = socket.socket()
+    dead.bind((BIND, 0))
+    dead_port = dead.getsockname()[1]
+    dead.close()
+    lob, _, reg = register(srv, 'PUNCH TEST', dead_port)
+    ok = step('register: result relay, session %d' % reg.session, reg.result == P.REG_RELAY)
+    if not ok:
+        lob.close()
+        return False
+    host = connect(*srv)
+    hf = P.Framer()
+    send(host, P.Msg(P.RELAY_HELLO, session=reg.session, role=P.ROLE_HOST))
+    rep = join(srv, reg.game_id)
+    cli = connect(*srv)
+    cf = P.Framer()
+    send(cli, P.Msg(P.RELAY_HELLO, session=rep.session, role=P.ROLE_CLIENT))
+    send(cli, hello('CLIENT'))
+    recv(host, hf)
+    token = 0xC0FFEE22
+    send(host, P.Msg(P.CONFIG, mode=0, nodes=2, your_node=1, delay=2, seed=1, token=token, bindings=[(0, 0, 0), (1, 0, 1)],
+                     names=['HOST', 'CLIENT'], portraits=[2, 0]))
+    recv(cli, cf)
+    hs = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    cs = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    hs.bind((BIND, 0))                                 # --bind: 127.0.0.1 for a local server, all interfaces for a remote one
+    cs.bind((BIND, 0))
+    hport, cport = hs.getsockname()[1], cs.getsockname()[1]
+
+    def reg_msg(session, tok, role, laddr, lport):
+        return P.pack(P.Msg(P.PUNCH_REG, session=session, token=tok, role=role, caps=P.PUNCH_CAP_DIRECT, laddr=laddr, lport=lport))
+
+    def take(sock, timeout):
+        sock.settimeout(timeout)
+        try:
+            data = sock.recvfrom(2048)[0]
+        except OSError:
+            return None
+        st, msg, used = P.decode(data)
+        return msg if st == P.OK and used == len(data) and msg.type == P.PUNCH_INFO else None
+
+    is_local = srv[0] in ('127.0.0.1', 'localhost')
+
+    def seen(addr, port, own_port):   # the public end the server saw: exact on a local server, anything real through a NAT
+        return (addr == 0x7F000001 and port == own_port) if is_local else (addr != 0 and port != 0)
+
+    lan_h, lan_c = 0xC0A80114, 0xC0A80115                       # 192.168.1.20 / .21
+    hs.sendto(reg_msg(reg.session, token, P.ROLE_HOST, lan_h, hport), srv)
+    alone = take(hs, 1.5) or take(cs, 0.2)
+    if alone is None:
+        # no answer to a lone registration is right for a new server; an old server never answers: the next step tells them apart
+        pass
+    ok &= step('punch: one end alone gets no answer', alone is None)
+    cs.sendto(reg_msg(reg.session, token, P.ROLE_CLIENT, lan_c, cport), srv)
+    to_client, to_host = take(cs, 1.5), take(hs, 1.5)
+    if to_client is None and to_host is None:
+        print('   no PUNCH_INFO: a server from before the direct path (or started with --no-punch)')
+        for sock in (hs, cs, cli, host):
+            sock.close()
+        send(lob, P.Msg(P.UNREGISTER))
+        lob.close()
+        return step('punch: skipped, the server does not offer it%s' % (' (required!)' if is_required else ''), not is_required)
+    ok &= step('punch: the client is told the host\'s public address and port',
+               to_client is not None and to_client.token == token and to_client.session == reg.session and seen(to_client.paddr, to_client.pport, hport))
+    ok &= step('punch: the host is told the client\'s public address and port',
+               to_host is not None and to_host.token == token and seen(to_host.paddr, to_host.pport, cport))
+    ok &= step('punch: same public address -> the LAN addresses are handed over',
+               to_client is not None and to_host is not None and to_client.flags == P.PUNCH_INFO_LOCAL and to_client.laddr == lan_h and to_client.lport == hport and
+               to_host.flags == P.PUNCH_INFO_LOCAL and to_host.laddr == lan_c and to_host.lport == cport)
+    # a node that names a public address as its local one gets it dropped from the answer (the peer would send probes there)
+    hs.sendto(reg_msg(reg.session, token, P.ROLE_HOST, 0x08080808, 53), srv)
+    t_client, t_host = take(cs, 1.5), take(hs, 1.5)
+    ok &= step('punch: a non-LAN "local" address is never handed out',
+               t_client is not None and t_client.flags == 0 and t_client.laddr == 0 and seen(t_client.paddr, t_client.pport, hport) and t_host is not None)
+    # strangers: a token nobody was given, an unknown session
+    hs.sendto(reg_msg(reg.session, token ^ 1, P.ROLE_HOST, lan_h, hport), srv)
+    cs.sendto(reg_msg(reg.session, token ^ 1, P.ROLE_CLIENT, lan_c, cport), srv)
+    hs.sendto(reg_msg(reg.session ^ 0x5555, token, P.ROLE_HOST, lan_h, hport), srv)
+    cs.sendto(reg_msg(reg.session ^ 0x5555, token, P.ROLE_CLIENT, lan_c, cport), srv)
+    ok &= step('punch: a wrong token or session gets nothing', take(cs, 0.7) is None and take(hs, 0.2) is None)
+    # an old client (it never registers) keeps working through the relay: the INPUT_UDP / TICK_UDP path is the one of step 4
+    inp = P.pack(P.Msg(P.INPUT_UDP, session=reg.session, token=token, node=1, flags=0, ack=0, first=2, count=1, frames=[FRAME]))
+    cs.sendto(inp, srv)
+    hs.settimeout(1.5)
+    try:
+        got = hs.recvfrom(2048)[0]
+    except OSError:
+        got = None
+    ok &= step('punch: the relay path still forwards the datagrams of the registered ends', got == inp)
+    for sock in (hs, cs, cli, host):
+        sock.close()
+    send(lob, P.Msg(P.UNREGISTER))
+    lob.close()
+    return ok
+
+
 def test_rejoin(srv):
     print('-- a playing game (protocol 5: rejoin)')
     game = socket.socket()
-    game.bind(('0.0.0.0', 0))
+    game.bind((BIND, 0))
     game.listen(4)
     game_port = game.getsockname()[1]
     lob, _, reg = register(srv, 'REJOIN TEST', game_port)
@@ -271,7 +372,7 @@ def test_rejoin(srv):
 def test_version(srv):
     print('-- other build')
     game = socket.socket()
-    game.bind(('0.0.0.0', 0))
+    game.bind((BIND, 0))
     game.listen(4)
     lob, _, reg = register(srv, 'VERSION TEST', game.getsockname()[1])
     rep = join(srv, reg.game_id, build=BUILD ^ 1)
@@ -287,10 +388,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--server', default='127.0.0.1')
     ap.add_argument('--port', type=int, default=6510)
+    ap.add_argument('--require-punch', action='store_true', help='fail when the server does not answer PUNCH_REG (it is an old server, or --no-punch)')
+    ap.add_argument('--bind', default='0.0.0.0', help='address for the listening sockets of the test itself (default all interfaces; 127.0.0.1 for a local server)')
     a = ap.parse_args()
+    global BIND
+    BIND = a.bind
     srv = (a.server, a.port)
     results = []
-    for test in (test_direct, test_relay, test_udp_relay, test_rejoin, test_version):
+    for test in (test_direct, test_relay, test_udp_relay, lambda s: test_punch(s, a.require_punch), test_rejoin, test_version):
         try:
             results.append(test(srv))
         except (OSError, RuntimeError) as e:

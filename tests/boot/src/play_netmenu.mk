@@ -119,7 +119,7 @@ wait input 10 max 3000
 +10 poke netjoin 0
 +10 joy1 fire pulse
 +90 shot play-netmenu-join-connected
-# the fake host seats us: the lobby opens as a client (the host has picked portrait 0; WAITING FOR HOST where START is)
+# the fake host seats us: the lobby opens as a client (the host has picked portrait 0; SELECT YOUR KNIGHT where START is)
 +10 poke netseated 1
 +200 shot play-netmenu-lobby-client
 # the host's start message: the lobby ends, the (fake) session does not begin, back to the title menu

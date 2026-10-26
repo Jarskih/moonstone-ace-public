@@ -74,14 +74,22 @@ void displayFlip() {
 }
 
 void diwShakeStart() {
-	volatile ULONG *pSlot = inputMogCells().pulHooks;
-	while(*pSlot++ != 0) {  // the first free slot of the hook list
+	const ULONG ulHook = reinterpret_cast<ULONG>(RT_HOOK(rt_mog_diw_shake_tick, rtMogDiwShakeTickC));
+	volatile ULONG *pSlot = s_pulSlot;
+	if(pSlot == nullptr || *pSlot != ulHook) {  // no shake is running: the first free slot of the hook list
+		pSlot = inputMogCells().pulHooks;
+		while(*pSlot++ != 0) {
+		}
+		--pSlot;
+		s_pulSlot = pSlot;
 	}
-	--pSlot;
-	s_pulSlot = pSlot;
+	// A shake that is still running keeps its slot and starts over.  The original took a second slot (LAB_0427 always searched the first free one)
+	// and only ever freed the newest, so every overlapped hit of a fight leaked a tick hook; the nine-slot list ran past its terminator after
+	// enough of them and the VBL service jumped into the next bytes of memory (found by the co-op soak, a long fight of computer knights).
 	ms::diwShakeStart(s_shake);
-	*pSlot = reinterpret_cast<ULONG>(RT_HOOK(rt_mog_diw_shake_tick, rtMogDiwShakeTickC));
+	*pSlot = ulHook;
 }
+
 
 void diwShakeTick() {
 	const ms::DiwShakeStep sStep = ms::diwShakeTick(s_shake);

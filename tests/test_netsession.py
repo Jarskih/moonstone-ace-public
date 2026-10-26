@@ -239,6 +239,20 @@ class NetSession(unittest.TestCase):
             # the rejoiner's node does not get the bytes its rejoin pump read behind the host's RESUME (the first ticks of the burst: tests/netsession_driver "rejoin burst hand-over")
             ('src/engine/netnode.cpp', '	l.ulLastRx = ulNow;\n	l.framer = framer;\n	netUdpFallback(l.udp, NUW_REJOIN);\n	n.ulLastPing = ulNow;',
              '	l.ulLastRx = ulNow;\n	netUdpFallback(l.udp, NUW_REJOIN);\n	n.ulLastPing = ulNow;'),
+            # ---- the relay-assisted direct path (NETPLAY.md 2.2b)
+            # the host never completes a direct handshake / the client never does
+            ('src/engine/netnode.cpp', 'if(isDirectDg && netDirectOnDatagram(l.udp.dir, ulNow, from, u.ubFlags)) {\n		pushUdpEvent(n, NUE_DIRECT_OK, static_cast<uint8_t>(iLink)', 'if(false) {\n		pushUdpEvent(n, NUE_DIRECT_OK, static_cast<uint8_t>(iLink)'),
+            ('src/engine/netnode.cpp', 'if(isDirectDg && netDirectOnDatagram(l.udp.dir, ulNow, from, u.ubFlags)) {\n		pushUdpEvent(n, NUE_DIRECT_OK, 0,', 'if(false) {\n		pushUdpEvent(n, NUE_DIRECT_OK, 0,'),
+            # nobody registers with the relay
+            ('src/engine/netnode.cpp', 'if(dp.isReg && l.udp.peer.isSet) {', 'if(false) {'),
+            # the datagrams of a direct link go to the relay anyway
+            ('src/engine/netnode.cpp', 'io.pfnSendDgram(io.pCtx, plan.isDirect ? l.udp.dir.peer : l.udp.peer, aub, ulLen);', 'io.pfnSendDgram(io.pCtx, l.udp.peer, aub, ulLen);'),
+            # the test option does not kill an established direct path
+            ('src/engine/netnode.cpp', 'return n.udp.ubDirectTest == NDT_KILL && d.ulDirectSince != 0 && ulNow - d.ulDirectSince >= n.udp.ulDirectKillMs;', 'return false;'),
+            # the relay's address on the host is replaced by the direct source (the host would answer a relayed client direct)
+            ('src/engine/netnode.cpp', '	if(!isDirectDg) {\n		l.udp.peer = from;', '	if(true) {\n		l.udp.peer = from;'),
+            # a datagram flagged DIRECT in a direct (non-relayed) game is accepted
+            ('src/engine/netnode.cpp', 'if(isDirectDg && (u.ulSession == 0 || isDirectBlocked(n, l.udp.dir, ulNow))) {   // a direct game', 'if(isDirectDg && (isDirectBlocked(n, l.udp.dir, ulNow))) {   // a direct game'),
         ]
 
         for path, old, new in mutations:

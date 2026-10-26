@@ -119,7 +119,7 @@ frame 2291 shot play-netmenu-join-version
 frame 2301 poke netjoin 0
 frame 2311 joy1 fire pulse
 frame 2401 shot play-netmenu-join-connected
-# the fake host seats us: the lobby opens as a client (the host has picked portrait 0; WAITING FOR HOST where START is)
+# the fake host seats us: the lobby opens as a client (the host has picked portrait 0; SELECT YOUR KNIGHT where START is)
 frame 2411 poke netseated 1
 frame 2611 shot play-netmenu-lobby-client
 # the host's start message: the lobby ends, the (fake) session does not begin, back to the title menu

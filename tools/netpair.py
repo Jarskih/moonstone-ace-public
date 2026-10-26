@@ -437,6 +437,13 @@ def main():
     bdir = os.path.join(ROOT, a.build)
     if not os.path.isdir(os.path.join(bdir, 'hd')):
         sys.exit('netpair: %s/hd missing - build it: cmake --build %s && cmake --build %s --target hdinstall' % (a.build, a.build, a.build))
+    try:   # ROADMAP 2.11a: network play is a build option (OFF = the stock A1200 game, no Multiplayer row); a tree without it cannot run these scripts
+        with open(os.path.join(bdir, 'CMakeCache.txt'), encoding='utf-8', errors='replace') as f:
+            m = re.search(r'^MS_NET:\w+=(\w+)', f.read(), re.M)
+        if (m.group(1) if m else 'OFF').upper() not in ('ON', '1', 'TRUE', 'YES'):
+            sys.exit('netpair: %s is configured without network play: cmake -S . -B %s -DMS_NET=ON and rebuild (BUILD.md "Amiga builds")' % (a.build, a.build))
+    except OSError:
+        pass
     tail = 'PORT %d DELAY %d TIMEOUT %d' % (a.port, a.delay, a.net_timeout) + (' TCP' if a.tcp else '')
     lport = a.lobby_port if a.relay else 0
     # the emulator lock is taken BEFORE the hd-<instance> trees are rebuilt: a second netpair started while one runs must not

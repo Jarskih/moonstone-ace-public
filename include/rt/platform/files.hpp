@@ -33,6 +33,8 @@ void fileClose(RawFile hFile);
 bool fileWriteAll(const char *szPath, const void *pData, uint32_t ulCount);
 // Call pfnEach(name, pUser) for every file of the drawer szDir (rt_file_list: mods). -1 if there is no such drawer, else the count.
 int32_t fileList(const char *szDir, void (*pfnEach)(const char *szName, void *pUser), void *pUser);
+// The same for the drawers of szDir (rt_file_list_dirs: the mod packs are folders, ROADMAP 9.9 / 11.9). The Amiga reaches it through rt/files.cpp.
+int32_t fileListDirs(const char *szDir, void (*pfnEach)(const char *szName, void *pUser), void *pUser);
 // True if the drawer exists (the HD-install test: PROGDIR:data).
 bool fileDirExists(const char *szDir);
 

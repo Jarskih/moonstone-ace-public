@@ -146,12 +146,29 @@ int main() {
 	check(p0.n == 1, "start clamps to 1");
 	check(partyPadTaken(p, 1, PAD_JOY1) && !partyPadTaken(p, 1, PAD_JOY0) && partyPadTaken(p, 2, PAD_JOY0), "taken");
 	check(partyNextPad(p, 1, PAD_JOY0, 1) == PAD_KEYS_ARROWS, "next skips nothing taken");
-	check(partyNextPad(p, 1, PAD_KEYS_WASD, 1) == PAD_JOY0, "next wraps past the taken joy1");
-	check(partyNextPad(p, 1, PAD_JOY0, -1) == PAD_KEYS_WASD, "previous wraps past the taken joy1");
+	check(partyNextPad(p, 1, PAD_KEYS_WASD, 1) == PAD_COMPUTER && partyNextPad(p, 1, PAD_COMPUTER, 1) == PAD_JOY0, "next: Computer follows the last controller, then wraps past the taken joy1");
+	check(partyNextPad(p, 1, PAD_JOY0, -1) == PAD_COMPUTER && partyNextPad(p, 1, PAD_COMPUTER, -1) == PAD_KEYS_WASD, "previous wraps past the taken joy1 to Computer");
+	check(partyNextPad(p, 0, PAD_KEYS_WASD, 1) == PAD_JOY1 && partyNextPad(p, 0, PAD_JOY1, -1) == PAD_KEYS_WASD, "the first knight is never offered Computer (ROADMAP 8.3b)");
 	p.aubPad[0] = PAD_JOY0;
 	check(partyFirstFreePad(p, 1) == PAD_KEYS_ARROWS, "first free when the default is taken");
 	check(partyFirstFreePad(p, 0) == PAD_JOY1, "first free = default");
 	p.aubPad[0] = PAD_JOY1;
+	// the platform hint (PC: no second gamepad, keyboard joystick on): Joystick 2 and Keys arrows are skipped, nothing else changes
+	{
+		static bool (*const usable)(uint8_t) = [](uint8_t pad) { return pad == PAD_JOY1 || pad == PAD_KEYS_WASD; };
+		PartyConfig h; partyStart(h, 4);
+		g_pfnPadUsable = usable;
+		check(partyFirstFreePad(h, 0) == PAD_JOY1 && partyFirstFreePad(h, 1) == PAD_KEYS_WASD, "hint: knight 2 gets WASD, not Joystick 2");
+		check(partyNextPad(h, 1, PAD_KEYS_WASD, 1) == PAD_COMPUTER && partyNextPad(h, 1, PAD_KEYS_WASD, -1) == PAD_COMPUTER && partyNextPad(h, 1, PAD_COMPUTER, 1) == PAD_KEYS_WASD, "hint: cycling stays on the only usable free pad and Computer");
+		h.aubPad[1] = PAD_KEYS_WASD;
+		check(partyFirstFreePad(h, 2) == PAD_JOY0, "hint: nothing usable left, an unusable free pad is still offered");
+		check(partyNextPad(h, 2, PAD_JOY0, 1) == PAD_KEYS_ARROWS, "hint: nothing usable left, cycling reaches every free pad");
+		h.aubPad[2] = PAD_JOY0;
+		check(partyFirstFreePad(h, 3) == PAD_KEYS_ARROWS && partyNextPad(h, 3, PAD_KEYS_WASD, 1) == PAD_COMPUTER, "hint: the fourth knight never gets the pad the second holds");
+		g_pfnPadUsable = nullptr;
+		PartyConfig q2; partyStart(q2, 2);
+		check(partyFirstFreePad(q2, 1) == PAD_JOY0, "no hint: knight 2 defaults to Joystick 2");
+	}
 	// routing of the player stick
 	PartyConfig r; partyStart(r, 2);
 	r.aubPad[1] = PAD_KEYS_WASD;

@@ -12,6 +12,7 @@
 #include "game/rules.hpp"
 #include "game/scene_town.hpp"
 #include "game/state_bind.hpp"
+#include "rt/party_ai.hpp"
 #include "rt/party_loot.hpp"
 
 extern "C" {
@@ -53,12 +54,17 @@ inline Inventory &invOf(const Knight &k) { return *invAt(k.ulInventory); }
 extern "C" __attribute__((used, externally_visible)) uint32_t rtTownShopClick(uint32_t ulSlot, uint32_t ulMask) {
 	Knight &k = *knightAt(mogUiKnight);  // LAB_068B
 	const uint8_t ubMask = (uint8_t)ulMask;
+	ShopEcho echo = {};                                                // co-op: the computer knights buy the same (ROADMAP 8.3b)
+	echo.ubMask = ubMask;
+	bool bBought = false;
 	switch (ulSlot & 0xFFFF) {
-		case 0x5C: return shopBuyArmour(k, invOf(k), ubMask, ms::game::g_gameData);
-		case 0x58: return shopBuySword(k, ubMask, ms::game::g_gameData);
-		case 0x4C: return shopBuyDagger(k, ms::game::g_gameData);
+		case 0x5C: echo.kind = ShopBuy::Armour; bBought = shopBuyArmour(k, invOf(k), ubMask, ms::game::g_gameData); break;
+		case 0x58: echo.kind = ShopBuy::Sword; bBought = shopBuySword(k, ubMask, ms::game::g_gameData); break;
+		case 0x4C: echo.kind = ShopBuy::Dagger; bBought = shopBuyDagger(k, ms::game::g_gameData); break;
 		default: return 0;
 	}
+	if (bBought) rt::computerEchoBuy(mogUiKnight, echo);
+	return bBought;
 }
 
 // rt_town_market_click: patch over LAB_0562 (state 6 click). In: D1.w = slot, D3 = mask; the mouse x (LAB_097F) picks
@@ -70,9 +76,25 @@ extern "C" __attribute__((used, externally_visible)) void rtTownMarketClick(uint
 	const uint8_t ubMask = (uint8_t)ulMask;
 	if ((int16_t)mogCursorX >= 0xA0) {
 		rtTownSound(mogSoundTextBuy + 1);                                // the buy sound plays before the price check
+		Inventory stockBefore;                                           // the computer knights echo the buy from the stock as it was
+		for (unsigned i = 0; i < sizeof(Inventory); ++i) {               // (a byte loop that stays one: the m68k build has no memcpy to turn it into)
+			reinterpret_cast<uint8_t *>(&stockBefore)[i] = reinterpret_cast<const uint8_t *>(&mogMarketStock)[i];
+			asm volatile("" ::: "memory");
+		}
+
+
 		const MarketResult res = marketBuy(k, own, mogMarketStock, mogMarketPrices, uwSlot, ubMask);
 		if (res.bRecalcOnInventory) rtKnightRecalcHp(reinterpret_cast<Knight *>(&own));   // QUIRK, see marketBuy
-		if (res.bDone) rtTownRedraw();
+		if (res.bDone) {
+			ShopEcho echo = {};
+			echo.kind = ShopBuy::MarketItem;
+			echo.ubMask = ubMask;
+			echo.uwSlot = uwSlot;
+			echo.aPrices = mogMarketPrices;
+			echo.pStock = &stockBefore;
+			rt::computerEchoBuy(mogUiKnight, echo);
+			rtTownRedraw();
+		}
 	} else {
 		marketSell(k, own, mogMarketStock, mogMarketPrices, uwSlot, ubMask, ms::game::g_gameData);
 		rtTownRedraw();
@@ -117,8 +139,17 @@ extern "C" __attribute__((used, externally_visible)) void rtTownExchangeGold(voi
 extern "C" __attribute__((used, externally_visible)) void rtTownTempleStat(uint32_t ulSlot) {
 	rtTownSound(mogSoundTextTempleStat);
 	Knight &k = *knightAt(mogUiKnight);
+	const uint16_t uwProgress = k.uwProgress;
 	templeBuyStat(k, invOf(k), (uint16_t)ulSlot, mogDamageDiv);
+	if (k.uwProgress != uwProgress) {                                   // a stat was bought: the computer knights buy it too (ROADMAP 8.3b)
+		ShopEcho echo = {};
+		echo.kind = ShopBuy::TempleStat;
+		echo.uwSlot = (uint16_t)ulSlot;
+		echo.uwAmount = mogDamageDiv;
+		rt::computerEchoBuy(mogUiKnight, echo);
+	}
 }
+
 
 extern "C" __attribute__((used, externally_visible)) uint32_t rtTownDaggerTopup(Knight *pMe, Knight *pOther) {
 	if (!exchangeDaggers(*pMe, *pOther, ms::game::g_gameData)) return 0;

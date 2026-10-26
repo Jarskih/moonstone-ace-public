@@ -31,6 +31,7 @@
 #include <stdint.h>
 
 
+#include "engine/endian.hpp"
 #include "engine/util.hpp"
 #include "game/api/creatures.hpp"
 #include "game/api/data.hpp"
@@ -1228,7 +1229,8 @@ void resetGame() {
 	applyRow(CR_DRAGON, mogKnights[4]);
 	mogFrameBudget = 6;
 	rtFightTablesInit();                           // LEA LAB_08C7,A0 and the sixteen handler identities
-	st32(ad(mogHandlerTable) + raw(ActorType::Dice), ad(RT_FN(rt_scr_dice_idle)));
+	// The handler table is a big-endian byte blob (LAB_08C7, read with be::ld32 by the dispatch): a byte store of the long.
+	ms::be::st32(reinterpret_cast<uint8_t *>((uintptr_t)(ad(mogHandlerTable) + raw(ActorType::Dice))), ad(RT_FN(rt_scr_dice_idle)));
 	const uint32_t t = ad(mogArenaTable);           // the creature arenas by lair handler
 	st32(t + 36, ad(RT_FN(rt_ar_arena_018c)));
 	st32(t + 4, ad(RT_FN(rt_ar_arena_019a)));

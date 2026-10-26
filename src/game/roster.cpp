@@ -24,6 +24,7 @@ bool pickable(const Knight &k) { return (int8_t)k.ubLives > 0 && k.ubFrogDays ==
 bool rosterOpen(FightRoster &r) {
 	r.ubActive = 0;
 	r.ubParty = 0;
+	r.ubPartyAi = 0;
 	r.ubFoes = 0;
 	r.ubDefeat = 0;
 	r.ubEntered = 0;
@@ -32,8 +33,12 @@ bool rosterOpen(FightRoster &r) {
 	r.aubSkinEntry[0] = r.aubSkinEntry[1] = r.aubSkinEntry[2] = 0;
 	for(uint8_t i = 0; i < r.ubMembers && i < ROSTER_MAX; ++i) {
 		if(i == 0 || pickable(*r.apMember[i])) {
+			if(i != 0 && ((r.ubMemberAi >> i) & 1)) {
+				r.ubPartyAi = static_cast<uint8_t>(r.ubPartyAi | (1u << r.ubParty));
+			}
 			r.aulPartyAddr[r.ubParty] = r.aulMemberAddr[i];
 			r.apParty[r.ubParty++] = r.apMember[i];
+
 		}
 	}
 	for(uint8_t i = 0; i < r.ubFoeMembers && i < ROSTER_MAX; ++i) {
@@ -51,8 +56,10 @@ void rosterClose(FightRoster &r) {
 	r.ulSkinOwner = 0;
 	r.ubActive = 0;
 	r.ubParty = 0;
+	r.ubPartyAi = 0;
 	r.ubFoes = 0;
 }
+
 
 bool rosterPartyDown(const FightRoster &r) {
 	for(uint8_t i = 0; i < r.ubParty; ++i) {

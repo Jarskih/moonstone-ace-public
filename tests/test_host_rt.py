@@ -22,13 +22,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RT = os.path.join(ROOT, 'src', 'rt')
 LIST = os.path.join(RT, 'host_clean.txt')
 CXX = shutil.which('clang++') or (r'C:\Program Files\LLVM\bin\clang++.exe' if os.path.exists(r'C:\Program Files\LLVM\bin\clang++.exe') else None)
-MIN_CLEAN = 35                      # 2026-10-10 (11.1e: 17, 11.1d: 35); raise it when files are added, never lower it
+MIN_CLEAN = 72                     # 2026-10-25 (11.1e: 17, 11.1d part 1: 35, M12 and 11.1d part 2: 64, 12.14 the net session: 72); raise it when files are added, never lower it
 NOT_COMPILED = ('thunks.cpp',)      # retired (ROADMAP 7.1r), excluded from every build
-# Files that compile on the host but are deliberately NOT linked by the PC build: they need the
-# bsdsocket transport (rt/net.cpp), which the PC does not have until ROADMAP 12.14; rt/sdl/net_offline.cpp stands in for them (listing them would link
-# a second definition).  They are not "missing from the list".
-# net_rejoin.cpp / net_world.cpp (ROADMAP 12.15a) are the rejoin: they need the session (rt/net_session.cpp) and stand in net_offline.cpp the same way.
-STUBBED_ON_PC = ('net_find.cpp', 'net_relay.cpp', 'net_rejoin.cpp', 'net_world.cpp')
+# Files that compile on the host but are deliberately NOT linked by the PC build (none now: the PC links the session, the lobby, the relay,
+# the rejoin and the browser over rt/sdl/net_winsock.cpp, ROADMAP 12.14).  src/rt/net.cpp, the bsdsocket transport, does not compile on the host.
+STUBBED_ON_PC = ()
 
 
 def listed():

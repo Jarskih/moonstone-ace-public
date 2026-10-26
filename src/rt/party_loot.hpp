@@ -48,7 +48,10 @@ private:
 };
 // PlaceOps::pfnTurnSwitch: the previous (iDir < 0) / next member becomes the active one (no ShopVisit alive: nothing happens).
 void shopSwitch(void *, int iDir);
+// How many of them a player can switch to (the computer knights shop only by echoing the human's buys, game/party_ai_shop.hpp); 0 when no ShopVisit is alive.
+unsigned shopHumans();
 // The party members of the visit (record addresses, the leader first); 0 when no ShopVisit is alive.
+
 unsigned shopMembers(uint32_t aAddr[ms::game::PARTY_MAX]);
 
 }  // namespace rt

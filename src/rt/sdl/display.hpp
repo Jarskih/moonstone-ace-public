@@ -2,8 +2,10 @@
 //
 // Per frame (the frame hook of rt/sdl/timer): the planar screen the game shows (displayShow) is read from the emulated chip RAM
 // (rt/sdl/chip), converted with engine/planar over the palette the game wrote (displayWritePalette12/24, displaySetBackdrop), uploaded
-// into a streaming 320x200 texture and drawn scaled into the window: the largest whole scale that fits, pixels stretched 6:5 in
-// height (a 4:3 picture, like the monitor the game was made for), centred, nearest-neighbour filter, black bars around it.
+// into a streaming 320x200 texture and drawn scaled into the window: the largest whole scale that fits, centred, nearest-neighbour
+// filter, black bars around it.  Pixel-perfect by default (square pixels, every source pixel the same whole number of screen pixels);
+// displaySetAspect(true) stretches them 6:5 in height instead (a 4:3 picture, like the monitor the game was made for; rows then differ
+// by one screen pixel).
 // Without a renderer (headless runs) the conversion still happens, so the frame can be dumped (rt/sdl/imgdump).
 //
 // 11.6b/c: the frame is built line by line from a register image (engine/copper, engine/sprites): an installed copper list
@@ -15,6 +17,7 @@
 #include <stdint.h>
 
 #include "engine/guard.hpp"
+#include "engine/planar.hpp"
 #include "rt/sdl/sdl_guards.hpp"
 
 namespace rt {
@@ -30,6 +33,16 @@ const uint32_t *displayRenderFrame();
 
 // displayRenderFrame + upload + scaled draw + SDL_RenderPresent (no present without a renderer).
 void displayPresent();
+
+// Debug: write the composed window (scaling, CRT effect, bars; read back from the renderer) as a PNG when the ulFrame-th frame is presented.
+void displayDumpOutputAt(const char *szPath, uint32_t ulFrame);
+
+// The scaling rule (--aspect): false = pixel-perfect square pixels (default), true = the Amiga's 6:5 pixel aspect.
+void displaySetAspect(bool isAspect);
+// Where the 320x200 picture sits in a window of lWinW x lWinH pixels under the current rule (the display and the mouse use the same).
+ms::planar::Rect displayFit(int32_t lWinW, int32_t lWinH);
+// Height of the picture at whole scale lScale under the current rule (window sizing).
+int32_t displayScaledHeight(int32_t lScale);
 
 // Install the copper list the frame runs (COP1LC: a chip address, big-endian instructions ending in a WAIT that never holds, e.g. $FFFF,$FFFE).
 // 0 removes it: the frame then shows the latched state unchanged (the 11.6a static picture).  The game itself installs none on the PC (its
@@ -48,7 +61,9 @@ uint32_t displayFrameCount();
 class DisplaySession {
 public:
 	explicit DisplaySession(SDL_Renderer *pRenderer)
-		: m_texture(pRenderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 320, 200) {
+		// XRGB: the frame's pixels are 0x00RRGGBB (engine/planar); an ARGB texture would read that as alpha 0 and blend to a black window
+		// on the GPU renderers (the software renderer of --smoke / the frame dumps never showed it)
+		: m_texture(pRenderer, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, 320, 200) {
 		if(m_texture) {
 			SDL_SetTextureScaleMode(m_texture.get(), SDL_SCALEMODE_NEAREST);   // the pixels stay square-edged when scaled
 		}

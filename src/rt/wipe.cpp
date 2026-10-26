@@ -15,6 +15,7 @@
 
 
 #include "engine/display_fx.hpp"
+#include "engine/endian.hpp"
 #include "rt/enhanced_cells.hpp"
 #include "rt/prgops.hpp"
 #include "rt/prim.hpp"
@@ -24,7 +25,7 @@ extern "C" {
 extern UWORD prgWipeState[2];       // [0] progress 0..1000, [1] step (initial 1000, 2) (LAB_05B8)
 extern UWORD prgWipeRows;          // rows of blocks to draw (LAB_05BC)
 extern UWORD prgWipeFirstRow;          // first row of blocks (LAB_05BD)
-extern UWORD prgWipeTiles[];      // tile map: 10 words (blocks) per row, one row of blocks every 25 lines (SECSTRT_33)
+extern UBYTE prgWipeTiles[];      // tile map: 10 big-endian words (blocks) per row, one row of blocks every 25 lines (SECSTRT_33); the bytes of intro.stile / co.stile, read with be::ld16
 extern ULONG prgWipePictures[3];       // the three source pictures (LAB_05D6)
 extern ULONG prgWipePicture;          // the wipe's picture (a copy of the shown screen's background) (LAB_05D7)
 extern ULONG prgWipeSkip;          // source skip of the last clipped block (it survives into the next one, see engine/display_fx.hpp) (LAB_05E0)
@@ -61,14 +62,13 @@ void wipeTile(WORD wX, WORD wY, UWORD uwTile, ULONG ulPicture, ULONG ulDst) {
 
 void wipeRows() {
 	const ms::WipeRows sRows = ms::wipeRows(prgWipeState[0], prgWipeFirstRow);
-	const UWORD *puwMap = reinterpret_cast<const UWORD *>(
-		reinterpret_cast<const UBYTE *>(prgWipeTiles) + static_cast<WORD>(sRows.mapOffset)
-	);
+	const UBYTE *pubMap = prgWipeTiles + static_cast<WORD>(sRows.mapOffset);
 	WORD wY = sRows.startY;
 	UWORD uwDone = 0;
 	do {  // the body runs once even for 0 rows (the test is behind the increment)
 		for(WORD wX = 0; wX <= 0x13F; wX += 0x20) {
-			const ms::WipeCode sCode = ms::wipeCode(static_cast<WORD>(*puwMap++));
+			const ms::WipeCode sCode = ms::wipeCode(static_cast<WORD>(ms::be::ld16(pubMap)));
+			pubMap += 2;
 			wipeTile(wX, wY, sCode.tile, prgWipePictures[sCode.picture], prgWipePicture);
 		}
 		wY = static_cast<WORD>(wY + 25);

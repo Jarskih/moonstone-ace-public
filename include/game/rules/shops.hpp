@@ -30,6 +30,9 @@ void goldAddCapped(Knight &k, uint16_t uwAmount, const GameData &d);
 // State 5: the smith.  mask is D3 = (button code >> 4) & 15 (which of the three offers was clicked).  The prices, the dagger
 // cap and the gold cap come from the data `d` (ROADMAP 9.5b: shops.ini, rules.ini; the built-in values are the original's).
 
+// The armour the smith's offer mask names (the lowest set bit: mail, plate, battle armour), 0 for none.
+uint32_t shopArmourOffer(uint8_t mask);
+
 // LAB_0559: bit 0 = mail for 30 gp (+10 hp), bit 1 = plate for 50 (+20 hp), bit 2 = battle armour for 75 (+30 hp);
 // only the first set bit is looked at.  If the knight cannot pay (word compare, signed) nothing happens.  Returns true
 // when something was bought (the screen redraws).  QUIRK: no check for armour the knight already has, so a cheaper

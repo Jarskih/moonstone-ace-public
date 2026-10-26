@@ -10,6 +10,7 @@ namespace rt {
 void fightSeedRoster(ms::game::FightRoster &r, bool bFoeKnights) {
 	using namespace ms::game;
 	r.ubMembers = 0;
+	r.ubMemberAi = 0;
 	r.ubFoeMembers = 0;
 	if(!g_party.active || !partyCoop()) {
 		return;
@@ -22,7 +23,11 @@ void fightSeedRoster(ms::game::FightRoster &r, bool bFoeKnights) {
 	r.apMember[r.ubMembers++] = &rs.rec(pm.ubLeader);                  // the leader first: it is the fight's "current knight"
 	for(uint8_t i = 0; i < ubSize; ++i) {
 		if(i != pm.ubLeader && r.ubMembers < ROSTER_MAX) {
+			if((pm.ubComputer >> i) & 1) {
+				r.ubMemberAi = static_cast<uint8_t>(r.ubMemberAi | (1u << r.ubMembers));   // played by the computer (never the leader)
+			}
 			r.aulMemberAddr[r.ubMembers] = rs.addr(i);
+
 			r.apMember[r.ubMembers++] = &rs.rec(i);
 		}
 	}

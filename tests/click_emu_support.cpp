@@ -62,6 +62,7 @@ __attribute__((used, externally_visible)) uint32_t emuRoll(void) {
 	rec(5, 0, 0, 0);
 	return cell(1);
 }
+uint32_t rtRngPercent(uint32_t *) { return emuRoll(); }   // ROADMAP 11.1d part 2: loot.cpp calls the generator directly
 // the original's sound request: logs the sequence, returns the scripted channel
 __attribute__((used, externally_visible)) uint32_t emuSfx(uint32_t ulSeq) {
 	rec(3, ulSeq & 0xFFFF, 0, 0);

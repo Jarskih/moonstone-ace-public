@@ -4,6 +4,7 @@
 // Commands (numbers are hex unless noted; one scenario per process):
 //   C rate sep lp origin size     configure: output rate (decimal), separation 0..100 (decimal), low-pass coefficient (decimal, Q16),
 //                                 chip view origin and size (hex; the memory is zero until M)
+//   B mode                        render mode of the next C: 0 = box (default), 1 = band-limited steps (blep)
 //   M hex                         load the memory image (bytes from the origin)
 //   H ch lc len off               append an action for the next interrupt of channel ch (the handler: acknowledge, write LC / LEN,
 //                                 off = 1 also clears the channel's DMACON bit)
@@ -147,7 +148,12 @@ int main() {
 	static int16_t chunk[4096 * 2];
 	for(int t = 0; t < 256; ++t) g_modMaster[t] = -1;
 	while(scanf(" %c", &cmd) == 1) {
-		if(cmd == 'C') {
+		if(cmd == 'B') {   // render mode for the next C: 0 = box, 1 = blep
+			unsigned mode;
+			if(scanf("%u", &mode) != 1) return 2;
+			g_cfg.ubRender = static_cast<uint8_t>(mode);
+		}
+		else if(cmd == 'C') {
 			unsigned rate, sep, lp, org, size;
 			if(scanf("%u %u %u %x %x", &rate, &sep, &lp, &org, &size) != 5) return 2;
 			g_cfg.ulRate = rate;

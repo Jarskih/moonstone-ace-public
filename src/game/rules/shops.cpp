@@ -27,16 +27,24 @@ void goldAddCapped(Knight &k, uint16_t uwAmount, const GameData &d) {
 // ---------------------------------------------------------------------------------------------------------
 // State 5
 
+uint32_t shopArmourOffer(uint8_t mask) {
+	if (mask & 1) return raw(ArmourItem::Mail);
+	if (mask & 2) return raw(ArmourItem::Plate);
+	if (mask & 4) return raw(ArmourItem::Battle);
+	return 0;
+}
+
 // LAB_0559 (mog.asm 11821)
 bool shopBuyArmour(Knight &k, const Inventory &inv, uint8_t mask, const GameData &d) {
 	uint16_t cost;
-	uint32_t armour;
+	const uint32_t armour = shopArmourOffer(mask);
 	int16_t hp;
 	// BTST #n,D3 ; CMPI.W #price,74(A0): the prices are the armour rows' of items.ini (original 30, 50, 75 gp)
-	if (mask & 1) armour = raw(ArmourItem::Mail), hp = 10;
-	else if (mask & 2) armour = raw(ArmourItem::Plate), hp = 20;
-	else if (mask & 4) armour = raw(ArmourItem::Battle), hp = 30;
+	if (mask & 1) hp = 10;
+	else if (mask & 2) hp = 20;
+	else if (mask & 4) hp = 30;
 	else return false;
+
 	cost = smithArmourPrice(d, armour);
 	if (cost == 0) return false;                                      // price 0: the smith does not sell it
 	if (!canAfford(k, cost)) return false;                            // CMPI.W #price,74(A0) ; BLT -> RTS, no redraw

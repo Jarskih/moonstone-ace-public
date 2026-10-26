@@ -10,12 +10,17 @@
 #include <stdint.h>
 
 #include "game/api/data.hpp"
+#include "engine/net_cfg.hpp"
+#if MS_NET
 #include "game/net_knights.hpp"
 #include "game/net_find.hpp"
 #include "game/net_menu.hpp"
+#endif
 #include "game/options_menu.hpp"
 #include "game/party.hpp"
+#if MS_NET
 #include "game/scene_lobby.hpp"
+#endif
 #include "game/scene_menu.hpp"
 #include "game/state_bind.hpp"
 #include "game/version_text.hpp"
@@ -27,13 +32,17 @@
 #include "rt/abs.h"
 #include "rt/file_handle.hpp"
 #include "rt/files.hpp"
+#if MS_NET
 #include "rt/net_box.hpp"
+#endif
 #include "rt/net_session.hpp"
 #include "rt/net_state.hpp"
+#if MS_NET
 #include "rt/lobby_draw.hpp"
+#endif
 #include "rt/logwrite.hpp"
 #include "rt/mog_display.hpp"
-#include "rt/net_stub.hpp"
+#include "rt/net_stub.hpp"   // (declarations only; the seams are defined by rt/net_stub.cpp, which MS_NET off does not link)
 #include "rt/options_io.hpp"
 #include "rt/prim.hpp"
 
@@ -94,7 +103,7 @@ const uint8_t kMultiplayerText[] = "Multiplayer";
 const uint8_t kSettingsText[] = "Settings";
 constexpr uint16_t LABEL_DY = 2;       // the centred rows' text sits 2 lines below the cursor's y; Players (and its number) 2 lines above
 TextRec s_aTitleList[5];
-TextRec s_aMainList[MAIN_ITEMS];
+TextRec s_aMainList[MAIN_ROWS];
 
 // The title menu list: Players with its number, Practice, Select Knight and the Back row.  LAB_06AE holds Players, Gore, Practice, Select Knight, the
 // number and the On / Off text; the Gore label and value are left out and the rest follows menuItemY.  Back is a centred text like Practice.
@@ -122,11 +131,11 @@ void buildTitleList(bool bBack) {
 void buildMainList() {
 	const TextRec *pSrc = reinterpret_cast<const TextRec *>(mogMenuItemsMain);
 	const uint8_t *const apText[MAIN_ITEMS] = {kLocalText, kMultiplayerText, kSettingsText};
-	for(uint8_t i = 0; i < MAIN_ITEMS; ++i) {
+	for(uint8_t i = 0; i < MAIN_ROWS; ++i) {
 		s_aMainList[i] = pSrc[3];
-		s_aMainList[i].ulText = addr(apText[i]);
+		s_aMainList[i].ulText = addr(apText[mainMenuItem(i)]);
 		s_aMainList[i].uwY = (uint16_t)(mainMenuItemY(i) + LABEL_DY);
-		s_aMainList[i].ulNext = i + 1 < MAIN_ITEMS ? addr(&s_aMainList[i + 1]) : 0;
+		s_aMainList[i].ulNext = i + 1 < MAIN_ROWS ? addr(&s_aMainList[i + 1]) : 0;
 	}
 }
 
@@ -196,8 +205,10 @@ const MenuOps g_ops = {
 	opSpawnJob, opKillJob, opUseFont, opRestoreBackground,
 };
 
+#if MS_NET
 // The lobby's extra primitives (game/scene_lobby.hpp): the name box, the greyed START, the small font and its width.
 const LobbyOps g_lobbyOps = {rt::lobbyBar, rt::lobbyRecolour, rt::lobbySmallString, rt::lobbySmallWidth};
+#endif
 
 #if !defined(MS_COOP)
 #define MS_COOP 0
@@ -205,6 +216,7 @@ const LobbyOps g_lobbyOps = {rt::lobbyBar, rt::lobbyRecolour, rt::lobbySmallStri
 bool s_bMenuCoop;   // the menu's co-op choice, kept across games (g_party itself is classic while the title menu runs)
 uint16_t s_uwMainCursor;   // the main menu's row, kept across the screens it opens (zero = LOCAL)
 
+#if MS_NET   // the network screens: not in the stock Amiga build (ROADMAP 2.11a)
 // ---- Multiplayer screen (ROADMAP 12.8a) ----------------------------------------------------------------------
 
 const char kNetIni[] = "PROGDIR:net.ini";
@@ -249,6 +261,7 @@ void netConfigRead(NetConfig &cfg) {
 	if(cfg.szName[0] == 0) netConfigDefaults(cfg);               // an empty name in the file: back to the defaults
 	applyCliArgs(cfg);
 	rt::netStatsLineEnable(cfg.bStats);                          // `stats = no`: no ping / loss line in a network game
+	rt::netSessionAllowDirect(cfg.bDirect, cfg.ubDirectTest, cfg.ulDirectKillMs);   // `direct = no`; `direct_test` (tests): the relay-assisted direct path of a relayed game
 	rt::netSessionAllowUdp(cfg.bUdp);                            // `udp = no`: the per-tick traffic stays on TCP (the command line's TCP does the same)
 }
 
@@ -348,6 +361,8 @@ bool runNetScreen() {
 	}
 }
 
+#endif  // MS_NET
+
 // ---- Options screen (ROADMAP 9.9) ----------------------------------------------------------------------------------------
 
 SceneOptions s_sceneOptions;   // about 7 KB of pack rows: static, zero-initialised (no constructor runs)
@@ -380,7 +395,7 @@ void runOptionsScreen() {
 namespace rt {
 volatile uint8_t g_ubMenuAction;   // `poke menuact N`: the main menu / the title menu takes that row as if fire were pressed on it (docs/AUTOPLAY.md)
 bool menuActionPoke(ULONG ulValue) {
-	if(ulValue > MENUACT_PRACTICE) return false;
+	if(ulValue > MENUACT_PRACTICE || (!MS_NET && ulValue == MENUACT_MULTIPLAYER)) return false;
 	g_ubMenuAction = static_cast<uint8_t>(ulValue);
 	return true;
 }
@@ -475,6 +490,7 @@ extern "C" __attribute__((used, externally_visible)) void rtSceneMenuRun() {
 				bFaded = true;
 				continue;
 			}
+#if MS_NET
 			if(eAct == MAINACT_MULTIPLAYER) {
 				if(runNetScreen()) {                           // the screen and the lobby; a started network game goes straight on:
 					m.state.uwCursor = ITEM_SELECT;            // the main flow takes "Select Knight" (Campaign); rtSceneKnightsRun builds the knights from
@@ -483,6 +499,7 @@ extern "C" __attribute__((used, externally_visible)) void rtSceneMenuRun() {
 				bFaded = true;
 				continue;
 			}
+#endif
 			waitFireReleased();
 			runTitleMenu(m, bFaded);
 			if(m.eResult != MENU_BACK) break;
@@ -500,6 +517,7 @@ extern "C" __attribute__((used, externally_visible)) void rtSceneMenuRun() {
 	}
 }
 
+#if MS_NET
 // A network game (the lobby just started it): the knights are the players, built from the CONFIG on every machine (game/net_knights.hpp) - the same
 // fields the knight screen and the name entry set.  The player count, the damage divisor and the published count follow, as after the title menu.
 void startNetGame(const ms::NetConfig &cfg) {
@@ -530,12 +548,16 @@ void startNetGame(const ms::NetConfig &cfg) {
 	}
 }
 
+#endif  // MS_NET
+
 extern "C" __attribute__((used, externally_visible)) void rtSceneKnightsRun() {
+#if MS_NET
 	ms::NetConfig sNetCfg;
 	if (rt::netSessionGameConfig(sNetCfg)) {                   // the lobby started a network game: no knight screen
 		startNetGame(sNetCfg);
 		return;
 	}
+#endif
 	rt::NetMenuScope sNetMenu;
 	SceneKnights k;
 	k.env.uwPlayers = mogHumanPlayers.uw;

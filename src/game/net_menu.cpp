@@ -139,6 +139,9 @@ void netConfigDefaults(NetConfig &c) {
 	c.szLobby[0] = 0;
 	c.uwLobbyPort = 0;
 	c.bUdp = true;
+	c.bDirect = true;
+	c.ubDirectTest = 0;
+	c.ulDirectKillMs = 0;
 	c.bStats = true;
 }
 
@@ -170,6 +173,14 @@ void netConfigLoad(NetConfig &c, const char *pText, uint32_t ulLen) {
 		} else if(iniEqual(t.key, "udp")) {
 			bool bUdp = c.bUdp;
 			if(parseYesNo(v, bUdp)) c.bUdp = bUdp;     // an unreadable value keeps the default
+		} else if(iniEqual(t.key, "direct")) {
+			bool bDirect = c.bDirect;
+			if(parseYesNo(v, bDirect)) c.bDirect = bDirect;     // an unreadable value keeps the default
+		} else if(iniEqual(t.key, "direct_test")) {
+			c.ubDirectTest = iniEqual(v, "block") ? 1 : (iniEqual(v, "kill") ? 2 : 0);
+		} else if(iniEqual(t.key, "direct_kill_ms")) {
+			int32_t slMs = 0;
+			if(iniParseInt(v, slMs) == INI_NUM_OK && slMs >= 0 && slMs <= 600000) c.ulDirectKillMs = (uint32_t)slMs;
 		} else if(iniEqual(t.key, "stats")) {
 			bool bStats = c.bStats;
 			if(parseYesNo(v, bStats)) c.bStats = bStats;     // an unreadable value keeps the default

@@ -163,14 +163,16 @@ struct NetHistTick {
 };
 
 // What the UDP layer did that the glue logs: a probe going out, a link going active, a link falling back to TCP.
-enum NetUdpEventKind : uint8_t { NUE_PROBE = 1, NUE_OK, NUE_FALLBACK };
+enum NetDirectTest : uint8_t { NDT_NONE = 0, NDT_BLOCK, NDT_KILL };   // net.ini direct_test = block | kill <ms>: every received direct datagram is dropped (always / after the path was up that long)
+enum NetUdpEventKind : uint8_t { NUE_PROBE = 1, NUE_OK, NUE_FALLBACK, NUE_DIRECT_OK, NUE_DIRECT_FAIL };
 struct NetUdpEventRec {
 	uint8_t ubKind;                    // NetUdpEventKind
 	uint8_t ubLink;
 	uint8_t ubNode;                    // the client's node
-	uint8_t ubWhy;                     // NUE_FALLBACK: NetUdpWhy
+	uint8_t ubWhy;                     // NUE_FALLBACK: NetUdpWhy; NUE_DIRECT_FAIL: NetDirectWhy
+	NetDgramPeer peer;                 // NUE_DIRECT_OK: the peer's direct address
 };
-constexpr uint8_t NN_UDP_EVENTS = 8;
+constexpr uint8_t NN_UDP_EVENTS = 16;
 
 // The session-wide UDP counters (PERF line, session summary).
 struct NetUdpStats {
@@ -181,11 +183,17 @@ struct NetUdpStats {
 	uint32_t ulProbes;                 // probe datagrams sent
 	uint8_t ubActive;                  // links in state ACTIVE now
 	uint8_t ubTcp;                     // links that fell back
+	uint8_t ubDirect;                  // links whose datagrams go the direct path now (a relayed game only)
+	uint32_t ulDirectBlocked;          // direct datagrams dropped by the test option
 };
 
 struct NetUdpNode {
 	bool isEnabled;                    // the glue has a datagram socket and the player did not force TCP
 	uint32_t ulSession;                // client: the relay session id in its datagrams (0 = direct)
+	bool isDirectWanted;               // the glue allows the relay-assisted direct path (net.ini direct = yes, not forced off)
+	NetDgramPeer local;                // this node's own address of its datagram socket (the LAN candidate it tells the relay), isSet false = unknown
+	uint8_t ubDirectTest;              // NetDirectTest: tests only, drops received direct datagrams
+	uint32_t ulDirectKillMs;           // NDT_KILL: this long after the link went direct
 	NetUdpStats st;
 	NetUdpEventRec aEvent[NN_UDP_EVENTS];
 	uint8_t ubEvents;
@@ -284,6 +292,13 @@ void netNodeUdpEnable(NetNode &n, uint32_t ulSession);
 // Where datagrams for a link go when the glue knows it (a client: the host or the relay server; a relayed host link: the relay server, with the relay session id);
 // the host learns the address of a direct client from its first datagram.  Call after netNodeLinkUp.
 void netNodeUdpSetPeer(NetNode &n, uint8_t ubLink, uint32_t ulAddr, uint16_t uwPort, uint32_t ulSession);
+// The relay-assisted direct path (NETPLAY.md 2.2b): allowed or not (default: not, call with true after netNodeUdpEnable), this node's own datagram address (the LAN
+// candidate; 0 / 0 = unknown), and the test option.  Only relayed links (session != 0) ever try it.
+void netNodeUdpSetDirect(NetNode &n, bool isWanted);
+void netNodeUdpSetLocal(NetNode &n, uint32_t ulAddr, uint16_t uwPort);
+void netNodeUdpSetDirectTest(NetNode &n, uint8_t ubTest, uint32_t ulKillMs);
+// True when the link's datagrams go the direct path now.
+bool netNodeLinkIsDirect(const NetNode &n, uint8_t ubLink);
 // The oldest event the glue has not logged yet.  False = none.
 bool netNodeUdpTakeEvent(NetNode &n, NetUdpEventRec &ev);
 // The counters, with the link states filled in.

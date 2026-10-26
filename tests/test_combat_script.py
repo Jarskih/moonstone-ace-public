@@ -324,7 +324,7 @@ class Model:
 
     def draw(self, a1, a6, d0):
         m, c = self.m, self.c
-        a0 = m.l(m.fl(a1 + 28) + (d0 & 0x1F))
+        a0 = m.fl(m.fl(a1 + 28) + (d0 & 0x1F))   # the frame set: native u32 cells
         d0 = m.b(a6 + 1)
         m.sfb(a1 + 21, d0)
         self.l034e(a1, a0, d0)
@@ -994,7 +994,8 @@ def build_base(rng):
 
     for lst, order in ((FL[0], (0, 1, 2, 1, 0, 2, 1, 0)), (FL[1], (2, 1, 0, 0, 1, 2, 2, 1))):
         for k, o in enumerate(order):
-            sl(lst + 4 * k, CEL[o])
+            # a frame set is a list of u32 cells of the owned data: native cells, as Mem.fl reads them (PC_ENDIAN.md 2)
+            a[lst + 4 * k:lst + 4 * k + 4] = CEL[o].to_bytes(4, 'little')
     for cel in CEL:
         sw(cel, 256)
         sl(cel + 2, 0x5000)
@@ -1098,7 +1099,8 @@ def run_driver(base, input_text):
             f.write(DRIVER)
         cmd = [CXX, '-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror', '-fno-exceptions', '-fno-rtti',
                '-D_CRT_SECURE_NO_WARNINGS', '-I', os.path.join(ROOT, 'include'), src,
-               os.path.join(ROOT, 'src', 'game', 'combat_script.cpp'), '-o', exe]
+               os.path.join(ROOT, 'src', 'game', 'combat_script.cpp'),
+               os.path.join(ROOT, 'src', 'engine', 'addrcell.cpp'), '-o', exe]
         r = subprocess.run(cmd, capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
         r = subprocess.run([exe], input=bytes(base).hex() + '\n' + input_text, capture_output=True, text=True)

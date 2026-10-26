@@ -1,7 +1,7 @@
 # Co-op for four (ROADMAP 8.2 / 8.3 / 8.3a, owner 2026-10-09): main menu LOCAL, Players 4 and Mode = Coop (down, right), Select Knight four times with the four
 # controllers in their default order: knight 1 Joystick 1 (joy1 fire), knight 2 Joystick 2 (offered; taken with joy1 fire, the knight
-# screen listens to every controller), knight 3 Keys arrows (offered; taken with Ctrl), knight 4 Keys WASD (offered; the cursor-right
-# key must NOT change it, every other controller is taken; taken with Alt).  The map: ONE party token at knight 1's home.  Round k:
+# screen listens to every controller), knight 3 Keys arrows (offered; taken with Ctrl), knight 4 Keys WASD (offered; every other controller is taken, so the cursor-right
+# key goes to Computer (ROADMAP 8.3b, shot pad4-computer) and the cursor-left key back to WASD (pad4-refused = pad4); taken with Alt).  The map: ONE party token at knight 1's home.  Round k:
 # the leader is knight k; the three other controllers held together (down, incl. both keyboard sets at once) must NOT move the token,
 # the leader's own controller does (right); then E ends the turn, "Next Day", and the leader rotates to knight k+1.
 # Round 4 (leader = knight 4, WASD): Space shows four sheets (4, 1, 2, 3), each closed with its owner's fire.  The dumps log the party
@@ -12,6 +12,7 @@
 # shotcmp-tol play-coop4-pad2 1.8
 # shotcmp-tol play-coop4-pad3 1.8
 # shotcmp-tol play-coop4-pad4 1.8
+# shotcmp-tol play-coop4-pad4-computer 1.8
 # shotcmp-tol play-coop4-pad4-refused 1.8
 # shotcmp-tol play-coop4-map 1.0
 # shotcmp-tol play-coop4-r1-ignored 3
@@ -69,6 +70,9 @@ wait input 10 max 3000
 +100 shot play-coop4-pad4
 +10 key RIGHT down
 +3 key RIGHT up
++60 shot play-coop4-pad4-computer
++10 key LEFT down
++3 key LEFT up
 +60 shot play-coop4-pad4-refused
 +10 key LALT down
 +3 key LALT up

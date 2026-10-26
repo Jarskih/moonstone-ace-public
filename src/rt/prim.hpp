@@ -70,9 +70,32 @@ uint32_t rtCelSize_prg(const char *szName);                 // rt_prg_cel_size, 
 void rtCelInit_prg(uint32_t ulPlanes);                      // rt_prg_cel_init, SECSTRT_23: D7 = screen planes (src/rt/engine_blit.cpp)
 void rtCelClip_prg(uint32_t ulLeft, uint32_t ulTop, uint32_t ulRight, uint32_t ulBottom);   // rt_prg_cel_clip, LAB_04A7
 void rtCelMirror_prg(int32_t lFrame, uint8_t *pCel);        // rt_prg_cel_mirror, LAB_04A8: flip a frame in place
+void rtCelMirror_mog(int32_t lFrame, uint8_t *pCel);        // rt_mog_cel_mirror: the same for mog (src/rt/engine_blit.cpp)
 uint32_t rtCopyRect(uint32_t ulSrc, uint32_t ulDst, uint32_t ulModA, uint32_t ulModD, uint32_t ulWords, uint32_t ulRows);   // rt_prg_copy_rect, LAB_04E1: A to D copy, BLTSIZE out (src/rt/engine_blit.cpp)
 void rtCelScratch_prg(void);                                // rt_prg_cel_scratch, SECSTRT_25
 uint32_t rtCopyRectDesc(uint32_t ulSrc, uint32_t ulDst, uint32_t ulModA, uint32_t ulModD, uint32_t ulWords, uint32_t ulRows);   // rt_prg_copy_rect_desc, LAB_04E2
+
+// ---- the mog twins and the scene cluster's primitives (ROADMAP 11.1d part 2; used by src/rt/combat.cpp and screens.cpp) ----------------
+uint32_t rtLoadCel_mog(const char *szName, uint8_t *pBuf);  // rt_mog_cel_load, LAB_0CBB (src/rt/loaders.cpp)
+uint32_t rtLoadPicFile_mog(const char *szName, uint8_t *pBuf);   // rt_mog_pic_file, LAB_0C27
+void rtRestorePass_mog(void);                               // rt_mog_restore_pass (src/rt/prims.cpp)
+uint32_t rtMogWaitFireC(void);                              // rt_mog_wait_fire, LAB_00EC: wait for fire; the ports as rtMogJoyReadC (src/rt/input.cpp)
+void rtMogKeyWaitC(void);                                   // rt_mog_key_wait, LAB_0B46
+void rtMogCursorOnC(void);                                  // rt_mog_cursor_on, LAB_0575
+void rtMogCursorOffC(void);                                 // rt_mog_cursor_off, LAB_057B
+void rtMogFightPaletteInitC(void);                          // rt_mog_fight_palette_init (src/rt/palette_glue.cpp)
+void rtMogFightPaletteDoneC(void);                          // rt_mog_fight_palette_done
+void rtMogPaletteClearC(void);                              // rt_mog_palette_clear, LAB_03EB
+void rtMogPaletteSceneC(uint32_t ulScene);                  // rt_mog_palette_scene, LAB_03F3
+void rtMogJobsReset(void);                                  // rt_mog_jobs_reset, LAB_0305 (src/rt/mainloop.cpp)
+uint32_t rtMogJobToggle(uint32_t ulOwner);                  // rt_mog_job_toggle, LAB_0319: pause / resume the job of ulOwner; the job (0 none)
+void rtMogFrameStart(void);                                 // rt_mog_frame_start, LAB_031D
+void rtMogFrameWait(void);                                  // rt_mog_frame_wait
+uint8_t *rtMogAddRecord(void);                              // rt_mog_add_record, LAB_0448: the hit rectangle template into the pool (the new record, 0 when full; src/rt/gtext.cpp)
+void rtCreatureDispatch(void);                              // rt_creature_dispatch, LAB_0322 (src/rt/creatures.cpp)
+void rtContactScan(void);                                   // rt_contact_scan, LAB_03BE
+void rtCreatureSpawn(uint32_t ulScript, uint32_t ulFrames, uint32_t ulX, uint32_t ulY, uint32_t ulZ, uint32_t ulFacing, uint32_t ulType, uint32_t *pOut);   // rt_creature_spawn, LAB_02D0: pOut[0] = the new record, [1] = the job result
+void rtCombatTick(void);                                    // rt_combat_tick, LAB_0328 (src/rt/combat_script.cpp)
 
 }  // extern "C"
 

@@ -304,6 +304,10 @@ static void convertAll(uint8_t *g) {          // involution: BE <-> native
     for(unsigned i = 0; i < sizeof cl / sizeof cl[0]; ++i) sw4(g + cl[i]);
     for(unsigned i = 0; i < sizeof cw / sizeof cw[0]; ++i) sw2(g + cw[i]);
     for(int i = 0; i < 2; ++i) sw2(g + @L02EC@ + 2 * i);        // the picker's counters
+    // the script / damage / walk / defence tables a record points to are u32 cells of the owned data, which the C++ reads natively
+    // (fi::cell32, rules/damage.cpp; PC_ENDIAN.md 2): two variants of five tables of 64 longs
+    for(int var = 0; var < 2; ++var)
+        for(int i = 0; i < 5 * 64; ++i) sw4(g + @TABLES@ + 0x600 * var + 4 * i);
 }
 
 // ---- the C++ side ----
@@ -593,7 +597,7 @@ def build_driver():
     oracle += '    if(!strcmp(fn, "K01C6")) return &lab_LAB_01C6;' + chr(10)
     subs = {
         'OPMAP': opmap,
-        'ARENA': '0x%X' % ARENA, 'STACK_LO': '0x%X' % STACK_LO, 'STACK_TOP': '0x%X' % STACK_TOP, 'KNIGHT0': '0x%X' % KNIGHT0,
+        'TABLES': '0x%X' % TABLES, 'ARENA': '0x%X' % ARENA, 'STACK_LO': '0x%X' % STACK_LO, 'STACK_TOP': '0x%X' % STACK_TOP, 'KNIGHT0': '0x%X' % KNIGHT0,
         'HEAP': '0x%X' % HEAP, 'HEAP_N': str(TC.HEAP_N), 'JOBS': '0x%X' % JOBS, 'WORKS': '0x%X' % WORKS,
         'BLOCK': '0x%X' % BLOCK, 'SLOTS': '0x%X' % SLOTS, 'ORACLE': oracle, 'HANDLERMAP': handlermap, 'SOUNDMAP': soundmap,
         'IGNORE': ',\n'.join('    {0x%X, %d}' % (a, n) for a, n in IGNORE),
@@ -616,7 +620,7 @@ def build_driver():
     cmd = [CXX] + os.environ.get('FIGHTERS_CXXFLAGS', '').split() + ['-std=c++17', '-O1', '-D_CRT_SECURE_NO_WARNINGS', '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH', '-fno-exceptions',
            '-fno-rtti', '-w', '-include', os.path.join(tmp, 'tcall.hpp'), '-I', os.path.join(ROOT, 'include'), '-I', tmp, drv,
            os.path.join(ROOT, 'src', 'game', 'fighters.cpp'), os.path.join(ROOT, 'src', 'game', 'creatures.cpp'),
-           os.path.join(ROOT, 'src', 'game', 'fight_creatures.cpp'), os.path.join(ROOT, 'src', 'game', 'fight_ops.cpp'), os.path.join(ROOT, 'src', 'game', 'roster.cpp'),
+           os.path.join(ROOT, 'src', 'game', 'fight_creatures.cpp'), os.path.join(ROOT, 'src', 'game', 'fight_ops.cpp'), os.path.join(ROOT, 'src', 'game', 'roster.cpp'), os.path.join(ROOT, 'src', 'game', 'party_ai_fight.cpp'),
            os.path.join(ROOT, 'src', 'engine', 'util.cpp'), os.path.join(ROOT, 'src', 'game', 'rules', 'damage.cpp')] + [os.path.join(ROOT, 'src', 'game', 'rules', n + '.cpp') for n in ['ai_fight', 'ai_fight_flyer', 'ai_fight_snatcher', 'ai_fight_demon', 'ai_fight_knight', 'ai_fight_dragon', 'ai_fight_brawler', 'ai_fight_caster', 'ai_fight_drake', 'ai_fight_stalker']] + [GAMEDATA_SOURCE] + files + ['-o', exe]
     with open(os.path.join(tmp, 'tcall.hpp'), 'w') as f:
         f.write('#pragma once\n#include "ms/regs.hpp"\nvoid tcallAsm(ms::Regs &, ms::Mem &, unsigned);\n')

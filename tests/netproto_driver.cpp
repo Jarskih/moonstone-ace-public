@@ -79,7 +79,7 @@ static void rndListing(NetListing &l) {
 	l.uwVersion = static_cast<uint16_t>(rnd());
 }
 
-static const uint8_t kTypes[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41};
+static const uint8_t kTypes[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41};
 
 // A random VALID message of the type.
 static void rndMsg(NetMsg &m, uint8_t t) {
@@ -189,7 +189,7 @@ static void rndMsg(NetMsg &m, uint8_t t) {
 			u.ulSession = rndN(3) == 0 ? 0 : rnd();
 			u.ulToken = rnd() | 1;
 			u.ubNode = static_cast<uint8_t>(1 + rndN(3));
-			u.ubFlags = static_cast<uint8_t>(rndN(2));
+			u.ubFlags = static_cast<uint8_t>(rndN(8));
 			u.ulAck = rnd();
 			u.ubCount = static_cast<uint8_t>(rndN(NET_UDP_HISTORY_MAX + 1));
 			u.ulFirst = rnd() >> 1;
@@ -212,6 +212,14 @@ static void rndMsg(NetMsg &m, uint8_t t) {
 			}
 			break;
 		}
+		case NET_MSG_PUNCH_REG:
+			m.u.punchReg.ulSession = rnd(); m.u.punchReg.ulToken = rnd() | 1; m.u.punchReg.ubRole = static_cast<uint8_t>(rndN(2)); m.u.punchReg.ubCaps = static_cast<uint8_t>(rndN(2));
+			m.u.punchReg.ulLocalAddr = rnd(); m.u.punchReg.uwLocalPort = static_cast<uint16_t>(rnd());
+			break;
+		case NET_MSG_PUNCH_INFO:
+			m.u.punchInfo.ulSession = rnd(); m.u.punchInfo.ulToken = rnd() | 1; m.u.punchInfo.ubFlags = static_cast<uint8_t>(rndN(2));
+			m.u.punchInfo.ulPubAddr = rnd(); m.u.punchInfo.uwPubPort = static_cast<uint16_t>(rnd()); m.u.punchInfo.ulLocalAddr = rnd(); m.u.punchInfo.uwLocalPort = static_cast<uint16_t>(rnd());
+			break;
 		case NET_MSG_HASH: m.u.hash.ulTick = rnd(); m.u.hash.ulCrc = rnd(); break;
 		case NET_MSG_PING:
 		case NET_MSG_PONG: m.u.ping.ulToken = rnd(); break;
@@ -368,6 +376,14 @@ static void fixedMsg(NetMsg &m, uint8_t t) {
 			for(uint8_t i = 0; i < 2; ++i) {
 				for(uint8_t k = 0; k < 3; ++k) m.u.tickUdp.aaFrames[i][k] = fixedFrame(static_cast<uint8_t>(10 * i + k));
 			}
+			break;
+		case NET_MSG_PUNCH_REG:
+			m.u.punchReg.ulSession = 0xA1B2C3D4; m.u.punchReg.ulToken = 0xC0FFEE11; m.u.punchReg.ubRole = NET_ROLE_CLIENT; m.u.punchReg.ubCaps = NET_PUNCH_CAP_DIRECT;
+			m.u.punchReg.ulLocalAddr = 0xC0A80114; m.u.punchReg.uwLocalPort = 51234;
+			break;
+		case NET_MSG_PUNCH_INFO:
+			m.u.punchInfo.ulSession = 0xA1B2C3D4; m.u.punchInfo.ulToken = 0xC0FFEE11; m.u.punchInfo.ubFlags = NET_PUNCH_INFO_LOCAL;
+			m.u.punchInfo.ulPubAddr = 0x5DB8D822; m.u.punchInfo.uwPubPort = 40001; m.u.punchInfo.ulLocalAddr = 0xC0A80115; m.u.punchInfo.uwLocalPort = 6502;
 			break;
 		case NET_MSG_HASH: m.u.hash.ulTick = 50; m.u.hash.ulCrc = 0xCBF43926; break;
 		case NET_MSG_PING: case NET_MSG_PONG: m.u.ping.ulToken = 0x11223344; break;
@@ -735,6 +751,28 @@ static void testFieldErrors() {
 }
 
 // The UDP messages (protocol 6): every field check of INPUT_UDP / TICK_UDP, the sizes, and "one datagram = one message".
+// The hole punching messages (NETPLAY.md 2.2b): sizes, field checks.
+static void testPunch() {
+	NetMsg m, d;
+	uint8_t b[NET_MSG_MAX];
+	uint32_t n, u;
+	const uint32_t P = NET_HEADER_BYTES;
+	fixedMsg(m, NET_MSG_PUNCH_REG); n = enc(m, b, sizeof b);
+	check(n == P + 16 && decodeGuarded(b, n, d, u) == NET_OK && netMsgEqual(m, d), "PUNCH_REG round trip, 16 bytes");
+	fixedMsg(m, NET_MSG_PUNCH_REG); m.u.punchReg.ulToken = 0; n = enc(m, b, sizeof b);
+	check(n == 0, "PUNCH_REG token 0 does not encode");
+	fixedMsg(m, NET_MSG_PUNCH_REG); n = enc(m, b, sizeof b); b[P + 8] = 2;
+	check(decodeGuarded(b, n, d, u) == NET_ERR_FIELD, "PUNCH_REG role 2");
+	fixedMsg(m, NET_MSG_PUNCH_REG); n = enc(m, b, sizeof b); b[P + 9] = 2;
+	check(decodeGuarded(b, n, d, u) == NET_ERR_FIELD, "PUNCH_REG unknown capability bit");
+	fixedMsg(m, NET_MSG_PUNCH_INFO); n = enc(m, b, sizeof b);
+	check(n == P + 21 && decodeGuarded(b, n, d, u) == NET_OK && netMsgEqual(m, d), "PUNCH_INFO round trip, 21 bytes");
+	fixedMsg(m, NET_MSG_PUNCH_INFO); n = enc(m, b, sizeof b); b[P + 8] = 2;
+	check(decodeGuarded(b, n, d, u) == NET_ERR_FIELD, "PUNCH_INFO unknown flag");
+	fixedMsg(m, NET_MSG_PUNCH_INFO); n = enc(m, b, sizeof b); b[P + 7] = 0; b[P + 6] = 0; b[P + 5] = 0; b[P + 4] = 0;
+	check(decodeGuarded(b, n, d, u) == NET_ERR_FIELD, "PUNCH_INFO token 0");
+}
+
 static void testUdp() {
 	uint8_t b[NET_MSG_MAX];
 	NetMsg m, d;
@@ -764,7 +802,7 @@ static void testUdp() {
 	b[P + 8] = 4;
 	check(decodeGuarded(b, n, d, u) == NET_ERR_FIELD, "INPUT_UDP node 4");
 	fixedMsg(m, NET_MSG_INPUT_UDP); n = enc(m, b, sizeof b);
-	b[P + 9] = 2;
+	b[P + 9] = 8;
 	check(decodeGuarded(b, n, d, u) == NET_ERR_FIELD, "INPUT_UDP unknown flag");
 	fixedMsg(m, NET_MSG_INPUT_UDP); n = enc(m, b, sizeof b);
 	b[P + 18] = NET_UDP_HISTORY_MAX + 1;
@@ -938,6 +976,7 @@ static void testSizes() {
 		{NET_MSG_PONG, 4}, {NET_MSG_BYE, 3}, {NET_MSG_DROP, 5}, {NET_MSG_ANNOUNCE, 27}, {NET_MSG_REGISTER, 27}, {NET_MSG_REFRESH, 2},
 		{NET_MSG_UNREGISTER, 0}, {NET_MSG_LIST_REQ, 4}, {NET_MSG_JOIN_REQ, 11}, {NET_MSG_JOIN_REPLY, 13}, {NET_MSG_RELAY_HELLO, 5}, {NET_MSG_REGISTER_REPLY, 9},
 		{NET_MSG_REJOIN, 16}, {NET_MSG_REJOIN_OK, 1}, {NET_MSG_STATE_BEGIN, 21}, {NET_MSG_STATE_END, 6}, {NET_MSG_RESUME, 8}, {NET_MSG_BOUNDARY, 9},
+		{NET_MSG_PUNCH_REG, 16}, {NET_MSG_PUNCH_INFO, 21},
 	};
 	for(size_t i = 0; i < sizeof k / sizeof k[0]; ++i) {
 		netMsgInit(m, k[i].t);
@@ -969,7 +1008,7 @@ static void testSizes() {
 int main(int argc, char **argv) {
 	if(argc > 1 && strcmp(argv[1], "dump") == 0) {
 		static const char *const names[] = {"HELLO", "CONFIG", "READY", "SEED", "INPUT", "TICK", "HASH", "PING", "PONG", "BYE", "DROP",
-			"LOBBY_PICK", "LOBBY_STATE", "REJOIN", "REJOIN_OK", "STATE_BEGIN", "STATE_CHUNK", "STATE_END", "RESUME", "BOUNDARY", "INPUT_UDP", "TICK_UDP", "ANNOUNCE",
+			"LOBBY_PICK", "LOBBY_STATE", "REJOIN", "REJOIN_OK", "STATE_BEGIN", "STATE_CHUNK", "STATE_END", "RESUME", "BOUNDARY", "INPUT_UDP", "TICK_UDP", "PUNCH_REG", "PUNCH_INFO", "ANNOUNCE",
  "REGISTER", "REFRESH", "UNREGISTER", "LIST_REQ", "LIST_REPLY", "JOIN_REQ", "JOIN_REPLY", "RELAY_HELLO", "REGISTER_REPLY"};
 		for(size_t i = 0; i < sizeof kTypes; ++i) {
 			NetMsg m;
@@ -1009,6 +1048,7 @@ int main(int argc, char **argv) {
 	testHeaderErrors();
 	testFieldErrors();
 	testUdp();
+	testPunch();
 	testFuzz();
 	testFramer();
 	if(g_fail) {

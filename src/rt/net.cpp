@@ -718,6 +718,38 @@ LONG NetTransport::udpRecv(void *pBuf, ULONG ulCap, ULONG &ulAddr, UWORD &uwPort
 	return lRc;
 }
 
+bool NetTransport::udpLocal(ULONG &ulAddr, UWORD &uwPort) {
+	if(!m_sUdp.isOpen()) {
+		return false;
+	}
+	LONG lTcp = -1;   // any open connection to a lobby or a peer: the address the stack picked for it is the one it would pick for the datagrams
+	for(UBYTE i = 0; i < NET_LINKS && lTcp < 0; ++i) {
+		lTcp = m_aConn[i].isOpen() ? m_aConn[i].fd() : -1;
+	}
+	if(lTcp < 0 && m_lobby.isOpen()) {
+		lTcp = m_lobby.fd();
+	}
+	if(lTcp < 0 && m_relay.isOpen()) {
+		lTcp = m_relay.fd();
+	}
+	if(lTcp < 0) {
+		return false;
+	}
+	struct sockaddr_in sAddr;
+	ULONG ulLen = sizeof(sAddr);
+	if(bsd::getsockname(lTcp, &sAddr, &ulLen) < 0 || sAddr.sin_addr.s_addr == 0) {
+		return false;
+	}
+	const ULONG ulIp = sAddr.sin_addr.s_addr;
+	ulLen = sizeof(sAddr);
+	if(bsd::getsockname(m_sUdp.fd(), &sAddr, &ulLen) < 0 || sAddr.sin_port == 0) {
+		return false;
+	}
+	ulAddr = ulIp;
+	uwPort = sAddr.sin_port;
+	return true;
+}
+
 void NetTransport::closeAll() {
 	closeStreams();
 	m_sUdp.close();

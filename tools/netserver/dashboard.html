@@ -44,6 +44,10 @@ a { color: #c7ab6a; }
 .guide ol, .guide ul { padding-left: 22px; }
 .guide li { margin: 6px 0; }
 .note { background: #1a2230; border: 1px solid #2b374a; border-left: 3px solid #c7ab6a; border-radius: 8px; padding: 14px 18px; color: #c3cbd8; line-height: 1.6; }
+.platform { background: #151c27; border: 1px solid #2b374a; border-radius: 10px; margin: 14px 0; padding: 0 18px; }
+.platform summary { cursor: pointer; font-size: 18px; font-weight: 700; color: #e9edf4; padding: 14px 0; }
+.platform[open] summary { border-bottom: 1px solid #2b374a; margin-bottom: 4px; }
+.platform h3 { margin-top: 18px; }
 .soon { font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 3px 7px; border-radius: 5px; background: #253549; color: #b8d4f5; vertical-align: 2px; }
 code { font: 13px ui-monospace, monospace; background: #1a2230; border: 1px solid #2b374a; border-radius: 5px; padding: 1px 6px; color: #e9edf4; }
 pre { background: #1a2230; border: 1px solid #2b374a; border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
@@ -82,88 +86,46 @@ Source code, releases and bug reports: <a href="https://github.com/Jarskih/moons
 
 <section class="guide" id="play" aria-labelledby="play-title">
 <div class="eyebrow">GUIDE</div>
-<h2 id="play-title">How to install and play Moonstone online</h2>
-<p class="note">Network play is new and still being tested. Up to four knights can play together, in the original rules
-(<em>Classic</em>) or as a party (<em>Co-op</em>). Two players are tested first. Parts marked <span class="soon">COMING</span>
-are not in the game yet.</p>
+<h2 id="play-title">How to get and play Moonstone</h2>
+<p class="note">You need your own copy of Moonstone (Mindscape, 1991): the three original disks or disk images (<code>.adf</code>) made from them.
+The downloads contain none of the original game; it reads your disks when it starts.</p>
 
-<h3>1. What you need</h3>
+<details class="platform">
+<summary>Windows PC</summary>
+<h3>Get it</h3>
+<ol>
+<li>Download <code>moonstone-ace-…-windows.zip</code> from <a href="https://github.com/Jarskih/moonstone-ace-public/releases">Releases</a> and unzip it.</li>
+<li>Copy your three disk images (<code>.adf</code>) into its <code>disks</code> folder. The file names do not matter.</li>
+<li>Start <code>moonstone.exe</code>. If Windows asks for a runtime, install the Microsoft Visual C++ Redistributable (x86).</li>
+</ol>
+<h3>Play</h3>
 <ul>
-<li><strong>Your own copy of Moonstone</strong> (Mindscape, 1991): the three original disks, or disk images (<code>.adf</code>) made from them.
-Moonstone ACE contains none of the original game data; it reads everything from your disks.</li>
-<li><strong>An Amiga 1200</strong> (68020, AGA, Kickstart 3.x). Fast RAM is recommended. Or the
-<strong>WinUAE</strong> emulator on a PC, set up as an A1200.</li>
-<li><strong>A TCP/IP stack</strong> that provides <code>bsdsocket.library</code>: Roadshow, AmiTCP, Genesis or Miami all work.
-In WinUAE you need no stack at all: tick <em>bsdsocket.library</em> under Settings → Hardware → Expansions.</li>
-<li><strong>A network connection</strong> for a real Amiga, for example a PCMCIA Ethernet or WiFi card, a Plipbox on the parallel port,
-or a serial (PPP) link to a PC.</li>
-<li><strong>A joystick or the keyboard.</strong> Each player plays on their own Amiga with a joystick or the keyboard:
-arrow keys + Ctrl (or right Shift) as fire, or WASD + Alt as fire. Choose it on the knight screen's <em>Control</em> line.</li>
-<li><strong>THEA1200:</strong> the game runs on it, but whether its built-in emulator lets games use the network is not known yet.</li>
+<li>Cursor keys and Right Ctrl or Space; a second player in co-op uses W A S D and Alt; gamepads work too.</li>
+<li>F11 fullscreen, F12 CRT effect, F10 shows or hides the ping line in online games.</li>
+<li><strong>Online:</strong> Multiplayer, then <strong>Find</strong> to join a public game, or <strong>Host game</strong> to start one (no router setup needed;
+allow Moonstone through the Windows firewall when asked). On the same home network, <strong>Join game</strong> with the host's address,
+for example <code>192.168.1.20</code>. Choose your knight in the lobby; the host starts the game.</li>
 </ul>
+</details>
 
-<h3>2. Install</h3>
-<p class="note">Online play needs the next release. The current download, v0.1.0, plays the full game on one Amiga (up to four
-knights taking turns) but has no network play yet. The steps below are the same for the coming release. <span class="soon">COMING</span></p>
+<details class="platform">
+<summary>Amiga 1200</summary>
+<h3>Get it</h3>
 <ol>
-<li>Download the latest <code>moonstone-ace-…-amiga1200.zip</code> from the
-<a href="https://github.com/Jarskih/moonstone-ace-public/releases" rel="noopener">releases page on GitHub</a> and extract it.
-It is an Amiga program, not a Windows one, and contains none of the original game.</li>
-<li>Copy your three original Moonstone disk images (<code>.adf</code>) into the extracted <code>moonstone-ace</code> folder, beside
-the <code>moonstone</code> program, or into a <code>disks</code> folder inside it. The file names do not matter; the game recognises each disk.</li>
-<li>Copy the folder to your Amiga hard disk, for example <code>DH0:moonstone-ace</code>, and start it from a Shell with
-<code>DH0:moonstone-ace/moonstone</code>, or give <code>moonstone</code> a Tool icon and double-click it.
-In WinUAE, add the folder as a directory hard drive of an A1200 configuration. Full instructions are in the
-<a href="https://github.com/Jarskih/moonstone-ace-public#how-to-play" rel="noopener">README</a>.</li>
-<li>Start your TCP/IP stack (Roadshow and the others usually start it from the startup-sequence) and check that the Amiga is online.</li>
-<li>Start Moonstone. If the stack is not running the game still works, it just cannot play online; the Multiplayer screen then says
-<code>NO TCP IP STACK</code>.</li>
+<li>Download <code>moonstone-ace-…-amiga.zip</code> from <a href="https://github.com/Jarskih/moonstone-ace-public/releases">Releases</a>, unzip it and copy the
+<code>Moonstone</code> drawer to your hard disk.</li>
+<li>Put your three disk images (<code>.adf</code>) into <code>Moonstone/disks</code>.</li>
+<li>Start <code>moonstone</code> from a Shell or its icon.</li>
 </ol>
-<p>Every player needs the <strong>same game version</strong> and the same settings (gore, enhanced graphics, mods). A different version is
-refused, and the game says which version the host runs.</p>
-
-<h3>3. Host a game</h3>
-<ol>
-<li>On the title screen choose <strong>Multiplayer</strong>, then <strong>Name</strong> to set your name.</li>
-<li>Choose <strong>Host game</strong>. The screen shows <em>Waiting for players</em> and the names of everyone who joins (up to three).</li>
-<li>Tell the other players your address (see section 5), then press <strong>Start</strong> when everyone is in.</li>
-<li>Everyone returns to the title menu, which the host controls: choose <em>Players</em> (Classic) or <em>Coop 2</em>–<em>Coop 4</em>, then
-<em>Select Knight</em>. Each player steers their own knight with their own joystick or keyboard.</li>
-</ol>
-
-<h3>4. Join a game</h3>
-<ol>
-<li>On the title screen choose <strong>Multiplayer</strong>, set your <strong>Name</strong>, then <strong>Join game</strong>.</li>
-<li>Type the host's <strong>Address</strong> (numbers and dots, for example <code>192.168.1.20</code>, or a host name) and the
-<strong>Port</strong> (normally <code>6502</code>), then choose <strong>Connect</strong>.</li>
-<li>The status line shows <em>Connected, waiting for host</em>. The game starts when the host presses Start.</li>
-</ol>
-<p>From a Shell you can fill in the screen in advance:</p>
-<pre><code>moonstone HOST NAME Arthur
-moonstone JOIN 192.168.1.20 PORT 6502 NAME Lancelot</code></pre>
-<p>Your name, address and port are remembered in <code>net.ini</code> in the game's drawer.</p>
-
-<h3>5. Playing over the internet</h3>
+<h3>Play</h3>
 <ul>
-<li><strong>Same home network:</strong> join with the host's local address (for example <code>192.168.1.20</code>). Nothing else to set up.</li>
-<li><strong>Over the internet, direct:</strong> the host forwards <strong>TCP port 6502</strong> on their router to their Amiga (or to the PC
-running WinUAE) and gives the other players their public IP address.</li>
-<li><strong>Public games and the relay</strong> <span class="soon">COMING</span>: a <em>Find game</em> screen in the game will list public games
-(the same list as on this page) and join them with one button. Hosts that cannot forward a port will play through this server's relay,
-and no IP addresses are handed to strangers.</li>
-<li>All players' machines run the game in step, so a game plays at the pace of the slowest machine and connection.</li>
+<li>Joystick or keyboard; co-op knights can use a second joystick or the keyboard.</li>
+<li><strong>Online:</strong> use <code>moonstone-ace-…-amiga-netplay.zip</code> instead (needs fast RAM and a TCP/IP stack: Roadshow, AmiTCP, Genesis or
+Miami). Then Multiplayer, <strong>Find</strong> or <strong>Host game</strong>, or <strong>Join game</strong> with the host's address on a home network.</li>
 </ul>
+</details>
 
-<h3>6. If something goes wrong</h3>
-<div class="table-wrap">
-<table><thead><tr><th>Message</th><th>What to do</th></tr></thead><tbody>
-<tr><td>NO TCP IP STACK</td><td>Start your TCP/IP stack before the game (in WinUAE: enable <em>bsdsocket.library</em>).</td></tr>
-<tr><td>NO ANSWER</td><td>Check the address and port; the host must be on the Host game screen; over the internet the host must forward TCP port 6502.</td></tr>
-<tr><td>WRONG VERSION</td><td>Everyone needs the same Moonstone ACE version and the same settings (gore, enhanced graphics, mods).</td></tr>
-<tr><td>ENTER AN ADDRESS / BAD PORT</td><td>Type the host's address and a port number from 1 to 65535.</td></tr>
-</tbody></table>
-</div>
-<p>The address field accepts letters, numbers and dots only; the game's font has no <code>-</code> or <code>:</code>, which is why the port has its own field.</p>
+<p>Everyone in an online game needs the same game version. Windows and Amiga cannot play together yet.</p>
 </section>
 </main>
 <script>

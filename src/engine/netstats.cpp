@@ -170,6 +170,7 @@ uint8_t netStatsFormat(const NetStatsView &v, char (&acOut)[NS_TEXT_MAX]) {
 	} else {
 		appendText(acOut, ubPos, "TCP");
 	}
+	appendText(acOut, ubPos, "  F10");   // the key that hides the line
 	return ubPos;
 }
 

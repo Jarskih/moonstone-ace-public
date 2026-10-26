@@ -1,10 +1,10 @@
 // rt/party_turn - see rt/party_turn.hpp.  Moonstone 2 co-op (ROADMAP 8.5a, docs/MOONSTONE2.md 2.8): the cues that tell the players whose
-// turn it is on the place screens of the shop queue: the knight's token and name in the upper-left corner for the whole turn, and the
+// turn it is on the place screens of the shop queue: the knight's name between the switch arrows in the upper-left corner for the whole turn, and the
 // banner "SIR <NAME>'S TURN" once at the start of it.  What is shown is decided in game/party_turn.hpp (pure, host-tested); this file
-// draws it with the game's own text printer and cel blitter and plain bitplane writes for the boxes.
+// draws it with the game's own text printer and cel blitter and plain bitplane writes for the banner's box and the arrows.
 //
-// Town pictures (parchment menu on the right) get the town menu's own font (plain black like "Visit") on a parchment-coloured box, the colour read from the menu itself; only the token is coloured (owner 2026-10-10);
-// the shop / temple / wizard screens are black sheets and get the small white menu font on a black box.
+// The banner on a town picture gets the town menu's own font (plain black like "Visit") on a parchment-coloured box, the colour read from the menu itself;
+// the shop / temple / wizard screens are black sheets and get the small white menu font.  The corner has no box (owner 2026-10-26): name and arrows with an outline.
 #include "rt/party_turn.hpp"
 
 #include "game/party_turn.hpp"
@@ -21,7 +21,6 @@ extern "C" {
 extern uint32_t mogBackground, mogDrawScreen, mogShownScreen;   // LAB_05C0, LAB_0D92, SECSTRT_35: the clean picture, the screen drawn, the screen shown
 extern uint16_t mogTextFlag;                                     // LAB_0D05: 1 while a screen loop prints (the printer clears it when it is done)
 extern uint32_t mogSmallFont[5];                                 // LAB_05E3: the font tables ([0] = the small menu font, [4] = the big title font)
-extern uint32_t mogMapCelTable;                                  // the map's cel table (the token sprites), resident while a place is visited
 void rtScreenRedraw(void);                                       // src/rt/combat.cpp: LAB_04D4
 }
 
@@ -37,9 +36,9 @@ constexpr UWORD kScreenH = 200;
 constexpr UWORD kBannerX = 2, kBannerY = 2, kBannerW = 252, kBannerH = 20, kBannerTextX = 14, kBannerTextY = 5;
 // The banner on a black sheet: small white text centred over the screen (the sheets are 320 wide).
 constexpr UWORD kSheetTextY = 4, kStyleCentre = 1;       // ms::TEXT_CENTRE
-// The corner: a box (1 px black frame): arrow "<", the knight's token, the name, arrow ">" (owner 2026-10-10: the arrows switch the
-// active knight; with one living knight there are none).  The arrow hit rectangles are full box height.
-constexpr UWORD kCornerX = 2, kCornerY = 2, kCornerW = 126, kCornerH = 20, kTokenX = 14, kTokenY = 4, kNameX = 34, kNameY = 5, kNameChars = 8;
+// The corner: arrow "<", the knight's name, arrow ">" (owner 2026-10-10: the arrows switch the
+// active knight; with one living knight there are none).  The arrow hit rectangles are 12 px wide and kCornerH high.
+constexpr UWORD kCornerX = 2, kCornerY = 2, kCornerW = 126, kCornerH = 20, kNameX = 34, kNameY = 5, kNameChars = 8;
 constexpr UWORD kArrowW = 12, kArrowGlyphW = 5, kArrowGlyphH = 9, kArrowGlyphY = 7;
 constexpr UWORD kArrowLX = kCornerX, kArrowRX = kCornerX + kCornerW - kArrowW;   // the hit rectangles' left edges
 // The parchment's colour is read from the town menu at a spot between two labels.
@@ -101,7 +100,7 @@ void blackenText(uint32_t ulScreen, UWORD uwX, UWORD uwY, UWORD uwW, UWORD uwH, 
 	}
 }
 
-// ---- text and token -----------------------------------------------------------------------------------------------------------
+// ---- text -----------------------------------------------------------------------------------------------------------
 
 void setTarget(uint32_t ulScreen) { rt::setDrawTarget(ulScreen); }   // the screen the printer and the cel blitter draw into
 
@@ -115,13 +114,7 @@ void drawLine(const char *szText, UWORD uwX, UWORD uwY, UWORD uwStyle, UWORD uwF
 	mogTextFlag = uwFlag;
 }
 
-// The knight's bright map sprite (kind + 5, the sprite the party token has on the map) at uwX, uwY.
-void drawToken(UWORD uwX, UWORD uwY) {
-	if(mogMapCelTable == 0) return;
-	rtDrawCel_mog(curKnight().ulKind + 5, uwX, uwY, reinterpret_cast<const uint8_t *>(mogMapCelTable));
-}
-
-// The name for the corner: without "SIR " (the banner says it; the name buffers keep a space as '_'), cut to what the box holds.
+// The name for the corner: without "SIR " (the banner says it; the name buffers keep a space as '_'), cut to what the corner holds.
 void cornerName(char *pOut) {
 	const uint8_t *pName = curName();
 	if(pName && (pName[0] | 0x20) == 's' && (pName[1] | 0x20) == 'i' && (pName[2] | 0x20) == 'r' && (pName[3] == ' ' || pName[3] == '_')) pName += 4;
@@ -129,36 +122,90 @@ void cornerName(char *pOut) {
 }
 
 // An arrow (kArrowGlyphW x kArrowGlyphH triangle) with its left edge at uwX.
-void drawArrow(uint32_t ulScreen, UWORD uwX, bool bRight, UWORD uwIdx) {
+void drawArrow(uint32_t ulScreen, UWORD uwX, bool bRight, UWORD uwIdx, WORD wDy) {
 	for(UWORD r = 0; r < kArrowGlyphH; ++r) {
 		const UWORD uwD = r < kArrowGlyphH / 2 ? (UWORD)(kArrowGlyphH / 2 - r) : (UWORD)(r - kArrowGlyphH / 2);   // distance from the middle row
 		const UWORD uwLen = (UWORD)(kArrowGlyphW - uwD);
-		fillRect(ulScreen, bRight ? uwX : (UWORD)(uwX + uwD), (UWORD)(kCornerY + kArrowGlyphY + r - kArrowGlyphH / 2), uwLen, 1, uwIdx);
+		fillRect(ulScreen, bRight ? uwX : (UWORD)(uwX + uwD), (UWORD)(kCornerY + kArrowGlyphY + r - kArrowGlyphH / 2 + 1 + wDy), uwLen, 1, uwIdx);
 	}
 }
 
-// The first pixel in the name rectangle that is not the box colour (the sheet's own text colour); uwDefault when there is none.
-UWORD inkOf(uint32_t ulScreen, UWORD uwBox, UWORD uwDefault) {
-	for(UWORD y = kCornerY; y < kCornerY + kCornerH; ++y)
-		for(UWORD x = kNameX; x < kNameX + 8 * kNameChars; ++x)
-			if(pixelAt(ulScreen, x, y) != uwBox) return pixelAt(ulScreen, x, y);
-	return uwDefault;
+// The corner is "<  NAME  >" straight on the picture (owner 2026-10-26: no box, no token): white menu-font text with a 1 px black outline
+// so it reads on any picture.  A town picture keeps the corner in its clean background, so the pixels under it are saved once and put back
+// before the next knight's name is drawn; a sheet's redraw repaints the corner area itself (the background blit), nothing to restore.
+constexpr UWORD kAreaY = 1, kAreaBytes = 17, kAreaRows = 22, kAreaPlanes = 6;   // bytes 0..16 (x 0..135) and rows 1..22: the corner and its outline
+uint8_t s_aubSave[kAreaPlanes][kAreaRows][kAreaBytes];   // the town picture's own pixels under the corner
+uint8_t s_aubBase[kAreaPlanes][kAreaRows][kAreaBytes];   // the area before the text of this draw
+bool s_bSaved;
+
+void copyArea(uint32_t ulScreen, uint8_t (*pDst)[kAreaRows][kAreaBytes], bool bToScreen, const uint8_t (*pSrc)[kAreaRows][kAreaBytes]) {
+	for(UWORD p = 0; p < planes(); ++p) {
+		for(UWORD y = 0; y < kAreaRows; ++y) {
+			uint8_t *pRow = rowAt(ulScreen, p, kAreaY + y);
+			for(UWORD i = 0; i < kAreaBytes; ++i) {
+				if(bToScreen) pRow[i] = pSrc[p][y][i];
+				else pDst[p][y][i] = pRow[i];
+			}
+		}
+	}
 }
 
-// Box, token and name into ulScreen.  bTown: parchment box (colour uwBox) else a black box; plain text in the menu font on both.
-void drawCorner(uint32_t ulScreen, bool bTown, UWORD uwBox) {
+// Every pixel of the corner area that differs from the snapshot s_aubBase becomes colour 0 (the outline pass).
+void blackenChanged(uint32_t ulScreen) {
+	for(UWORD y = 0; y < kAreaRows; ++y) {
+		for(UWORD i = 0; i < kAreaBytes; ++i) {
+			uint8_t ubDiff = 0;
+			for(UWORD p = 0; p < planes(); ++p) ubDiff = (uint8_t)(ubDiff | (rowAt(ulScreen, p, kAreaY + y)[i] ^ s_aubBase[p][y][i]));
+			for(UWORD p = 0; p < planes(); ++p) rowAt(ulScreen, p, kAreaY + y)[i] &= (uint8_t)~ubDiff;
+		}
+	}
+}
+
+// The colour the text came out in: the first non-black pixel that differs from the snapshot.
+UWORD inkOfText(uint32_t ulScreen) {
+	for(UWORD y = 0; y < kCornerH; ++y) {
+		for(UWORD x = kNameX; x < kNameX + 8 * kNameChars; ++x) {
+			const UWORD uwPix = pixelAt(ulScreen, x, kCornerY + y);
+			if(uwPix == 0) continue;
+			bool bSame = true;
+			for(UWORD p = 0; p < planes(); ++p) {
+				const UWORD uwByte = (UWORD)(x >> 3);
+				bSame = bSame && ((rowAt(ulScreen, p, kCornerY + y)[x >> 3] ^ s_aubBase[p][kCornerY + y - kAreaY][uwByte]) & (0x80 >> (x & 7))) == 0;
+			}
+			if(!bSame) return uwPix;
+		}
+	}
+	return 1;
+}
+
+// Name and arrows with the outline: black copies one pixel to each side, then the text and the glyphs in their own colour on top.
+void drawCorner(uint32_t ulScreen, bool bTown) {
 	char szName[kNameChars + 1];
 	cornerName(szName);
-	drawBox(ulScreen, kCornerX, kCornerY, kCornerW, kCornerH, bTown ? uwBox : 0);
+	if(bTown) {
+		if(s_bSaved) copyArea(ulScreen, nullptr, true, s_aubSave);
+		else {
+			copyArea(ulScreen, s_aubSave, false, nullptr);
+			s_bSaved = true;
+		}
+	}
+	copyArea(ulScreen, s_aubBase, false, nullptr);
 	setTarget(ulScreen);
-	drawToken(kTokenX, kTokenY);
-	drawLine(szName, kNameX, bTown ? kNameY : kNameY + 3, 0, 0);
-	if(bTown) blackenText(ulScreen, kNameX, kCornerY, 8 * kNameChars, kCornerH, uwBox);
-	uint32_t aulMember[ms::game::PARTY_MAX];
-	if(rt::shopMembers(aulMember) >= 2) {                           // two or more living knights: the arrows
-		const UWORD uwInk = bTown ? 0 : inkOf(ulScreen, 0, 1);
-		drawArrow(ulScreen, kArrowLX + 3, false, uwInk);
-		drawArrow(ulScreen, kArrowRX + 3, true, uwInk);
+	const bool bArrows = rt::shopHumans() >= 2;                     // two or more living human knights: the arrows
+	static const int8_t s_aiOff[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+	for(UWORD o = 0; o < 4; ++o) {
+		drawLine(szName, (UWORD)(kNameX + s_aiOff[o][0]), (UWORD)(kNameY + 1 + s_aiOff[o][1]), 0, 0);
+		if(bArrows) {
+			drawArrow(ulScreen, (UWORD)(kArrowLX + 3 + s_aiOff[o][0]), false, 1, (WORD)s_aiOff[o][1]);
+			drawArrow(ulScreen, (UWORD)(kArrowRX + 3 + s_aiOff[o][0]), true, 1, (WORD)s_aiOff[o][1]);
+		}
+		blackenChanged(ulScreen);
+	}
+	drawLine(szName, kNameX, kNameY + 1, 0, 0);
+	if(bArrows) {
+		const UWORD uwInk = inkOfText(ulScreen);
+		drawArrow(ulScreen, kArrowLX + 3, false, uwInk, 0);
+		drawArrow(ulScreen, kArrowRX + 3, true, uwInk, 0);
 		s_bArrowsLive = true;
 	}
 }
@@ -204,6 +251,7 @@ namespace rt {
 void turnActivate(bool bOn) {
 	s_bActive = bOn;
 	s_bArrowsLive = false;
+	s_bSaved = false;
 	s_bBannerDue = false;
 }
 
@@ -213,8 +261,8 @@ void turnBegin() {
 
 void turnCorner(bool bTownA) {
 	if(!s_bActive) return;
-	const UWORD uwParchment = pixelAt(mogBackground, bTownA ? kSampleXA : kSampleXB, kSampleY);
-	drawCorner(mogBackground, true, uwParchment);                   // the clean picture: every redraw of the town keeps it
+
+	drawCorner(mogBackground, true);                   // the clean picture: every redraw of the town keeps it
 }
 
 void turnBanner(bool bTownA) {
@@ -224,7 +272,7 @@ void turnBanner(bool bTownA) {
 }
 
 void turnCornerScreen() {
-	if(s_bActive) drawCorner(mogDrawScreen, false, 0);
+	if(s_bActive) drawCorner(mogDrawScreen, false);
 }
 
 void turnBannerScreen() {
@@ -233,7 +281,7 @@ void turnBannerScreen() {
 	bannerRun(false, 0, rtScreenRedraw);
 }
 
-void turnArrowsOff() { s_bArrowsLive = false; }
+void turnArrowsOff() { s_bArrowsLive = false; s_bSaved = false; }
 
 bool turnArrowHit(uint32_t ulX, uint32_t ulY, uint32_t *pRegion) {
 	if(!s_bArrowsLive || ulY < kCornerY || ulY >= (uint32_t)(kCornerY + kCornerH)) return false;

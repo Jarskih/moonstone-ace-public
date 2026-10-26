@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "engine/addrcell.hpp"
 #include "engine/origfill.hpp"
 
 namespace rt {
@@ -30,6 +31,9 @@ extern const OrigFile g_origFiles[];
 extern const unsigned g_origFileCount;
 extern const OwnedObject g_ownedObjects[];
 extern const unsigned g_ownedObjectCount;
+// Little-endian target only (gen_data --target pc32): the pointer cells of the owned objects, for ms::addr::setCells at start-up.
+extern const ms::addr::CellObject g_ownedPtrCells[];
+extern const unsigned g_ownedPtrCellCount;
 
 // Fill every owned object (and the synth tables) from the original executables. On failure it has called rt::fatal() with a
 // message naming the missing / wrong file and returns false: the game must not start.

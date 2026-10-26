@@ -23,6 +23,7 @@
 #include <stdint.h>
 
 #include "engine/artcheck.hpp"
+#include "engine/endian.hpp"
 #include "engine/loaders.hpp"
 
 
@@ -234,10 +235,11 @@ LOADER_ENTRY uint32_t rtHitLoad_mog(const char *szName, uint8_t *pCelDest) {
 	if(lBytes < 0) {
 		return 0xFFFFFFFFu;
 	}
-	uint32_t *pPair = reinterpret_cast<uint32_t *>(mogHitPairs);
-	pPair[0] = addr(pCelDest);
-	pPair[1] = addr(pOut);
-	mogHitPairs = addr(pPair + 2);
+	// The pair table is a big-endian byte blob (LAB_0A51: creatures.cpp hitSetFind reads it with be::ld32): write the two longs as bytes.
+	uint8_t *pPair = reinterpret_cast<uint8_t *>((uintptr_t)mogHitPairs);
+	ms::be::st32(pPair, addr(pCelDest));
+	ms::be::st32(pPair + 4, addr(pOut));
+	mogHitPairs = addr(pPair + 8);
 	mogHitData = addr(pOut + lBytes);
 	return celLoad(s_mog, szName, pCelDest);
 }

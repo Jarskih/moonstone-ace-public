@@ -1,6 +1,8 @@
 // engine/restore - see restore.hpp.  mog.asm LAB_039E..LAB_03A6, program.asm LAB_0242..LAB_024A.
 #include "engine/restore.hpp"
 
+#include "engine/endian.hpp"
+
 namespace ms {
 
 namespace {
@@ -86,17 +88,35 @@ bool planRestoreRect(const DirtyRect &r, RestoreBlit &out) {
 	return true;
 }
 
+namespace {
+#if MS_BIG_ENDIAN
+inline const DirtyRect &loadRect(const DirtyRect *p) { return *p; }
+#else
+// The list is the game's draw list: big-endian words written by the draw events (game/combat_script, engine/anim, rt/gtext), whatever the CPU.
+inline DirtyRect loadRect(const DirtyRect *p) {
+	const uint8_t *q = reinterpret_cast<const uint8_t *>(p);
+	DirtyRect r;
+	r.x = (int16_t)be::ld16(q);
+	r.y = (int16_t)be::ld16(q + 2);
+	r.w = (int16_t)be::ld16(q + 4);
+	r.h = (int16_t)be::ld16(q + 6);
+	return r;
+}
+#endif
+}  // namespace
+
 uint32_t runRestore(const DirtyRect *list, uint32_t maxEntries, uint32_t srcBase, uint32_t dstBase, uint32_t planes,
                     const RestoreSink &sink) {
 	uint32_t n = 0;                                     // LAB_0631 / LAB_011C
 	const DirtyRect *p = list;                          // A6
 	for(;;) {
-		if(p->w == -1) break;                           // CMPI.W #$FFFF,4(A6)
+		const auto &r = loadRect(p);
+		if(r.w == -1) break;                            // CMPI.W #$FFFF,4(A6)
 		if(n == maxEntries) break;                      // CMPI.L #max,counter
-		if(p->h == 0) break;                            // TST.W 6(A6)
-		if(p->w == 0) break;                            // TST.W 4(A6)
+		if(r.h == 0) break;                             // TST.W 6(A6)
+		if(r.w == 0) break;                             // TST.W 4(A6)
 		RestoreBlit b;
-		if(planRestoreRect(*p, b)) {
+		if(planRestoreRect(r, b)) {
 			for(uint32_t pl = 0; pl < planes; ++pl) {   // five JSR copy_rect, LEA 8000(A0/A1) between them
 				const uint32_t o = pl * RESTORE_PLANE_BYTES + (uint32_t)b.offset;
 				sink.copy(sink.ctx, srcBase + o, dstBase + o, b.mod, b.mod, b.words, b.rows);
