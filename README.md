@@ -3,6 +3,8 @@
 **Moonstone: A Hard Days Knight** (Mindscape, 1991) rebuilt in C++ on [ACE](https://github.com/AmigaPorts/ACE), for the
 **Amiga 1200** and **Windows PC**, with local co-op and online play for up to four knights.
 
+**Website:** [moonstone.shatteredallegiance.com](https://moonstone.shatteredallegiance.com/): live online games and how to play.
+
 This repository holds **none of Moonstone's data, art, music or code**. You need your own copy of the game: the three
 original disks or disk images (`.adf`) made from them. The game reads them every time it starts.
 

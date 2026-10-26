@@ -1,6 +1,6 @@
 # Moonstone ACE 0.3.0
 
-**Moonstone on Windows.** This release adds a native Windows PC version next to the Amiga 1200 version: the whole game,
+**Moonstone on Windows.** This release adds a native Windows PC version next to the Amiga 1200 version: the game itself,
 local co-op for up to four knights, and online play. As always, no game data is included: you need your own copy of the
 three original disks (`.adf` images); the game reads them when it starts.
 
